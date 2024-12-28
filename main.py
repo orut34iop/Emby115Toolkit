@@ -12,6 +12,7 @@ from tabs import (
     MergeVersionTab,
     UpdateCategoryTab
 )
+from utils.logger import setup_logger  # 导入日志设置函数
 
 class EmbyToolkit:
     def __init__(self, root):
@@ -21,6 +22,10 @@ class EmbyToolkit:
         # 创建日志目录
         self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
         os.makedirs(self.log_dir, exist_ok=True)
+        
+        # 设置日志记录器
+        self.logger = setup_logger('EmbyToolkit', log_file=os.path.join(self.log_dir, 'app.log'))
+        self.logger.info("应用程序启动")
         
         # 创建选项卡控件
         self.notebook = ttk.Notebook(root)
@@ -40,6 +45,7 @@ class EmbyToolkit:
         # 添加选项卡到notebook
         for tab_name, tab_frame in self.tabs.items():
             self.notebook.add(tab_frame, text=tab_name)
+            self.logger.info(f"添加选项卡: {tab_name}")
             
         # 设置窗口大小和位置
         self.root.geometry("800x600")
@@ -58,6 +64,7 @@ class EmbyToolkit:
         ExportLibraryTab(self.tabs["导出库文件"], self.log_dir)
         MergeVersionTab(self.tabs["合并版本"], self.log_dir)
         UpdateCategoryTab(self.tabs["更新类别"], self.log_dir)
+        self.logger.info("所有选项卡初始化完成")
 
 def main():
     root = TkinterDnD.Tk()

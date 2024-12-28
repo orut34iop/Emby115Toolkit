@@ -12,6 +12,7 @@ class ExportSymlinkTab(BaseTab):
         self.config = Config()
         self.init_ui()
         self.load_config()
+        self.logger.info("导出软链接标签页初始化完成")
         
     def load_config(self):
         """从配置文件加载设置"""
@@ -20,25 +21,30 @@ class ExportSymlinkTab(BaseTab):
             # 加载线程数
             if 'thread_count' in config:
                 self.thread_spinbox.set(config['thread_count'])
+                self.logger.info(f"加载线程数: {config['thread_count']}")
             
             # 加载目标文件夹
             if 'target_folder' in config:
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, config['target_folder'])
+                self.logger.info(f"加载目标文件夹: {config['target_folder']}")
             
             # 加载链接文件夹列表
             if 'link_folders' in config and config['link_folders']:
                 self.link_text.delete('1.0', tk.END)
                 self.link_text.insert('1.0', '\n'.join(config['link_folders']))
+                self.logger.info(f"加载链接文件夹列表: {config['link_folders']}")
             
             # 加载后缀设置
             if 'link_suffixes' in config:
                 self.link_suffix_entry.delete(0, tk.END)
                 self.link_suffix_entry.insert(0, ';'.join(config['link_suffixes']))
+                self.logger.info(f"加载软链接后缀: {config['link_suffixes']}")
             
             if 'meta_suffixes' in config:
                 self.meta_suffix_entry.delete(0, tk.END)
                 self.meta_suffix_entry.insert(0, ';'.join(config['meta_suffixes']))
+                self.logger.info(f"加载元数据后缀: {config['meta_suffixes']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -58,6 +64,7 @@ class ExportSymlinkTab(BaseTab):
         
         # 保存到文件
         self.config.save()
+        self.logger.info("配置已保存")
 
     def validate_target_folder(self, path):
         """验证目标文件夹路径"""
@@ -187,6 +194,7 @@ class ExportSymlinkTab(BaseTab):
         def clear_list():
             self.link_text.delete('1.0', tk.END)
             self.save_config()
+            self.logger.info("已清空文件夹列表")
             
         clear_list_btn = ttk.Button(btn_frame, text="清空文件夹列表", command=clear_list)
         clear_list_btn.pack(side='left', padx=5)
