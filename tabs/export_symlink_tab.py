@@ -182,7 +182,7 @@ class ExportSymlinkTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="开始同步", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
         
-        sync_all_btn = ttk.Button(btn_frame, text="一键全同步")
+        sync_all_btn = ttk.Button(btn_frame, text="一键全同步", command=self.sync_all)
         sync_all_btn.pack(side='left', padx=5)
         
         create_link_btn = ttk.Button(btn_frame, text="创建软链接")
@@ -240,3 +240,82 @@ class ExportSymlinkTab(BaseTab):
         if self.link_text.edit_modified():
             self.save_config()
             self.link_text.edit_modified(False)
+
+    def sync_all(self):
+
+        link_folders = self.config.get('export_symlink', 'link_folders')
+        target_folder = self.config.get('export_symlink', 'target_folder')
+        num_threads = self.config.get('export_symlink', 'thread_count')
+        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
+        soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
+
+        # 获取路径列表
+        if not link_folders or not link_folders[0]:
+            self.logger.info("提示", "源目录路径列表为空")
+            return
+                
+        total_time = 0
+        total_copied = 0
+        total_existing = 0
+
+        self.logger.info("开始一键全同步")
+
+        # 处理每个源文件夹
+        for source_path in link_folders:
+            if not source_path.strip():
+                continue
+                
+            copyer = MetadataCopyer(
+                source_folder=source_path.strip(),
+                target_folder=target_folder,
+                allowed_extensions=allowed_extensions,
+                num_threads=num_threads
+            )
+            
+            # 运行元数据复制
+            time_taken, message = copyer.run()
+            total_time += time_taken
+            total_copied += copyer.copied_metadatas
+            total_existing += copyer.existing_links
+        
+        # 显示总结信息
+        summary = (
+            f"元数据同步完成\n"
+            f"总耗时: {total_time:.2f} 秒\n"
+            f"总处理文件数: {total_copied + total_existing}\n"
+            f"新复制文件数: {total_copied}\n"
+            f"跳过文件数: {total_existing}"
+        )
+
+        self.logger.info(summary)
+
+        total_time = 0
+        total_created_links = 0
+
+        # 每个源文件夹创建符号链接
+        for source_path in link_folders:
+            if not source_path.strip():
+                continue
+                
+            creater = SymlinkCreator(
+                source_folder=source_path.strip(),
+                target_folder=target_folder,
+                allowed_extensions=soft_link_extensions,
+                num_threads=num_threads
+            )
+            
+            # 运行符号链接创建
+            time_taken, message = creater.run()
+            total_time += time_taken
+            total_created_links += creater.created_links
+        
+        # 显示总结信息
+        summary = (
+            f"符号链接创建完成\n"
+            f"总耗时: {total_time:.2f} 秒\n"
+            f"总创建符号链接文件数: {total_created_links}\n"
+        )
+        self.logger.info(summary)
+
+
+        self.logger.info("一键全同步完成")
