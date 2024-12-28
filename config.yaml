@@ -1,0 +1,24 @@
+export_symlink:
+  link_suffixes:
+  - .mkv
+  - .iso
+  - .ts
+  - .mp4
+  - .avi
+  - .rmvb
+  - .wmv
+  - .m2ts
+  - .mpg
+  - .flv
+  - .rm
+  meta_suffixes:
+  - .nfo
+  - .jpg
+  - .png
+  - .svg
+  - .ass
+  - .srt
+  - .sup
+  thread_count: 4
+  link_folders: []
+  target_folder: ''
