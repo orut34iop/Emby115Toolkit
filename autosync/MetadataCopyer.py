@@ -4,7 +4,6 @@ import time
 import queue
 import logging
 import shutil
-from utils.shentools import *
 
 class MetadataCopyer:
     def __init__(self, source_folder, target_folder,allowed_extensions, num_threads=8):
@@ -24,7 +23,7 @@ class MetadataCopyer:
                 if source_timestamp > target_timestamp:
                     os.makedirs(os.path.dirname(target_file), exist_ok=True)
                     shutil.copy2(source, target_file)
-                    print_message(f"线程 {thread_name}: {source} 到 {target_file}")
+                    # print_message(f"线程 {thread_name}: {source} 到 {target_file}")
                     # logging.info(f"线程 {thread_name}: {source} 到 {target_file}")
                     self.copied_metadatas += 1
                 else:
@@ -33,11 +32,12 @@ class MetadataCopyer:
             else:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
-                print_message(f"线程 {thread_name}: {source} 到 {target_file}")
+                # print_message(f"线程 {thread_name}: {source} 到 {target_file}")
                 # logging.info(f"线程 {thread_name}: {source} 到 {target_file}")
                 self.copied_metadatas += 1
         except Exception as e:
-            print_message(f"元数据复制出错:{e}")
+            # print_message(f"元数据复制出错:{e}")
+            pass
 
     def start_to_copy_metadata(self, thread_name):
         while True:
@@ -60,7 +60,7 @@ class MetadataCopyer:
 
     def run(self):
         start_time = time.time()
-        print_message("开始更新元数据...")
+        # print_message("开始更新元数据...")
         
         # 创建与源文件夹同名的目标文件夹
         source_name = os.path.basename(os.path.normpath(self.source_folder))
@@ -90,6 +90,6 @@ class MetadataCopyer:
         end_time = time.time()
         total_time = end_time - start_time
         message = f"更新元数据:总耗时 {total_time:.2f} 秒, 共处理元数据数：{self.copied_metadatas + self.existing_links}个，共复制元数据数：{self.copied_metadatas}，共跳过元数据数：{self.existing_links}"
-        print_message('完成::: 更新元数据')
+        # print_message('完成::: 更新元数据')
         # logging.info(message)
         return total_time,message

@@ -5,6 +5,9 @@ import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
+from autosync.MetadataCopyer import MetadataCopyer
+from autosync.SymlinkCreator import SymlinkCreator
+
 
 class ExportSymlinkTab(BaseTab):
     def __init__(self, frame, log_dir):
