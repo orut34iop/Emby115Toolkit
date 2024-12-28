@@ -1,5 +1,6 @@
 # GUI依赖
 ttkthemes>=3.2.2  # 美化GUI主题
+tkinterdnd2>=0.3.0  # 拖放功能支持
 
 # 文件处理
 pathlib>=1.0.1    # 文件路径处理

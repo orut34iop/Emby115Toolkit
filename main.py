@@ -1,9 +1,33 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ttkthemes import ThemedTk
+from tkinterdnd2 import DND_FILES, TkinterDnD
 import os
 from utils.logger import setup_logger
 import logging
+
+def scan_string(input_string):
+    """解析拖拽数据中的路径"""
+    result = []
+    i = 0
+    while i < len(input_string):
+        if input_string[i] == '{':
+            i += 1
+            start = i
+            while i < len(input_string) and input_string[i] != '}':
+                i += 1
+            result.append(input_string[start:i])
+            i += 1
+        else:
+            start = i
+            while i < len(input_string) and input_string[i] != ' ':
+                i += 1
+            result.append(input_string[start:i])
+
+        if i < len(input_string) and input_string[i] == ' ':
+            i += 1
+
+    return [path for path in result if path.strip()]
 
 class EmbyToolkit:
     def __init__(self, root):
@@ -45,6 +69,38 @@ class EmbyToolkit:
         self.init_export_library_tab()
         self.init_merge_version_tab()
         self.init_update_category_tab()
+
+
+
+    def on_folder_drop(self, event, text_widget):
+        """处理文件夹拖放事件"""
+        data = event.data
+        if data:
+            # 获取当前已有的路径
+            current_paths = set()
+            if text_widget.get('1.0', tk.END).strip():
+                current_paths = set(text_widget.get('1.0', tk.END).strip().split('\n'))
+
+            folder_paths = scan_string(data)
+            paths = [path for path in folder_paths if path not in current_paths]
+            # 处理新拖入的路径
+            added_count = 0
+            for path in paths:
+                path = path.strip()
+                if os.path.isdir(path):
+                    # 检查是否重复
+                    if path not in current_paths:
+                        if current_paths:  # 如果已经有内容，添加换行
+                            text_widget.insert(tk.END, '\n')
+                        text_widget.insert(tk.END, path)
+                        current_paths.add(path)
+                        added_count += 1
+
+            # 显示添加结果
+            if added_count > 0:
+                logging.info(f"成功添加 {added_count} 个文件夹")
+            else:
+                logging.info("没有新的文件夹被添加（可能是重复路径或非文件夹）")
 
     def create_basic_widgets(self, frame, browse_type='directory'):
         """创建基本的UI组件"""
@@ -116,13 +172,34 @@ class EmbyToolkit:
         link_text = tk.Text(link_frame, height=4, wrap='none')
         link_text.pack(side='left', fill='x', expand=True, padx=(5, 5))
         
+        # 启用拖放功能
+        link_text.drop_target_register('DND_Files')
+        link_text.dnd_bind('<<Drop>>', lambda e: self.on_folder_drop(e, link_text))
+
         link_scroll = ttk.Scrollbar(link_frame, orient='vertical', command=link_text.yview)
         link_scroll.pack(side='right', fill='y')
         link_text.configure(yscrollcommand=link_scroll.set)
-        
-        link_browse = ttk.Button(link_frame, text="浏览")
+
+        def browse_folders():
+            folder = filedialog.askdirectory(title="选择文件夹")
+            if folder:
+                # 获取当前已有的路径
+                current_paths = set()
+                if link_text.get('1.0', tk.END).strip():
+                    current_paths = set(link_text.get('1.0', tk.END).strip().split('\n'))
+
+                # 检查是否重复
+                if folder not in current_paths:
+                    if current_paths:  # 如果已经有内容，添加换行
+                        link_text.insert(tk.END, '\n')
+                    link_text.insert(tk.END, folder)
+                    logging.info("成功添加文件夹")
+                else:
+                    logging.info("文件夹已存在，未添加重复路径")
+
+        link_browse = ttk.Button(link_frame, text="浏览", command=browse_folders)
         link_browse.pack(side='right', padx=5)
-        
+
         # 目标文件夹选择
         target_frame = ttk.LabelFrame(frame, text="目标文件夹", padding=(5, 5, 5, 5))
         target_frame.pack(fill='x', padx=5, pady=5)
@@ -180,7 +257,10 @@ class EmbyToolkit:
         copy_version_btn = ttk.Button(btn_frame, text="复制到剪贴版")
         copy_version_btn.pack(side='left', padx=5)
         
-        clear_list_btn = ttk.Button(btn_frame, text="清空文件夹列表")
+        def clear_list():
+            link_text.delete('1.0', tk.END)
+
+        clear_list_btn = ttk.Button(btn_frame, text="清空文件夹列表", command=clear_list)
         clear_list_btn.pack(side='left', padx=5)
         
         # 日志区域
@@ -254,7 +334,9 @@ class EmbyToolkit:
         category_frame.pack(fill='x', padx=5, pady=5, before=widgets['log_text'].master)
 
 def main():
-    root = ThemedTk(theme="arc")  # 使用更现代的主题
+    root = TkinterDnD.Tk()
+    style = ttk.Style(root)
+    style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
     app = EmbyToolkit(root)
     root.mainloop()
 
