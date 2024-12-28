@@ -20,5 +20,8 @@ export_symlink:
   - .srt
   - .sup
   thread_count: 4
-  link_folders: []
-  target_folder: ''
+  link_folders:
+  - C:/Users/wiz/Desktop/dev/Emby115Toolkit/utils
+  - C:/Users/wiz/Desktop/dev/Emby115Toolkit/logs
+  - C:/Users/wiz/Desktop/dev/Emby115Toolkit/tabs
+  target_folder: C:/emby-as-115/MOVIE

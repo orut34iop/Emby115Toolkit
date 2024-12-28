@@ -58,6 +58,19 @@ class ExportSymlinkTab(BaseTab):
         
         # 保存到文件
         self.config.save()
+
+    def validate_target_folder(self, path):
+        """验证目标文件夹路径"""
+        path = path.strip()
+        if not path:
+            return True
+        if not os.path.exists(path):
+            self.logger.warning("无效的路径")
+            return False
+        if not os.path.isdir(path):
+            self.logger.warning("所选路径不是目录")
+            return False
+        return True
         
     def init_ui(self):
         # 使用说明
@@ -102,10 +115,24 @@ class ExportSymlinkTab(BaseTab):
         
         self.target_entry = ttk.Entry(target_frame)
         self.target_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
-        self.target_entry.bind('<FocusOut>', lambda e: self.save_config())
         
-        target_browse = ttk.Button(target_frame, text="浏览")
+        # 启用拖放功能
+        self.target_entry.drop_target_register(DND_FILES)
+        self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
+        
+        def browse_target():
+            folder = filedialog.askdirectory(title="选择目标文件夹")
+            if folder:
+                self.target_entry.delete(0, tk.END)
+                self.target_entry.insert(0, folder)
+                self.logger.info(f"已选择目标文件夹: {folder}")
+                self.save_config()
+        
+        target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
         target_browse.pack(side='right', padx=5)
+        
+        # 验证目标文件夹
+        self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
         # 同步线程数选择
         thread_frame = ttk.Frame(self.frame)
@@ -175,6 +202,27 @@ class ExportSymlinkTab(BaseTab):
         log_file = os.path.join(self.log_dir, 'export_symlink.log')
         self.logger = setup_logger('export_symlink', self.log_text, log_file)
         self.logger.info("导出软链接标签页初始化完成")
+        
+    def on_target_drop(self, event):
+        """处理目标文件夹拖放事件"""
+        data = event.data
+        if data:
+            paths = self.scan_string(data)
+            if paths:
+                path = paths[0].strip()  # 只取第一个路径
+                if os.path.exists(path) and os.path.isdir(path):
+                    self.target_entry.delete(0, tk.END)
+                    self.target_entry.insert(0, path)
+                    self.logger.info(f"已设置目标文件夹: {path}")
+                    self.save_config()
+                else:
+                    self.logger.warning("无效的目标文件夹路径")
+
+    def validate_and_save_target(self):
+        """验证并保存目标文件夹路径"""
+        path = self.target_entry.get().strip()
+        if self.validate_target_folder(path):
+            self.save_config()
         
     def on_text_modified(self):
         """处理文本修改事件"""
