@@ -20,15 +20,11 @@ class ExportSymlinkTab(BaseTab):
         link_frame.pack(fill='x', padx=5, pady=5)
         
         self.link_text = tk.Text(link_frame, height=4, wrap='none')
-        self.link_text.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.link_text.pack(fill='x', expand=True, padx=5)
         
         # 启用拖放功能
         self.link_text.drop_target_register(DND_FILES)
         self.link_text.dnd_bind('<<Drop>>', lambda e: self.on_folder_drop(e, self.link_text))
-        
-        link_scroll = ttk.Scrollbar(link_frame, orient='vertical', command=self.link_text.yview)
-        link_scroll.pack(side='right', fill='y')
-        self.link_text.configure(yscrollcommand=link_scroll.set)
         
         def browse_folders():
             folder = filedialog.askdirectory(title="选择文件夹")
@@ -48,7 +44,7 @@ class ExportSymlinkTab(BaseTab):
                     self.logger.info("文件夹已存在，未添加重复路径")
         
         link_browse = ttk.Button(link_frame, text="浏览", command=browse_folders)
-        link_browse.pack(side='right', padx=5)
+        link_browse.pack(padx=5, pady=(5,0))
         
         # 目标文件夹选择
         target_frame = ttk.LabelFrame(self.frame, text="目标文件夹", padding=(5, 5, 5, 5))
@@ -118,11 +114,7 @@ class ExportSymlinkTab(BaseTab):
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
         self.log_text = tk.Text(log_frame, height=10, wrap='word')
-        self.log_text.pack(side='left', fill='both', expand=True)
-        
-        log_scroll = ttk.Scrollbar(log_frame, orient='vertical', command=self.log_text.yview)
-        log_scroll.pack(side='right', fill='y')
-        self.log_text.configure(yscrollcommand=log_scroll.set)
+        self.log_text.pack(fill='both', expand=True, padx=5)
         
         # 设置日志系统
         log_file = os.path.join(self.log_dir, 'export_symlink.log')
