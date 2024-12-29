@@ -191,9 +191,6 @@ class ExportSymlinkTab(BaseTab):
         download_meta_btn = ttk.Button(btn_frame, text="下载元数据", command=self.download_metadata)
         download_meta_btn.pack(side='left', padx=5)
         
-        copy_version_btn = ttk.Button(btn_frame, text="复制到剪贴版")
-        copy_version_btn.pack(side='left', padx=5)
-        
         def clear_list():
             self.link_text.delete('1.0', tk.END)
             self.save_config()
