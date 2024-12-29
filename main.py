@@ -36,11 +36,11 @@ class EmbyToolkit:
         self.tabs = {
             "导出软链接": ttk.Frame(self.notebook),
             "删除软链接": ttk.Frame(self.notebook),
-            "检查去重": ttk.Frame(self.notebook),
+            "emby影剧查重": ttk.Frame(self.notebook),
             "文件合并": ttk.Frame(self.notebook),
             "导出库文件": ttk.Frame(self.notebook),
-            "合并版本": ttk.Frame(self.notebook),
-            "更新类别": ttk.Frame(self.notebook)
+            "emby合并版本": ttk.Frame(self.notebook),
+            "emby更新流派": ttk.Frame(self.notebook)
         }
         
         # 添加选项卡到notebook
@@ -68,11 +68,11 @@ class EmbyToolkit:
         # 为每个标签页创建对应的类实例
         ExportSymlinkTab(self.tabs["导出软链接"], self.log_dir)
         DeleteSymlinkTab(self.tabs["删除软链接"], self.log_dir)
-        CheckDuplicateTab(self.tabs["检查去重"], self.log_dir)
+        CheckDuplicateTab(self.tabs["emby影剧查重"], self.log_dir)
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
         ExportLibraryTab(self.tabs["导出库文件"], self.log_dir)
-        MergeVersionTab(self.tabs["合并版本"], self.log_dir)
-        UpdateCategoryTab(self.tabs["更新类别"], self.log_dir)
+        MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)
+        UpdateCategoryTab(self.tabs["emby更新流派"], self.log_dir)
         self.logger.info("所有选项卡初始化完成")
 
     def on_tab_changed(self, event):
