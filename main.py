@@ -79,7 +79,7 @@ class EmbyToolkit:
         self.config.save()
 
 def main():
-    root = TkinterDnD.Tk()
+    root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
     style = ttk.Style(root)
     style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
     app = EmbyToolkit(root)
