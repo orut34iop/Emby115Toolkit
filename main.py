@@ -13,6 +13,7 @@ from tabs import (
     UpdateCategoryTab
 )
 from utils.logger import setup_logger  # 导入日志设置函数
+from utils.config import Config  # 导入配置管理类
 
 class EmbyToolkit:
     def __init__(self, root):
@@ -54,6 +55,14 @@ class EmbyToolkit:
         # 初始化各个选项卡的内容
         self.init_tabs()
 
+        # 读取上次退出时的选项卡索引
+        self.config = Config()
+        last_tab_index = self.config.get('last_tab_index','index', 0)
+        self.notebook.select(last_tab_index)
+
+        # 绑定选项卡切换事件
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+
     def init_tabs(self):
         """初始化所有标签页"""
         # 为每个标签页创建对应的类实例
@@ -65,6 +74,12 @@ class EmbyToolkit:
         MergeVersionTab(self.tabs["合并版本"], self.log_dir)
         UpdateCategoryTab(self.tabs["更新类别"], self.log_dir)
         self.logger.info("所有选项卡初始化完成")
+
+    def on_tab_changed(self, event):
+        """处理选项卡切换事件"""
+        selected_tab_index = self.notebook.index(self.notebook.select())
+        self.config.set('last_tab_index', 'index', selected_tab_index)
+        self.config.save()
 
 def main():
     root = TkinterDnD.Tk()
