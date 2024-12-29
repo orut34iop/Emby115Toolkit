@@ -28,17 +28,24 @@ class TextHandler(logging.Handler):
         self.queue.put((msg, record.levelname))
 
     def _poll_queue(self):
-            try:
-                while True:
+        try:
+            messages = []
+            while True:
+                try:
                     msg, levelname = self.queue.get_nowait()
+                    messages.append((msg, levelname))
+                except queue.Empty:
+                    break
+
+            if messages:
+                def update_gui():
                     with self.lock:
-                        self.text_widget.insert(tk.END, msg + '\n', levelname)
+                        for msg, levelname in messages:
+                            self.text_widget.insert(tk.END, msg + '\n', levelname)
                         self.text_widget.see(tk.END)
-            except queue.Empty:
-                pass  # 队列为空时退出循环
-            finally:
-                # 继续定期轮询
-                self.text_widget.after(100, self._poll_queue)
+                self.text_widget.after_idle(update_gui)
+        finally:
+            self.text_widget.after(50, self._poll_queue)
 
 def setup_logger(name, text_widget=None, log_file=None):
     """设置日志系统
