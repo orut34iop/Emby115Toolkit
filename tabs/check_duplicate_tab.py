@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
+from tkinterdnd2 import DND_FILES
 import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
@@ -58,6 +59,10 @@ class CheckDuplicateTab(BaseTab):
         self.target_entry = ttk.Entry(target_frame)
         self.target_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         
+        # 启用拖放功能
+        self.target_entry.drop_target_register(DND_FILES)
+        self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
+        
         def browse_target():
             folder = filedialog.askdirectory(title="选择目标文件夹")
             if folder:
@@ -75,6 +80,7 @@ class CheckDuplicateTab(BaseTab):
         
         self.emby_url_entry = ttk.Entry(emby_url_frame)
         self.emby_url_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_url_entry.bind('<FocusOut>', lambda e: self.save_config())
         
         # Emby API 输入框
         emby_api_frame = ttk.LabelFrame(self.frame, text="Emby API", padding=(5, 5, 5, 5))
@@ -82,6 +88,7 @@ class CheckDuplicateTab(BaseTab):
         
         self.emby_api_entry = ttk.Entry(emby_api_frame)
         self.emby_api_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_api_entry.bind('<FocusOut>', lambda e: self.save_config())
         
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
@@ -102,6 +109,27 @@ class CheckDuplicateTab(BaseTab):
         self.logger = setup_logger('check_duplicate', self.log_text, log_file)
         self.logger.info("emby影剧查重标签页初始化完成")
         
+    def on_target_drop(self, event):
+        """处理目标文件夹拖放事件"""
+        data = event.data
+        if data:
+            paths = self.scan_string(data)
+            if paths:
+                path = paths[0].strip()  # 只取第一个路径
+                if os.path.exists(path) and os.path.isdir(path):
+                    self.target_entry.delete(0, tk.END)
+                    self.target_entry.insert(0, path)
+                    self.logger.info(f"已设置目标文件夹: {path}")
+                    self.save_config()
+                else:
+                    self.logger.warning("无效的目标文件夹路径")
+
+    def validate_and_save_target(self):
+        """验证并保存目标文件夹路径"""
+        path = self.target_entry.get().strip()
+        if self.validate_target_folder(path):
+            self.save_config()
+
     def check_duplicate(self):
         target_folder = self.target_entry.get().strip()
         emby_url = self.emby_url_entry.get().strip()
