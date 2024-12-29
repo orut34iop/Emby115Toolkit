@@ -5,6 +5,7 @@ import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
+from emby.EmbyOperator import EmbyOperator
 
 class CheckDuplicateTab(BaseTab):
     def __init__(self, frame, log_dir):
@@ -132,16 +133,31 @@ class CheckDuplicateTab(BaseTab):
 
     def check_duplicate(self):
         target_folder = self.target_entry.get().strip()
-        emby_url = self.emby_url_entry.get().strip()
-        emby_api = self.emby_api_entry.get().strip()
+        server_url = self.emby_url_entry.get().strip()
+        api_key = self.emby_api_entry.get().strip()
         
-        if not target_folder or not emby_url or not emby_api:
+        if not target_folder or not server_url or not api_key:
             self.logger.warning("目标文件夹、Emby URL或API密钥为空")
             return
         
-        self.logger.info(f"开始查重: 目标文件夹={target_folder}, Emby URL={emby_url}, Emby API={emby_api}")
+        self.logger.info(f"开始查重: 目标文件夹={target_folder}, Emby URL={server_url}, Emby API={api_key}")
         
         # 查重逻辑
         # ...实现查重的逻辑...
+            
+        embyOperator = EmbyOperator(
+            server_url=server_url,
+            api_key=api_key,
+            logger=self.logger  # 传递logger
+        )
         
-        self.logger.info("查重完成")
+        # 运行查重
+        total_time, message = embyOperator.check_duplicate(target_folder)
+    
+        # 显示总结信息
+        summary = (
+            f"影剧查重完成\n"
+            f"总耗时: {total_time:.2f} 秒\n"
+            f"{message}"
+        )
+        self.logger.info(summary)
