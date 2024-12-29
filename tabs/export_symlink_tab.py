@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 from tkinterdnd2 import DND_FILES
 import os
+import ctypes
+import sys
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
@@ -239,6 +241,10 @@ class ExportSymlinkTab(BaseTab):
             self.link_text.edit_modified(False)
 
     def sync_all(self):
+        if not self.is_admin():
+            self.logger.info("需要管理员权限，正在切换到管理员权限...")
+            self.run_as_admin()
+            return
 
         link_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
@@ -330,6 +336,11 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info("提示", "源目录路径列表为空")
             return
 
+        if not self.is_admin():
+            self.logger.info("需要管理员权限，正在切换到管理员权限...")
+            self.run_as_admin()
+            return
+
         total_time = 0
         total_created_links = 0
 
@@ -362,6 +373,21 @@ class ExportSymlinkTab(BaseTab):
         self.logger.info(summary)
 
         self.logger.info("创建软链接完成")
+
+    def is_admin(self):
+        """检查是否为管理员权限"""
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            return False
+
+    def run_as_admin(self):
+        """以管理员权限重新运行"""
+        # params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
+        # ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        # return False
+        sys.exit()
 
     def download_metadata(self):
         link_folders = self.config.get('export_symlink', 'link_folders')
