@@ -24,42 +24,47 @@ class EmbyOperator:
         self.api_key = api_key
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
-    def check_duplicate(self,target_folder):
-        total_items = 0
-        duplicate_items = 0
-        start_time = time.time()
-        remove_duplicate_nfo_file = "no"
-        self.logger.info(f"连接emby服务器 : {self.server_url} ......")
-        all_movies = self.get_all_movies()
-        if not all_movies:
-            self.logger.info("Emby库里没有电影")
-            return    
-        self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部电影")
- 
-        self.logger.info(f"开始查询...")
-        # 归地遍历指定路径下的所有子目录和文件
-        for root, dirs, files in os.walk(target_folder):
-            for file in files:
-                if file.endswith('.nfo'):
-                    nfo_path = os.path.join(root, file)
-                    query_emdb_value = self.extract_tmdbid_from_nfo(nfo_path)
-                    if query_emdb_value is not None:
-                        total_items += 1
-                        if not self.query_movies_by_tmdbid(all_movies,query_emdb_value):
-                            pass
-                            # self.logger.info(f"发现新电影 : '{nfo_path}' ")
-                        else:
-                            duplicate_items += 1
-                            self.logger.info(f"发现重复电影: {nfo_path} ")
-                            if remove_duplicate_nfo_file == "yes":
-                                os.remove(nfo_path)
-                                self.logger.info(f"删除重复电影nfo : '{nfo_path}' ")
+    def check_duplicate(self, target_folder, callback):
+        def run_check():
+            total_items = 0
+            duplicate_items = 0
+            start_time = time.time()
+            remove_duplicate_nfo_file = "no"
+            self.logger.info(f"连接emby服务器 : {self.server_url} ......")
+            all_movies = self.get_all_movies()
+            if not all_movies:
+                self.logger.info("Emby库里没有电影")
+                return    
+            self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部电影")
+    
+            self.logger.info(f"开始查询...")
+            # 归地遍历指定路径下的所有子目录和文件
+            for root, dirs, files in os.walk(target_folder):
+                for file in files:
+                    if file.endswith('.nfo'):
+                        nfo_path = os.path.join(root, file)
+                        query_emdb_value = self.extract_tmdbid_from_nfo(nfo_path)
+                        if query_emdb_value is not None:
+                            total_items += 1
+                            if not self.query_movies_by_tmdbid(all_movies, query_emdb_value):
+                                pass
+                                # self.logger.info(f"发现新电影 : '{nfo_path}' ")
+                            else:
+                                duplicate_items += 1
+                                self.logger.info(f"发现重复电影: {nfo_path} ")
+                                if remove_duplicate_nfo_file == "yes":
+                                    os.remove(nfo_path)
+                                    self.logger.info(f"删除重复电影nfo : '{nfo_path}' ")
 
-        end_time = time.time()
-        total_time = end_time - start_time
-        message = f"更新元数据:总耗时 {total_time:.2f} 秒, 共查询影剧数：{total_items}个，发现重复影剧：{duplicate_items}"
-        return total_time, message
+            end_time = time.time()
+            total_time = end_time - start_time
+            message = f"更新元数据:总耗时 {total_time:.2f} 秒, 共查询影剧数：{total_items}个，发现重复影剧：{duplicate_items}"
+            self.logger.info(message)
+            if callback:
+                callback(total_time, message)
 
+        thread = threading.Thread(target=run_check)
+        thread.start()
 
     # 获取所有电影的信息
     def get_all_movies(self):

@@ -151,13 +151,13 @@ class CheckDuplicateTab(BaseTab):
             logger=self.logger  # 传递logger
         )
         
+        def on_check_complete(total_time, message):
+            summary = (
+                f"影剧查重完成\n"
+                f"总耗时: {total_time:.2f} 秒\n"
+                f"{message}"
+            )
+            self.logger.info(summary)
+        
         # 运行查重
-        total_time, message = embyOperator.check_duplicate(target_folder)
-    
-        # 显示总结信息
-        summary = (
-            f"影剧查重完成\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-            f"{message}"
-        )
-        self.logger.info(summary)
+        embyOperator.check_duplicate(target_folder, on_check_complete)
