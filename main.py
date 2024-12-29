@@ -37,7 +37,6 @@ class EmbyToolkit:
             "删除软链接": ttk.Frame(self.notebook),
             "emby影剧查重": ttk.Frame(self.notebook),
             "文件合并": ttk.Frame(self.notebook),
-            # "导出库文件": ttk.Frame(self.notebook),  # 删除选项卡
             "emby合并版本": ttk.Frame(self.notebook),
             "emby更新流派": ttk.Frame(self.notebook)
         }
@@ -69,7 +68,6 @@ class EmbyToolkit:
         DeleteSymlinkTab(self.tabs["删除软链接"], self.log_dir)
         CheckDuplicateTab(self.tabs["emby影剧查重"], self.log_dir)
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
-        # ExportLibraryTab(self.tabs["导出库文件"], self.log_dir)  # 删除初始化
         MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)
         UpdateCategoryTab(self.tabs["emby更新流派"], self.log_dir)
         self.logger.info("所有选项卡初始化完成")
