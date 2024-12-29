@@ -301,7 +301,8 @@ class ExportSymlinkTab(BaseTab):
                 source_folder=source_path.strip(),
                 target_folder=target_folder,
                 allowed_extensions=soft_link_extensions,
-                num_threads=num_threads
+                num_threads=num_threads,
+                logger=self.logger  # 传递logger
             )
             
             # 运行符号链接创建

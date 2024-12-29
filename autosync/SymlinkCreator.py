@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 import urllib.parse
 import shutil
-
+import logging
+from utils.logger import setup_logger
 
 symlink_name_dict = {"symlink":"软链接","strm":"strm文件"}
 
@@ -22,6 +23,7 @@ class SymlinkCreator:
         cloud_root_path=None,
         cloud_url=None,
         num_threads=8,
+        logger=None  # 添加logger参数
     ):
         self.source_folder = source_folder
         self.target_folder = target_folder
@@ -36,12 +38,13 @@ class SymlinkCreator:
         self.existing_links = 0
         self.symlink_name = symlink_name_dict.get(self.symlink_mode)
         self.file_queue = queue.Queue()
+        self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def create_symlink(self, src, dst, thread_name):
         try:
             if os.path.exists(dst):
                 self.existing_links += 1
-                # print_message(f"线程 {thread_name}: {self.symlink_name}已存在，跳过:{dst}")
+                self.logger.info(f"线程 {thread_name}: {self.symlink_name}已存在，跳过:{dst}")
                 return
             file_size = os.path.getsize(src)
             if file_size <= self.symlink_size * 1024 * 1024:
@@ -49,11 +52,9 @@ class SymlinkCreator:
             else:
                 os.symlink(src, dst)
             self.created_links += 1
-            # print_message(f"线程 {thread_name}: {src} => {dst}")
-            # logging.info(f"线程 {thread_name}: {src} => {dst} ")
+            self.logger.info(f"线程 {thread_name}: {src} => {dst}")
         except Exception as e:
-            # print_message(f"{self.symlink_name}创建出错:{e}")
-            pass
+            self.logger.error(f"{self.symlink_name}创建出错:{e}")
 
     def check_strm(self, strm_path):
         with open(strm_path, "r") as f:
@@ -97,8 +98,8 @@ class SymlinkCreator:
                     return
                 else:
                     os.remove(strm_path)
-                    # print_message(f"发现无效strm文件,已删除::: {strm_path}")
-                    # print_message(f"开始创建新的strm文件::: {strm_path}")
+                    self.logger.info(f"发现无效strm文件,已删除::: {strm_path}")
+                    self.logger.info(f"开始创建新的strm文件::: {strm_path}")
             # 云盘模式
             if cloud_type:
                 # 替换路径中的\为/
@@ -112,18 +113,17 @@ class SymlinkCreator:
                 elif str(cloud_type) == "alist":
                     target_file = f"http://{cloud_url}/d/{target_file}"
                 else:
-                    # print_message(f"云盘类型 {cloud_type} 错误")
+                    self.logger.error(f"云盘类型 {cloud_type} 错误")
                     return
 
             # 写入.strm文件
             with open(strm_path, "w") as f:
                 f.write(target_file)
             self.created_links += 1
-            # print_message(f"线程 {thread_name}::: {source_file} => {strm_path}")
+            self.logger.info(f"线程 {thread_name}::: {source_file} => {strm_path}")
         except Exception as e:
-            # print_message(f"创建strm文件失败:{source_file}")
-            # print_message(f"error:{e}")
-            pass
+            self.logger.error(f"创建strm文件失败:{source_file}")
+            self.logger.error(f"error:{e}")
 
     def create_and_print_link(self, thread_name):
         while True:
@@ -147,7 +147,7 @@ class SymlinkCreator:
                     thread_name,
                 )
             else:
-                # print_message(f"symlink_mode: {self.symlink_mode}不是支持的模式,程序即将退出")
+                self.logger.error(f"symlink_mode: {self.symlink_mode}不是支持的模式,程序即将退出")
                 sys.exit(0)
             self.file_queue.task_done()
 
@@ -160,8 +160,7 @@ class SymlinkCreator:
 
     def run(self):
         start_time = time.time()
-        # print_message(f"开始更新{self.symlink_name}...")
-        # logging.info(f"开始更新{self.symlink_name}...")
+        self.logger.info(f"开始更新{self.symlink_name}...")
 
         # 创建与源文件夹同名的目标文件夹
         source_name = os.path.basename(os.path.normpath(self.source_folder))
@@ -192,6 +191,6 @@ class SymlinkCreator:
         end_time = time.time()
         total_time = end_time - start_time
         message = f"创建{self.symlink_name}:总耗时 {total_time:.2f} 秒, 共处理{self.symlink_name}数：{self.created_links + self.existing_links}个，共创建{self.symlink_name}数：{self.created_links}，共跳过{self.symlink_name}数：{self.existing_links}"
-        # print_message(f"完成::: 更新{self.symlink_name}")
-        # logging.info(message)
+        self.logger.info(f"完成::: 更新{self.symlink_name}")
+        self.logger.info(message)
         return total_time, message

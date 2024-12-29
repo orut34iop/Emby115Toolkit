@@ -2,6 +2,7 @@ import logging
 import tkinter as tk
 from logging.handlers import RotatingFileHandler
 import os
+import queue
 import threading
 from datetime import datetime
 
@@ -17,15 +18,27 @@ class TextHandler(logging.Handler):
         self.text_widget.tag_config('ERROR', foreground='red')
         self.text_widget.tag_config('CRITICAL', foreground='red', underline=1)
         self.lock = threading.Lock()
+        self.queue = queue.Queue()
+        
+        # 定期检查队列并更新GUI
+        self.text_widget.after(100, self._poll_queue)
 
     def emit(self, record):
         msg = self.format(record)
-        def append():
-            with self.lock:
-                self.text_widget.insert(tk.END, msg + '\n', record.levelname)
-                self.text_widget.see(tk.END)  # 自动滚动到最新内容
-        # 确保在主线程中更新GUI
-        self.text_widget.after(0, append)
+        self.queue.put((msg, record.levelname))
+
+    def _poll_queue(self):
+            try:
+                while True:
+                    msg, levelname = self.queue.get_nowait()
+                    with self.lock:
+                        self.text_widget.insert(tk.END, msg + '\n', levelname)
+                        self.text_widget.see(tk.END)
+            except queue.Empty:
+                pass  # 队列为空时退出循环
+            finally:
+                # 继续定期轮询
+                self.text_widget.after(100, self._poll_queue)
 
 def setup_logger(name, text_widget=None, log_file=None):
     """设置日志系统
