@@ -185,10 +185,10 @@ class ExportSymlinkTab(BaseTab):
         sync_all_btn = ttk.Button(btn_frame, text="一键全同步", command=self.sync_all)
         sync_all_btn.pack(side='left', padx=5)
         
-        create_link_btn = ttk.Button(btn_frame, text="创建软链接")
+        create_link_btn = ttk.Button(btn_frame, text="创建软链接", command=self.create_symlink)
         create_link_btn.pack(side='left', padx=5)
         
-        download_meta_btn = ttk.Button(btn_frame, text="下载元数据")
+        download_meta_btn = ttk.Button(btn_frame, text="下载元数据", command=self.download_metadata)
         download_meta_btn.pack(side='left', padx=5)
         
         copy_version_btn = ttk.Button(btn_frame, text="复制到剪贴版")
@@ -269,7 +269,8 @@ class ExportSymlinkTab(BaseTab):
                 source_folder=source_path.strip(),
                 target_folder=target_folder,
                 allowed_extensions=allowed_extensions,
-                num_threads=num_threads
+                num_threads=num_threads,
+                logger=self.logger  # 传递logger
             )
             
             # 运行元数据复制
@@ -320,3 +321,95 @@ class ExportSymlinkTab(BaseTab):
 
 
         self.logger.info("一键全同步完成")
+
+    def create_symlink(self):
+        link_folders = self.config.get('export_symlink', 'link_folders')
+        target_folder = self.config.get('export_symlink', 'target_folder')
+        num_threads = self.config.get('export_symlink', 'thread_count')
+        soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
+
+        # 获取路径列表
+        if not link_folders or not link_folders[0]:
+            self.logger.info("提示", "源目录路径列表为空")
+            return
+
+        total_time = 0
+        total_created_links = 0
+
+        self.logger.info("开始创建软链接")
+
+        # 每个源文件夹创建符号链接
+        for source_path in link_folders:
+            if not source_path.strip():
+                continue
+                
+            creater = SymlinkCreator(
+                source_folder=source_path.strip(),
+                target_folder=target_folder,
+                allowed_extensions=soft_link_extensions,
+                num_threads=num_threads,
+                logger=self.logger  # 传递logger
+            )
+            
+            # 运行符号链接创建
+            time_taken, message = creater.run()
+            total_time += time_taken
+            total_created_links += creater.created_links
+        
+        # 显示总结信息
+        summary = (
+            f"符号链接创建完成\n"
+            f"总耗时: {total_time:.2f} 秒\n"
+            f"总创建符号链接文件数: {total_created_links}\n"
+        )
+        self.logger.info(summary)
+
+        self.logger.info("创建软链接完成")
+
+    def download_metadata(self):
+        link_folders = self.config.get('export_symlink', 'link_folders')
+        target_folder = self.config.get('export_symlink', 'target_folder')
+        num_threads = self.config.get('export_symlink', 'thread_count')
+        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
+
+        # 获取路径列表
+        if not link_folders or not link_folders[0]:
+            self.logger.info("提示", "源目录路径列表为空")
+            return
+
+        total_time = 0
+        total_copied = 0
+        total_existing = 0
+
+        self.logger.info("开始下载元数据")
+
+        # 处理每个源文件夹
+        for source_path in link_folders:
+            if not source_path.strip():
+                continue
+                
+            copyer = MetadataCopyer(
+                source_folder=source_path.strip(),
+                target_folder=target_folder,
+                allowed_extensions=allowed_extensions,
+                num_threads=num_threads,
+                logger=self.logger  # 传递logger
+            )
+            
+            # 运行元数据复制
+            time_taken, message = copyer.run()
+            total_time += time_taken
+            total_copied += copyer.copied_metadatas
+            total_existing += copyer.existing_links
+        
+        # 显示总结信息
+        summary = (
+            f"元数据下载完成\n"
+            f"总耗时: {total_time:.2f} 秒\n"
+            f"总处理文件数: {total_copied + total_existing}\n"
+            f"新复制文件数: {total_copied}\n"
+            f"跳过文件数: {total_existing}"
+        )
+        self.logger.info(summary)
+
+        self.logger.info("下载元数据完成")

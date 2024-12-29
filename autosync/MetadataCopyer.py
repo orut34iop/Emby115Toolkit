@@ -6,7 +6,7 @@ import logging
 import shutil
 
 class MetadataCopyer:
-    def __init__(self, source_folder, target_folder,allowed_extensions, num_threads=8):
+    def __init__(self, source_folder, target_folder, allowed_extensions, num_threads=8, logger=None):
         self.source_folder = source_folder
         self.target_folder = target_folder
         self.metadata_extensions = allowed_extensions
@@ -14,6 +14,7 @@ class MetadataCopyer:
         self.copied_metadatas = 0
         self.existing_links = 0
         self.file_queue = queue.Queue()
+        self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def copy_metadata(self, source, target_file, thread_name):
         try:
@@ -23,21 +24,18 @@ class MetadataCopyer:
                 if source_timestamp > target_timestamp:
                     os.makedirs(os.path.dirname(target_file), exist_ok=True)
                     shutil.copy2(source, target_file)
-                    # print_message(f"线程 {thread_name}: {source} 到 {target_file}")
-                    # logging.info(f"线程 {thread_name}: {source} 到 {target_file}")
+                    self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
                     self.copied_metadatas += 1
                 else:
-                    # print_message(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
+                    self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
                     self.existing_links += 1
             else:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
-                # print_message(f"线程 {thread_name}: {source} 到 {target_file}")
-                # logging.info(f"线程 {thread_name}: {source} 到 {target_file}")
+                self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
                 self.copied_metadatas += 1
         except Exception as e:
-            # print_message(f"元数据复制出错:{e}")
-            pass
+            self.logger.error(f"元数据复制出错:{e}")
 
     def start_to_copy_metadata(self, thread_name):
         while True:
@@ -60,7 +58,7 @@ class MetadataCopyer:
 
     def run(self):
         start_time = time.time()
-        # print_message("开始更新元数据...")
+        self.logger.info("开始更新元数据...")
         
         # 创建与源文件夹同名的目标文件夹
         source_name = os.path.basename(os.path.normpath(self.source_folder))
@@ -68,7 +66,6 @@ class MetadataCopyer:
         os.makedirs(new_target_folder, exist_ok=True)
         self.target_folder = new_target_folder  # 更新目标文件夹路径
         
-        # logging.info("开始更新元数据...")
         threads = []
 
         for i in range(self.num_threads):
@@ -90,6 +87,6 @@ class MetadataCopyer:
         end_time = time.time()
         total_time = end_time - start_time
         message = f"更新元数据:总耗时 {total_time:.2f} 秒, 共处理元数据数：{self.copied_metadatas + self.existing_links}个，共复制元数据数：{self.copied_metadatas}，共跳过元数据数：{self.existing_links}"
-        # print_message('完成::: 更新元数据')
-        # logging.info(message)
-        return total_time,message
+        self.logger.info('完成::: 更新元数据')
+        self.logger.info(message)
+        return total_time, message
