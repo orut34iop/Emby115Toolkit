@@ -9,7 +9,7 @@ from datetime import datetime
 class TextHandler(logging.Handler):
     """将日志输出到tkinter的Text控件"""
     
-    def __init__(self, text_widget):
+    def __init__(self, text_widget, max_batch_size=10):
         logging.Handler.__init__(self)
         self.text_widget = text_widget
         self.text_widget.tag_config('INFO', foreground='black')
@@ -17,20 +17,30 @@ class TextHandler(logging.Handler):
         self.text_widget.tag_config('WARNING', foreground='orange')
         self.text_widget.tag_config('ERROR', foreground='red')
         self.text_widget.tag_config('CRITICAL', foreground='red', underline=1)
-        self.lock = threading.Lock()
-        self.queue = queue.Queue()
+
+        self.max_batch_size = max_batch_size
         
-        # 定期检查队列并更新GUI
+        # 使用队列来确保线程安全
+        self.queue = queue.Queue()
+        self.max_batch_size = max_batch_size
+        
+        # 定期检查队列并批量更新GUI
         self.text_widget.after(100, self._poll_queue)
 
     def emit(self, record):
-        msg = self.format(record)
-        self.queue.put((msg, record.levelname))
+        try:
+            msg = self.format(record)
+            levelname = record.levelname
+
+            # 将日志消息放入队列中
+            self.queue.put((msg, levelname))
+        except Exception:
+            self.handleError(record)
 
     def _poll_queue(self):
         try:
             messages = []
-            while True:
+            while len(messages) < self.max_batch_size:
                 try:
                     msg, levelname = self.queue.get_nowait()
                     messages.append((msg, levelname))
@@ -39,13 +49,20 @@ class TextHandler(logging.Handler):
 
             if messages:
                 def update_gui():
-                    with self.lock:
-                        for msg, levelname in messages:
-                            self.text_widget.insert(tk.END, msg + '\n', levelname)
-                        self.text_widget.see(tk.END)
+                    for msg, levelname in messages:
+                        self.text_widget.insert(tk.END, msg + '\n', levelname)
+                    self.text_widget.see(tk.END)
+                    self.text_widget.update_idletasks()  # 强制刷新GUI
+                
+                # 立即安排GUI更新
                 self.text_widget.after_idle(update_gui)
+                
+                # 标记所有已处理的任务为完成
+                for _ in messages:
+                    self.queue.task_done()
         finally:
-            self.text_widget.after(50, self._poll_queue)
+            # 继续定期轮询
+            self.text_widget.after(100, self._poll_queue)
 
 def setup_logger(name, text_widget=None, log_file=None):
     """设置日志系统
