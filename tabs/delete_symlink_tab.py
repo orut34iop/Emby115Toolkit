@@ -127,9 +127,6 @@ class DeleteSymlinkTab(BaseTab):
 
         self.logger.info(f"开始删除软链接: {target_folder}")
 
-        # 删除软链接逻辑
-        # ...实现删除软链接的逻辑...
-    
         deleter = SymlinkDeleter(
             target_folder=target_folder,
             logger=self.logger  # 传递logger

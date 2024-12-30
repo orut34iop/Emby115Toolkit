@@ -86,14 +86,10 @@ class BaseTab:
 
         return [path for path in result if path.strip()]
 
-
     def on_folder_drop(self, event, text_widget):
         """处理文件夹拖放事件"""
         data = event.data
         if data:
-            # Windows路径处理
-            # paths = data.replace('{', '').replace('}', '').split('} {')
-            
             # 获取当前已有的路径
             current_paths = set()
             if text_widget.get('1.0', tk.END).strip():
