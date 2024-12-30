@@ -10,7 +10,6 @@ from utils.config import Config
 from autosync.MetadataCopyer import MetadataCopyer
 from autosync.SymlinkCreator import SymlinkCreator
 
-
 class ExportSymlinkTab(BaseTab):
     def __init__(self, frame, log_dir):
         super().__init__(frame, log_dir)
