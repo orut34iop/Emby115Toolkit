@@ -125,3 +125,60 @@ class EmbyOperator:
 
         return None
 
+    # 按照TMDb ID分组
+    def group_movies_by_tmdbid(self,movies):
+        grouped_movies = {}
+
+        for movie in movies:
+            tmdb_id = movie.get("ProviderIds", {}).get("Tmdb", "")
+            file_path = movie.get("Path", "")
+            if tmdb_id:
+                if tmdb_id not in grouped_movies:
+                    grouped_movies[tmdb_id] = []
+                grouped_movies[tmdb_id].append(movie)
+        return grouped_movies
+
+
+    # 合并同一个TMDb ID下的不同版本
+    def merge_movie_versions(self,grouped_movies):
+        merged_movies = []
+        for tmdb_id, movies in grouped_movies.items():
+            if len(movies) > 1:
+                name = movies[0]["Name"]
+                self.logger.info(f"已发现相同版本的电影::: {name} \n")
+
+                item_ids = ",".join(movie["Id"] for movie in movies)
+                merge_url = f"{self.server_url}/emby/Videos/MergeVersions"
+                payload = {
+                    "Ids": item_ids,
+                    "X-Emby-Token": self.api_key,
+                }
+                self.logger.info(f"合并版本成功::: {name}\n")
+                response = requests.post(merge_url, params=payload)
+                if response.status_code == 204:
+                    self.logger.info(f"合并版本成功::: {name}")
+                else:
+                    self.logger.error(f"合并版本失败::: {name}")
+                merged_movies.append(movies[0])  # 暂时保留第一部电影为合并结果
+        return merged_movies
+    
+
+    def merge_versions(self, callback):
+        def run_merge_versions_check():
+            all_movies = self.get_all_movies()
+            if not all_movies:
+                self.logger.info("Emby库里没有电影")
+                return
+            self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部电影")
+            grouped_movies = self.group_movies_by_tmdbid(all_movies)
+            self.logger.info(f"已分组电影，共 {len(grouped_movies)} 个TMDb ID")
+            merged_movies = self.merge_movie_versions(grouped_movies)
+            self.logger.info(f"已合并版本，共 {len(merged_movies)} 部电影")
+
+            if callback:
+                callback(merged_movies)
+
+            return merged_movies
+        
+        thread = threading.Thread(target=run_merge_versions_check)
+        thread.start()
