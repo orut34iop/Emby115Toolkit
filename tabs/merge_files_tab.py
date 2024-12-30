@@ -111,13 +111,23 @@ class MergeFilesTab(BaseTab):
         """合并文件"""
         scrap_folder = self.scrap_entry.get()
         target_folder = self.target_entry.get()
+        
+        # 检查文件路径权限
+        if not os.access(scrap_folder, os.R_OK):
+            self.logger.error(f"没有读取权限: {scrap_folder}")
+            return
+        if not os.access(target_folder, os.R_OK):
+            self.logger.error(f"没有读取权限: {target_folder}")
+            return
+        
         file_merger = FileMerger(scrap_folder, target_folder, self.logger)
-        file_merger.run()
+        total_time, message = file_merger.run()
         
         # 显示总结信息
         summary = (
-            f"删除软链接完成\n"
-            #f"总耗时: {time_taken:.2f} 秒\n"
+            f"合并文件完成\n"
+            f"{message}\n"
+            f"总耗时: {total_time:.2f} 秒\n"
         )
         self.logger.info(summary)
 
