@@ -22,6 +22,7 @@ wheels/
 
 # Logs
 logs/
+mergeLog/
 *.log
 
 # IDE
