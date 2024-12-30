@@ -84,65 +84,69 @@ class FileMerger:
         """
         运行同步处理
         """
-        self.logger.info("开始处理文件匹配...")
-        match_count = 0
-        move_count = 0
-        start_time = time.time()
+        def run_in_thread():
+            self.logger.info("开始处理文件匹配...")
+            match_count = 0
+            move_count = 0
+            start_time = time.time()
 
-        try:
-            
-            # 遍历文件夹并保存刮削文件夹里的文件列表
-            self.logger.info(f"开始扫描{self.merge_file_path}文件夹...")
-            file_count,_, merge_file_output_path = list_files(self.merge_file_path)
-            self.logger.info(f"共发现 {file_count} 个文件")
-            if merge_file_output_path:
-                self.logger.info(f"文件列表已保存到: {merge_file_output_path}")
-            # 遍历文件夹并保存文件列表
-            self.logger.info(f"开始扫描{self.video_file_path}文件夹...")
-            file_count,_, video_files_output_path = list_files(self.video_file_path)
-            self.logger.info(f"共发现 {file_count} 个文件")
-            if video_files_output_path:
-                self.logger.info(f"文件列表已保存到: {video_files_output_path}")
-
-
-            # 读取视频文件列表
-            with open(video_files_output_path, 'r', encoding='utf-8') as f:
-                self.video_files = f.readlines()
-            # 去除每行末尾的换行符
-            self.video_files = [line.strip() for line in self.video_files]
-            
-            logging.info(f"已加载视频文件列表，共 {len(self.video_files)} 个文件")
+            try:
+                
+                # 遍历文件夹并保存刮削文件夹里的文件列表
+                self.logger.info(f"开始扫描{self.merge_file_path}文件夹...")
+                file_count,_, merge_file_output_path = list_files(self.merge_file_path)
+                self.logger.info(f"共发现 {file_count} 个文件")
+                if merge_file_output_path:
+                    self.logger.info(f"文件列表已保存到: {merge_file_output_path}")
+                # 遍历文件夹并保存文件列表
+                self.logger.info(f"开始扫描{self.video_file_path}文件夹...")
+                file_count,_, video_files_output_path = list_files(self.video_file_path)
+                self.logger.info(f"共发现 {file_count} 个文件")
+                if video_files_output_path:
+                    self.logger.info(f"文件列表已保存到: {video_files_output_path}")
 
 
-            # 读取merge文件列表
-            with open(merge_file_output_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    file_path = line.strip()
-                    
-                    # 检查是否是nfo文件
-                    if file_path.lower().endswith('.nfo'):
-                        # 查找匹配的视频文件
-                        matching_video = self.find_matching_video(file_path)
+                # 读取视频文件列表
+                with open(video_files_output_path, 'r', encoding='utf-8') as f:
+                    self.video_files = f.readlines()
+                # 去除每行末尾的换行符
+                self.video_files = [line.strip() for line in self.video_files]
+                
+                logging.info(f"已加载视频文件列表，共 {len(self.video_files)} 个文件")
+
+
+                # 读取merge文件列表
+                with open(merge_file_output_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        file_path = line.strip()
                         
-                        if matching_video:
-                            match_count += 1
-                            self.logger.info(f"找到匹配:")
-                            self.logger.info(f"  NFO: {file_path}")
-                            self.logger.info(f"  视频: {matching_video}")
+                        # 检查是否是nfo文件
+                        if file_path.lower().endswith('.nfo'):
+                            # 查找匹配的视频文件
+                            matching_video = self.find_matching_video(file_path)
                             
-                            # 移动视频文件
-                            if self.move_video_file(matching_video, file_path):
-                                move_count += 1
-                            logging.info("-" * 50)
-            
-            message = f"处理完成，共找到 {match_count} 个匹配，成功移动 {move_count} 个文件"
-            
-        except Exception as e:
-            self.logger.error(f"处理过程出错: {str(e)}")
-            message = f"处理过程出错: {str(e)}"
+                            if matching_video:
+                                match_count += 1
+                                self.logger.info(f"找到匹配:")
+                                self.logger.info(f"  NFO: {file_path}")
+                                self.logger.info(f"  视频: {matching_video}")
+                                
+                                # 移动视频文件
+                                if self.move_video_file(matching_video, file_path):
+                                    move_count += 1
+                                logging.info("-" * 50)
+                
+                message = f"处理完成，共找到 {match_count} 个匹配，成功移动 {move_count} 个文件"
+                
+            except Exception as e:
+                self.logger.error(f"处理过程出错: {str(e)}")
+                message = f"处理过程出错: {str(e)}"
 
-        finally:
-            end_time = time.time()
-            total_time = end_time - start_time
-            self.logger.info('完成::: 更新合并文件')
-            return total_time, message
+            finally:
+                end_time = time.time()
+                total_time = end_time - start_time
+                self.logger.info('完成::: 更新合并文件')
+                return total_time, message
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
