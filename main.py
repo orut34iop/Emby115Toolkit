@@ -9,7 +9,7 @@ from tabs import (
     CheckDuplicateTab,
     MergeFilesTab,
     MergeVersionTab,
-    UpdateCategoryTab
+    UpdateGenresTab
 )
 from utils.logger import setup_logger  # 导入日志设置函数
 from utils.config import Config  # 导入配置管理类
@@ -69,7 +69,7 @@ class EmbyToolkit:
         CheckDuplicateTab(self.tabs["emby影剧查重"], self.log_dir)
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
         MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)
-        UpdateCategoryTab(self.tabs["emby更新流派"], self.log_dir)
+        UpdateGenresTab(self.tabs["emby更新流派"], self.log_dir)
         self.logger.info("所有选项卡初始化完成")
 
     def on_tab_changed(self, event):

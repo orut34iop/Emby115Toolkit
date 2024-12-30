@@ -3,7 +3,7 @@ from .delete_symlink_tab import DeleteSymlinkTab
 from .check_duplicate_tab import CheckDuplicateTab
 from .merge_files_tab import MergeFilesTab
 from .merge_version_tab import MergeVersionTab
-from .update_category_tab import UpdateCategoryTab
+from .update_genres_tab import UpdateGenresTab
 
 __all__ = [
     'ExportSymlinkTab',
@@ -11,5 +11,5 @@ __all__ = [
     'CheckDuplicateTab',
     'MergeFilesTab',
     'MergeVersionTab',
-    'UpdateCategoryTab'
+    'UpdateGenresTab'
 ]
