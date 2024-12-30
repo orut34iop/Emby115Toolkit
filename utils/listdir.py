@@ -20,13 +20,13 @@ def list_files(folder_path: str) -> tuple[list[str], str]:
     """
     遍历文件夹，获取所有文件的绝对路径并保存到文本文件
     :param folder_path: 要遍历的文件夹路径
-    :return: (文件路径列表, 输出文件路径)
+    :return: (文件数量, 文件路径列表, 输出文件路径)
     """
     try:
         # 确保文件夹路径存在
         if not os.path.exists(folder_path):
             logging.error(f"文件夹不存在: {folder_path}")
-            return [], ""
+            return 0, [], ""
 
         # 获取所有文件的绝对路径
         file_paths = []
@@ -38,7 +38,7 @@ def list_files(folder_path: str) -> tuple[list[str], str]:
 
         if not file_paths:
             logging.warning(f"文件夹为空: {folder_path}")
-            return 0,[], ""
+            return 0, [], ""
 
         # 生成输出文件名
         output_filename = generate_output_filename(folder_path)
@@ -59,11 +59,11 @@ def list_files(folder_path: str) -> tuple[list[str], str]:
         logging.info(f"已保存文件列表到: {output_path}")
         logging.info(f"共找到 {file_count} 个文件")
 
-        return file_count,file_paths, output_path
+        return file_count, file_paths, output_path
 
     except Exception as e:
         logging.error(f"遍历文件夹时出错: {str(e)}")
-        return 0,[], ""
+        return 0, [], ""
 
 def get_file_count(folder_path: str) -> int:
     """
