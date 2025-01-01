@@ -126,7 +126,8 @@ class TreeMirror:
 
                 if level == 1:
                     current_dir = os.path.join(tmp_dir, name)
-                    current_dir = self.replace_special_chars(current_dir)
+                    if self.fix_garbled:
+                        current_dir = self.replace_special_chars(current_dir)
                     pre_level = level
                     pre_item_type = 'dir'
                     os.makedirs(current_dir, exist_ok=True)
@@ -195,7 +196,8 @@ class TreeMirror:
 
 
                         try:
-                            current_dir = self.replace_special_chars(current_dir)
+                            if self.fix_garbled:
+                                current_dir = self.replace_special_chars(current_dir)
                             os.makedirs(current_dir, exist_ok=True)
                             pre_level = level
                             pre_item_type = 'dir'
@@ -268,7 +270,8 @@ class TreeMirror:
                         
 
                         try:
-                            empty_file_path = self.replace_special_chars(empty_file_path)
+                            if self.fix_garbled:
+                                empty_file_path = self.replace_special_chars(empty_file_path)
                             open(empty_file_path, 'a').close()
                             pre_level = level
                             pre_item_type = 'file'
