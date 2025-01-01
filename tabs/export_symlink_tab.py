@@ -49,6 +49,11 @@ class ExportSymlinkTab(BaseTab):
                 self.meta_suffix_entry.delete(0, tk.END)
                 self.meta_suffix_entry.insert(0, ';'.join(config['meta_suffixes']))
                 self.logger.info(f"加载元数据后缀: {config['meta_suffixes']}")
+            
+            # 加载115防封设置
+            if 'enable_115_protect' in config:
+                self.protect_115_var.set(config['enable_115_protect'])
+                self.logger.info(f"加载115防封设置: {config['enable_115_protect']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -65,6 +70,7 @@ class ExportSymlinkTab(BaseTab):
         self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
+        self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
         
         # 保存到文件
         self.config.save()
@@ -145,7 +151,7 @@ class ExportSymlinkTab(BaseTab):
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
-        # 同步线程数选择
+        # 同步线程数选择和115防封设置
         thread_frame = ttk.Frame(self.frame)
         thread_frame.pack(fill='x', padx=5, pady=5)
         
@@ -156,6 +162,35 @@ class ExportSymlinkTab(BaseTab):
         self.thread_spinbox.set(4)  # 默认值
         self.thread_spinbox.pack(side='left', padx=5)
         self.thread_spinbox.bind('<FocusOut>', lambda e: self.save_config())
+
+        # 添加115防封勾选框
+        self.protect_115_var = tk.BooleanVar(value=False)
+        
+        # 创建勾选框样式
+        style = ttk.Style()
+        style.configure(
+            "Check.TCheckbutton",
+            indicatorrelief='flat',  # 扁平化效果
+            indicatorcolor='#32CD32',  # 设置为绿色
+            indicatordiameter=20,  # 指示器大小
+            font=('Segoe UI', 9)  # 使用系统字体
+        )
+        style.map(
+            "Check.TCheckbutton",
+            background=[('active', '#f0f0f0')],  # 鼠标悬停时的背景色
+            indicatorcolor=[('selected', '#32CD32'),  # 选中时的颜色
+                          ('pressed', '#228B22')]  # 按下时的颜色
+        )
+        
+        protect_115_check = ttk.Checkbutton(
+            thread_frame, 
+            text="开启115 防封",
+            variable=self.protect_115_var,
+            command=self.save_config,
+            style="Check.TCheckbutton",
+            takefocus=False  # 禁用焦点
+        )
+        protect_115_check.pack(side='left', padx=5)
         
         # 后缀设置
         suffix_frame = ttk.Frame(self.frame)
