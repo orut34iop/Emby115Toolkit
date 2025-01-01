@@ -5,7 +5,7 @@ import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
-# from autosync.TreeMirror import TreeMirror  # 这个类需要后续实现
+from autosync.TreeMirror import TreeMirror
 
 class Mirror115TreeTab(BaseTab):
     def __init__(self, frame, log_dir):
@@ -19,11 +19,17 @@ class Mirror115TreeTab(BaseTab):
         """从配置文件加载设置"""
         config = self.config.get('mirror_115_tree')
         if config:
-            # 加载目标文件夹
-            if 'target_folder' in config:
-                self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, config['target_folder'])
-                self.logger.info(f"加载115目录树文件: {config['target_folder']}")
+            # 加载目标文件
+            if 'tree_file' in config:
+                self.tree_file_entry.delete(0, tk.END)
+                self.tree_file_entry.insert(0, config['tree_file'])
+                self.logger.info(f"加载115目录树文件: {config['tree_file']}")
+            
+            # 加载导出目录
+            if 'export_folder' in config:
+                self.export_folder_entry.delete(0, tk.END)
+                self.export_folder_entry.insert(0, config['export_folder'])
+                self.logger.info(f"加载导出镜像文件夹: {config['export_folder']}")
             
             # 加载修复乱码设置
             if 'fix_garbled_text' in config:
@@ -33,7 +39,8 @@ class Mirror115TreeTab(BaseTab):
     def save_config(self):
         """保存当前设置到配置文件"""
         # 更新配置
-        self.config.set('mirror_115_tree', 'target_folder', self.target_entry.get().strip())
+        self.config.set('mirror_115_tree', 'tree_file', self.tree_file_entry.get().strip())
+        self.config.set('mirror_115_tree', 'export_folder', self.export_folder_entry.get().strip())
         self.config.set('mirror_115_tree', 'fix_garbled_text', bool(self.fix_garbled_var.get()))
         
         # 保存到文件
@@ -59,33 +66,52 @@ class Mirror115TreeTab(BaseTab):
         desc_label.pack(fill='x', padx=5, pady=5)
         
         # 目录树文件选择
-        target_frame = ttk.LabelFrame(self.frame, text="115目录树文件", padding=(5, 5, 5, 5))
-        target_frame.pack(fill='x', padx=5, pady=5)
+        tree_frame = ttk.LabelFrame(self.frame, text="115目录树文件", padding=(5, 5, 5, 5))
+        tree_frame.pack(fill='x', padx=5, pady=5)
         
-        self.target_entry = ttk.Entry(target_frame)
-        self.target_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.tree_file_entry = ttk.Entry(tree_frame)
+        self.tree_file_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         
         # 启用拖放功能
-        self.target_entry.drop_target_register(DND_FILES)
-        self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
+        self.tree_file_entry.drop_target_register(DND_FILES)
+        self.tree_file_entry.dnd_bind('<<Drop>>', lambda e: self.on_tree_file_drop(e))
         
-        def browse_target():
+        def browse_tree_file():
             file_path = filedialog.askopenfilename(
                 title="选择115目录树文件",
                 filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
             )
             if file_path:
-                self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, file_path)
+                self.tree_file_entry.delete(0, tk.END)
+                self.tree_file_entry.insert(0, file_path)
                 self.logger.info(f"已选择115目录树文件: {file_path}")
                 self.save_config()
         
-        target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
-        target_browse.pack(side='right', padx=5)
+        tree_browse = ttk.Button(tree_frame, text="浏览", command=browse_tree_file)
+        tree_browse.pack(side='right', padx=5)
         
-        # 验证目标文件
-        self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
+        # 导出镜像文件夹选择
+        export_frame = ttk.LabelFrame(self.frame, text="导出镜像文件夹", padding=(5, 5, 5, 5))
+        export_frame.pack(fill='x', padx=5, pady=5)
         
+        self.export_folder_entry = ttk.Entry(export_frame)
+        self.export_folder_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        
+        # 启用拖放功能
+        self.export_folder_entry.drop_target_register(DND_FILES)
+        self.export_folder_entry.dnd_bind('<<Drop>>', lambda e: self.on_export_folder_drop(e))
+        
+        def browse_export():
+            folder = filedialog.askdirectory(title="选择导出镜像文件夹")
+            if folder:
+                self.export_folder_entry.delete(0, tk.END)
+                self.export_folder_entry.insert(0, folder)
+                self.logger.info(f"已选择导出镜像文件夹: {folder}")
+                self.save_config()
+        
+        export_browse = ttk.Button(export_frame, text="浏览", command=browse_export)
+        export_browse.pack(side='right', padx=5)
+
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
@@ -133,20 +159,35 @@ class Mirror115TreeTab(BaseTab):
         log_file = os.path.join(self.log_dir, 'mirror_115_tree.log')
         self.logger = setup_logger('mirror_115_tree', self.log_text, log_file)
         
-    def on_target_drop(self, event):
-        """处理文件拖放事件"""
+    def on_tree_file_drop(self, event):
+        """处理目录树文件拖放事件"""
         data = event.data
         if data:
             paths = self.scan_string(data)
             if paths:
                 path = paths[0].strip()  # 只取第一个路径
                 if os.path.exists(path) and os.path.isfile(path):
-                    self.target_entry.delete(0, tk.END)
-                    self.target_entry.insert(0, path)
+                    self.tree_file_entry.delete(0, tk.END)
+                    self.tree_file_entry.insert(0, path)
                     self.logger.info(f"已设置115目录树文件: {path}")
                     self.save_config()
                 else:
                     self.logger.warning("无效的文件路径")
+
+    def on_export_folder_drop(self, event):
+        """处理导出文件夹拖放事件"""
+        data = event.data
+        if data:
+            paths = self.scan_string(data)
+            if paths:
+                path = paths[0].strip()  # 只取第一个路径
+                if os.path.exists(path) and os.path.isdir(path):
+                    self.export_folder_entry.delete(0, tk.END)
+                    self.export_folder_entry.insert(0, path)
+                    self.logger.info(f"已设置导出镜像文件夹: {path}")
+                    self.save_config()
+                else:
+                    self.logger.warning("无效的文件夹路径")
 
     def validate_and_save_target(self):
         """验证并保存目标文件路径"""
@@ -161,23 +202,32 @@ class Mirror115TreeTab(BaseTab):
 
     def mirror_tree(self):
         """镜像目录树"""
-        tree_file = self.config.get('mirror_115_tree', 'target_folder')
-        fix_garbled = self.fix_garbled_var.get()  # 获取是否修复乱码的设置
+        tree_file = self.tree_file_entry.get().strip()
+        export_folder = self.export_folder_entry.get().strip()
+        fix_garbled = self.fix_garbled_var.get()
 
-        # 获取路径
-        if not tree_file:
-            self.logger.info("提示", "115目录树文件路径为空")
+        # 验证路径
+        if not tree_file or not export_folder:
+            self.logger.info("提示: 目录树文件或导出文件夹路径为空")
             return
 
         if not os.path.isfile(tree_file):
             self.logger.error("无效的115目录树文件")
             return
 
-        self.logger.info(f"开始创建目录树镜像，文件: {tree_file}")
+        if not os.path.isdir(export_folder):
+            self.logger.error("无效的导出镜像文件夹")
+            return
+
+        self.logger.info(f"开始创建目录树镜像")
+        self.logger.info(f"目录树文件: {tree_file}")
+        self.logger.info(f"导出目录: {export_folder}")
         self.logger.info(f"乱码修复功能: {'开启' if fix_garbled else '关闭'}")
-        '''
+
         mirror = TreeMirror(
-            target_folder=target_folder,
+            tree_file=tree_file,
+            export_folder=export_folder,
+            fix_garbled=fix_garbled,
             logger=self.logger
         )
 
@@ -190,4 +240,3 @@ class Mirror115TreeTab(BaseTab):
             f"总耗时: {time_taken:.2f} 秒\n"
         )
         self.logger.info(summary)
-        '''
