@@ -9,7 +9,8 @@ from tabs import (
     CheckDuplicateTab,
     MergeFilesTab,
     MergeVersionTab,
-    UpdateGenresTab
+    UpdateGenresTab,
+    Mirror115TreeTab  # 添加新的导入
 )
 from utils.logger import setup_logger  # 导入日志设置函数
 from utils.config import Config  # 导入配置管理类
@@ -38,7 +39,8 @@ class EmbyToolkit:
             "emby影剧查重": ttk.Frame(self.notebook),
             "文件合并": ttk.Frame(self.notebook),
             "emby合并版本": ttk.Frame(self.notebook),
-            "emby更新流派": ttk.Frame(self.notebook)
+            "emby更新流派": ttk.Frame(self.notebook),
+            "115目录树镜像": ttk.Frame(self.notebook)  # 添加新的tab页
         }
         
         # 添加选项卡到notebook
@@ -70,6 +72,7 @@ class EmbyToolkit:
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
         MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)
         UpdateGenresTab(self.tabs["emby更新流派"], self.log_dir)
+        Mirror115TreeTab(self.tabs["115目录树镜像"], self.log_dir)  # 添加新的tab页初始化
         self.logger.info("所有选项卡初始化完成")
 
     def on_tab_changed(self, event):

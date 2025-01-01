@@ -4,6 +4,7 @@ from .check_duplicate_tab import CheckDuplicateTab
 from .merge_files_tab import MergeFilesTab
 from .merge_version_tab import MergeVersionTab
 from .update_genres_tab import UpdateGenresTab
+from .mirror_115_tree_tab import Mirror115TreeTab  # 添加新的导入
 
 __all__ = [
     'ExportSymlinkTab',
@@ -11,5 +12,6 @@ __all__ = [
     'CheckDuplicateTab',
     'MergeFilesTab',
     'MergeVersionTab',
-    'UpdateGenresTab'
+    'UpdateGenresTab',
+    'Mirror115TreeTab'  # 添加新的导出
 ]
