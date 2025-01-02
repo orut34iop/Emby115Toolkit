@@ -424,49 +424,31 @@ class ExportSymlinkTab(BaseTab):
         sys.exit()
 
     def download_metadata(self):
-        link_folders = self.config.get('export_symlink', 'link_folders')
+        source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
 
         # 获取路径列表
-        if not link_folders or not link_folders[0]:
+        if not source_folders or not source_folders[0]:
             self.logger.info("提示", "源目录路径列表为空")
             return
 
-        total_time = 0
-        total_copied = 0
-        total_existing = 0
+
 
         self.logger.info("开始下载元数据")
-
-        # 处理每个源文件夹
-        for source_path in link_folders:
-            if not source_path.strip():
-                continue
-                
-            copyer = MetadataCopyer(
-                source_folder=source_path.strip(),
-                target_folder=target_folder,
-                allowed_extensions=allowed_extensions,
-                num_threads=num_threads,
-                logger=self.logger  # 传递logger
-            )
-            
-            # 运行元数据复制
-            time_taken, message = copyer.run()
-            total_time += time_taken
-            total_copied += copyer.copied_metadatas
-            total_existing += copyer.existing_links
-        
-        # 显示总结信息
-        summary = (
-            f"元数据下载完成\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-            f"总处理文件数: {total_copied + total_existing}\n"
-            f"新复制文件数: {total_copied}\n"
-            f"跳过文件数: {total_existing}"
+    
+        copyer = MetadataCopyer(
+            source_folders=source_folders,
+            target_folder=target_folder,
+            allowed_extensions=allowed_extensions,
+            num_threads=num_threads,
+            logger=self.logger  # 传递logger
         )
-        self.logger.info(summary)
 
-        self.logger.info("下载元数据完成")
+        def on_download_metadata_complete(message):
+            self.logger.info("下载元数据完成")
+            self.logger.info(message)
+
+        # 运行元数据复制
+        copyer.run(on_download_metadata_complete)
