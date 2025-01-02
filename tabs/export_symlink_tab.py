@@ -276,42 +276,72 @@ class ExportSymlinkTab(BaseTab):
             self.link_text.edit_modified(False)
 
     def sync_all(self):
-        if not self.is_admin():
-            self.logger.info("需要管理员权限，正在切换到管理员权限...")
-            self.run_as_admin()
-            return
+        """执行全同步操作:下载元数据和创建软链接"""
+        try:
+            # 检查管理员权限
+            if not self.is_admin():
+                self.logger.info("需要管理员权限，正在切换到管理员权限...")
+                self.run_as_admin()
+                return
 
+            # 获取配置
+            config = self.validate_sync_config()
+            if not config:
+                return
+
+            source_folders, target_folder, num_threads, allowed_extensions = config
+
+            # 开始同步流程
+            self.logger.info("=== 开始全同步操作 ===")
+            self.logger.info(f"源文件夹: {source_folders}")
+            self.logger.info(f"目标文件夹: {target_folder}")
+            self.logger.info(f"线程数: {num_threads}")
+            self.logger.info(f"允许的扩展名: {allowed_extensions}")
+        
+            # 创建元数据复制器
+            copyer = MetadataCopyer(
+                source_folders=source_folders,
+                target_folder=target_folder,
+                allowed_extensions=allowed_extensions,
+                num_threads=num_threads,
+                logger=self.logger
+            )
+
+            def on_sync_all_complete(message):
+                """元数据下载完成后的回调"""
+                self.logger.info("=== 元数据下载完成 ===")
+                self.logger.info(message)
+                self.create_symlink()  # 继续创建软链接
+
+            # 运行元数据复制
+            copyer.run(on_sync_all_complete)
+
+        except Exception as e:
+            self.logger.error(f"全同步操作发生错误: {str(e)}")
+        
+    def validate_sync_config(self):
+        """验证同步配置"""
         source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
-        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
+        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
 
-        # 获取路径列表
+        # 验证源文件夹
         if not source_folders or not source_folders[0]:
-            self.logger.info("提示", "源目录路径列表为空")
-            return
+            self.logger.error("错误: 源目录路径列表为空")
+            return None
 
+        # 验证目标文件夹
+        if not target_folder:
+            self.logger.error("错误: 目标文件夹未设置")
+            return None
+            
+        # 验证目标文件夹是否存在
+        if not os.path.exists(target_folder):
+            self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
+            return None
 
-
-        self.logger.info("开始下载元数据")
-    
-        copyer = MetadataCopyer(
-            source_folders=source_folders,
-            target_folder=target_folder,
-            allowed_extensions=allowed_extensions,
-            num_threads=num_threads,
-            logger=self.logger  # 传递logger
-        )
-
-        def on_sync_all_download_metadata_complete(message):
-            self.logger.info("下载元数据完成")
-            self.logger.info(message)
-            self.create_symlink()
-
-        # 运行元数据复制
-        copyer.run(on_sync_all_download_metadata_complete)
-
- 
+        return source_folders, target_folder, num_threads, allowed_extensions
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
@@ -340,7 +370,6 @@ class ExportSymlinkTab(BaseTab):
         )
 
         def on_create_symlink_complete(message):
-            self.logger.info("创建软链接完成")
             self.logger.info(message)
 
         # 运行元数据复制
@@ -388,7 +417,6 @@ class ExportSymlinkTab(BaseTab):
         )
 
         def on_download_metadata_complete(message):
-            self.logger.info("下载元数据完成")
             self.logger.info(message)
 
         # 运行元数据复制

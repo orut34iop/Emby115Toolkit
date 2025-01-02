@@ -104,7 +104,7 @@ class MetadataCopyer:
 
             end_time = time.time()
             total_time = end_time - start_time
-            message = (f"更新元数据完成\n"
+            message = (f"下载元数据完成\n"
                     f"总耗时: {total_time:.2f} 秒\n"
                     f"处理元数据总数: {self.copied_metadatas + self.existing_links}\n"
                     f"新复制元数据数: {self.copied_metadatas}\n"
