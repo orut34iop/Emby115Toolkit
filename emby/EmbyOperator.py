@@ -51,10 +51,14 @@ class EmbyOperator:
                             total_items += 1
                             if not self.query_movies_by_tmdbid(all_movies, query_emdb_value):
                                 pass
-                                # self.logger.info(f"发现新影片 : '{nfo_path}' ")
+                                self.logger.info(f"发现新影片 : '{nfo_path}' ")
+                                self.logger.info(f"新影片路径 : '{os.path.dirname(nfo_path)}' ")
+                                self.logger.info(f"新影片名 :   '{os.path.basename(nfo_path)}' ")
                             else:
                                 duplicate_items += 1
-                                self.logger.info(f"发现重复影片: {nfo_path} ")
+                                self.logger.info(f"发现重复影片:  '{nfo_path}' ")
+                                self.logger.info(f"重复影片路径 : '{os.path.dirname(nfo_path)}' ")
+                                self.logger.info(f"重复影片名 :   '{os.path.basename(nfo_path)}' ")                                
                                 if remove_duplicate_nfo_file == "yes":
                                     os.remove(nfo_path)
                                     self.logger.info(f"删除重复影片nfo : '{nfo_path}' ")
