@@ -360,13 +360,13 @@ class ExportSymlinkTab(BaseTab):
         self.logger.info("一键全同步完成")
 
     def create_symlink(self):
-        link_folders = self.config.get('export_symlink', 'link_folders')
+        source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
 
         # 获取路径列表
-        if not link_folders or not link_folders[0]:
+        if not source_folders or not source_folders[0]:
             self.logger.info("提示", "源目录路径列表为空")
             return
 
@@ -375,38 +375,25 @@ class ExportSymlinkTab(BaseTab):
             self.run_as_admin()
             return
 
-        total_time = 0
-        total_created_links = 0
-
         self.logger.info("开始创建软链接")
 
-        # 每个源文件夹创建符号链接
-        for source_path in link_folders:
-            if not source_path.strip():
-                continue
-                
-            creater = SymlinkCreator(
-                source_folder=source_path.strip(),
-                target_folder=target_folder,
-                allowed_extensions=soft_link_extensions,
-                num_threads=num_threads,
-                logger=self.logger  # 传递logger
-            )
-            
-            # 运行符号链接创建
-            time_taken, message = creater.run()
-            total_time += time_taken
-            total_created_links += creater.created_links
-        
-        # 显示总结信息
-        summary = (
-            f"符号链接创建完成\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-            f"总创建符号链接文件数: {total_created_links}\n"
+        creater = SymlinkCreator(
+            source_folders=source_folders,
+            target_folder=target_folder,
+            allowed_extensions=soft_link_extensions,
+            num_threads=num_threads,
+            logger=self.logger  # 传递logger
         )
-        self.logger.info(summary)
 
-        self.logger.info("创建软链接完成")
+        def on_create_symlink_complete(message):
+            self.logger.info("创建软链接完成")
+            self.logger.info(message)
+
+        # 运行元数据复制
+        creater.run(on_create_symlink_complete)
+
+
+ 
 
     def is_admin(self):
         """检查是否为管理员权限"""

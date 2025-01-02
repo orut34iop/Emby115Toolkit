@@ -14,7 +14,7 @@ symlink_name_dict = {"symlink":"软链接","strm":"strm文件"}
 class SymlinkCreator:
     def __init__(
         self,
-        source_folder,
+        source_folders,  # 修改为接收文件夹列表
         target_folder,
         allowed_extensions,
         symlink_mode="symlink",
@@ -25,7 +25,7 @@ class SymlinkCreator:
         num_threads=8,
         logger=None  # 添加logger参数
     ):
-        self.source_folder = source_folder
+        self.source_folders = source_folders  # 改为保存文件夹列表
         self.target_folder = target_folder
         self.allowed_extensions = allowed_extensions
         self.symlink_mode = symlink_mode
@@ -62,7 +62,7 @@ class SymlinkCreator:
         strm_link = urllib.parse.quote(strm_link)
         file_extension = os.path.splitext(strm_link)[1]
         strm_media_path = strm_path.replace(".txt", "").replace(".strm", file_extension)
-        source_file = strm_media_path.replace(self.target_folder, self.source_folder)
+        source_file = strm_media_path.replace(self.target_folder, self.source_folders)
         if os.path.exists(source_file):
             return True
         else:
@@ -127,18 +127,22 @@ class SymlinkCreator:
 
     def create_and_print_link(self, thread_name):
         while True:
-            source_file = self.file_queue.get()
-            if source_file is None:
+            item = self.file_queue.get()
+            if item is None:
                 break
-            relative_path = os.path.relpath(source_file, self.source_folder)
+                
+            source_file, source_folder = item
+            relative_path = os.path.relpath(source_file, source_folder)
             target_file = os.path.join(self.target_folder, relative_path)
-            # 确保目标文件夹存在，如果不存在则创建
+            
+            # 确保目标文件夹存在
             os.makedirs(os.path.dirname(target_file), exist_ok=True)
+            
             if self.symlink_mode == "symlink":
                 self.create_symlink(source_file, target_file, thread_name)
             elif self.symlink_mode == "strm":
                 self.create_strm_file(
-                    self.source_folder,
+                    source_folder,  # 使用当前源文件夹
                     self.target_folder,
                     source_file,
                     self.cloud_type,
@@ -149,48 +153,61 @@ class SymlinkCreator:
             else:
                 self.logger.error(f"symlink_mode: {self.symlink_mode}不是支持的模式,程序即将退出")
                 sys.exit(0)
+                
             self.file_queue.task_done()
 
     def get_source_files(self):
-        for dp, dn, filenames in os.walk(self.source_folder):
-            for f in filenames:
-                source_file = os.path.join(dp, f)
-                if source_file.lower().endswith(self.allowed_extensions):
-                    yield source_file
+        """遍历所有源文件夹获取符合条件的文件"""
+        for source_folder in self.source_folders:
+            if not os.path.exists(source_folder):
+                self.logger.warning(f"源文件夹不存在: {source_folder}")
+                continue
+                
+            self.logger.info(f"扫描源文件夹: {source_folder}")
+            for dp, dn, filenames in os.walk(source_folder):
+                for f in filenames:
+                    source_file = os.path.join(dp, f)
+                    if source_file.lower().endswith(self.allowed_extensions):
+                        yield source_file, source_folder
 
-    def run(self):
-        start_time = time.time()
-        self.logger.info(f"开始更新{self.symlink_name}...")
+    def run(self,callback):
+        def run_symlink_create_check():
+            start_time = time.time()
+            self.logger.info(f"开始更新{self.symlink_name}...")
 
-        # 创建与源文件夹同名的目标文件夹
-        source_name = os.path.basename(os.path.normpath(self.source_folder))
-        new_target_folder = os.path.join(self.target_folder, source_name)
-        os.makedirs(new_target_folder, exist_ok=True)
-        self.target_folder = new_target_folder  # 更新目标文件夹路径
+            # 确保目标文件夹存在
+            os.makedirs(self.target_folder, exist_ok=True)
 
-        threads = []
+            threads = []
+            for i in range(self.num_threads):
+                thread_name = f"Thread-{i + 1}"
+                thread = threading.Thread(target=self.create_and_print_link, args=(thread_name,))
+                threads.append(thread)
+                thread.start()
 
-        for i in range(self.num_threads):
-            thread_name = f"Thread-{i + 1}"
-            thread = threading.Thread(
-                target=self.create_and_print_link, args=(thread_name,)
+            # 添加所有源文件到队列
+            for source_file, source_folder in self.get_source_files():
+                self.file_queue.put((source_file, source_folder))
+
+            # 添加停止任务
+            for _ in range(self.num_threads):
+                self.file_queue.put(None)
+
+            for thread in threads:
+                thread.join()
+
+            end_time = time.time()
+            total_time = end_time - start_time
+            message = (
+                f"创建{self.symlink_name}完成\n"
+                f"总耗时: {total_time:.2f} 秒\n"
+                f"共处理{self.symlink_name}数：{self.created_links + self.existing_links}\n"
+                f"共创建{self.symlink_name}数：{self.created_links}\n"
+                f"共跳过{self.symlink_name}数：{self.existing_links}"
             )
-            threads.append(thread)
-            thread.start()
-
-        for source_file in self.get_source_files():
-            self.file_queue.put(source_file)
-
-        # 添加停止任务
-        for i in range(self.num_threads):
-            self.file_queue.put(None)
-
-        for thread in threads:
-            thread.join()
-
-        end_time = time.time()
-        total_time = end_time - start_time
-        message = f"创建{self.symlink_name}:总耗时 {total_time:.2f} 秒, 共处理{self.symlink_name}数：{self.created_links + self.existing_links}个，共创建{self.symlink_name}数：{self.created_links}，共跳过{self.symlink_name}数：{self.existing_links}"
-        self.logger.info(f"完成::: 更新{self.symlink_name}")
-        self.logger.info(message)
-        return total_time, message
+            if callback:
+                callback(message)
+            return total_time, message
+        
+        thread = threading.Thread(target=run_symlink_create_check)
+        thread.start()
