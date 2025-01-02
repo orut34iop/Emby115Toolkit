@@ -4,6 +4,7 @@ from tkinterdnd2 import DND_FILES
 import os
 import ctypes
 import sys
+import threading
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
@@ -280,84 +281,37 @@ class ExportSymlinkTab(BaseTab):
             self.run_as_admin()
             return
 
-        link_folders = self.config.get('export_symlink', 'link_folders')
+        source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
-        soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
 
         # 获取路径列表
-        if not link_folders or not link_folders[0]:
+        if not source_folders or not source_folders[0]:
             self.logger.info("提示", "源目录路径列表为空")
             return
-                
-        total_time = 0
-        total_copied = 0
-        total_existing = 0
 
-        self.logger.info("开始一键全同步")
 
-        # 处理每个源文件夹
-        for source_path in link_folders:
-            if not source_path.strip():
-                continue
-                
-            copyer = MetadataCopyer(
-                source_folder=source_path.strip(),
-                target_folder=target_folder,
-                allowed_extensions=allowed_extensions,
-                num_threads=num_threads,
-                logger=self.logger  # 传递logger
-            )
-            
-            # 运行元数据复制
-            time_taken, message = copyer.run()
-            total_time += time_taken
-            total_copied += copyer.copied_metadatas
-            total_existing += copyer.existing_links
-        
-        # 显示总结信息
-        summary = (
-            f"元数据同步完成\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-            f"总处理文件数: {total_copied + total_existing}\n"
-            f"新复制文件数: {total_copied}\n"
-            f"跳过文件数: {total_existing}"
+
+        self.logger.info("开始下载元数据")
+    
+        copyer = MetadataCopyer(
+            source_folders=source_folders,
+            target_folder=target_folder,
+            allowed_extensions=allowed_extensions,
+            num_threads=num_threads,
+            logger=self.logger  # 传递logger
         )
 
-        self.logger.info(summary)
+        def on_sync_all_download_metadata_complete(message):
+            self.logger.info("下载元数据完成")
+            self.logger.info(message)
+            self.create_symlink()
 
-        total_time = 0
-        total_created_links = 0
+        # 运行元数据复制
+        copyer.run(on_sync_all_download_metadata_complete)
 
-        # 每个源文件夹创建符号链接
-        for source_path in link_folders:
-            if not source_path.strip():
-                continue
-                
-            creater = SymlinkCreator(
-                source_folder=source_path.strip(),
-                target_folder=target_folder,
-                allowed_extensions=soft_link_extensions,
-                num_threads=num_threads,
-                logger=self.logger  # 传递logger
-            )
-            
-            # 运行符号链接创建
-            time_taken, message = creater.run()
-            total_time += time_taken
-            total_created_links += creater.created_links
-        
-        # 显示总结信息
-        summary = (
-            f"符号链接创建完成\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-            f"总创建符号链接文件数: {total_created_links}\n"
-        )
-        self.logger.info(summary)
-
-
-        self.logger.info("一键全同步完成")
+ 
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
