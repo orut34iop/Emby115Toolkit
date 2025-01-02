@@ -133,7 +133,7 @@ class EmbyOperator:
             lines = file.readlines()
 
         for i, line in enumerate(lines):
-            match = re.search(r'  <tmdbid>(\d+)<', line) #<tmdbid>前面要有两个空格
+            match = re.search(r'^  <tmdbid>(\d+)<', line) #<tmdbid>前面要有两个空格
             if match:
                 self.logger.info(f"{os.path.basename(file_path)} Found tmdbid: {match.group(1)}")
                 return match.group(1)  # or do whatever you need with the extracted value
