@@ -4,6 +4,7 @@ import time
 import queue
 import requests
 import json
+import re
 from datetime import datetime
 import xml.etree.ElementTree as ET
 import sys
@@ -116,9 +117,24 @@ class EmbyOperator:
 
         except ET.ParseError as e:
             self.logger.error(f"解析错误：无法解析文件 '{nfo_path}'，错误信息: {e}")
+            #异常的原因可能是xml不完整,再次尝试强制解析
+            return self.force_extract_tmdbid_from_file(nfo_path)  # 修改这里，添加 self
         except Exception as e:
             self.logger.error(f"发生错误：在处理文件 '{nfo_path}' 时出错，错误信息: {e}")
 
+        return None
+
+    def force_extract_tmdbid_from_file(self,file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+
+        for i, line in enumerate(lines):
+            match = re.search(r'  <tmdbid>(\d+)<', line) #<tmdbid>前面要有两个空格
+            if match:
+                self.logger.info(f"{os.path.basename(file_path)} Found tmdbid: {match.group(1)}")
+                return match.group(1)  # or do whatever you need with the extracted value
+
+        self.logger.error("No matching tmdbid found.")
         return None
 
     # 按照TMDb ID分组
