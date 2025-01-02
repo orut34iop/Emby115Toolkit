@@ -115,12 +115,14 @@ class MergeFilesTab(BaseTab):
     
     def on_scrap_drop(self, event):
         folder = event.data.strip('{}')
+        folder = folder.replace('\\', '/')
         self.scrap_entry.delete(0, tk.END)
         self.scrap_entry.insert(0, folder)
         self.save_config()
     
     def on_target_drop(self, event):
         folder = event.data.strip('{}')
+        folder = folder.replace('\\', '/')
         self.target_entry.delete(0, tk.END)
         self.target_entry.insert(0, folder)
         self.save_config()

@@ -64,6 +64,7 @@ class BaseTab:
         }
 
     def scan_string(self, input_string):
+        input_string = input_string.replace('\\', '/')
         """解析拖拽数据中的路径"""
         result = []
         i = 0
