@@ -46,22 +46,28 @@ class EmbyOperator:
                 for file in files:
                     if file.endswith('.nfo'):
                         nfo_path = os.path.join(root, file)
-                        query_emdb_value = self.extract_tmdbid_from_nfo(nfo_path)
+                        query_emdb_value,is_demaged_nfo = self.extract_tmdbid_from_nfo(nfo_path)
                         if query_emdb_value is not None:
                             total_items += 1
+
+                            if is_demaged_nfo:
+                                nfo_log = f"损坏的NFO"
+                            else:
+                                nfo_log = f"已校验NFO"
+
                             if not self.query_movies_by_tmdbid(all_movies, query_emdb_value):
                                 pass
-                                self.logger.info(f"发现新影片 : '{nfo_path}' ")
-                                self.logger.info(f"新影片路径 : '{os.path.dirname(nfo_path)}' ")
-                                self.logger.info(f"新影片名 :   '{os.path.basename(nfo_path)}' ")
+                                self.logger.info(f"'{nfo_log}', 发现新影片 : '{nfo_path}' ")
+                                self.logger.info(f"'{nfo_log}', 新影片路径 : '{os.path.dirname(nfo_path)}' ")
+                                self.logger.info(f"'{nfo_log}', 新影片名 :   '{os.path.basename(nfo_path)}' ")
                             else:
                                 duplicate_items += 1
-                                self.logger.info(f"发现重复影片:  '{nfo_path}' ")
-                                self.logger.info(f"重复影片路径 : '{os.path.dirname(nfo_path)}' ")
-                                self.logger.info(f"重复影片名 :   '{os.path.basename(nfo_path)}' ")                                
+                                self.logger.info(f"'{nfo_log}', 发现重复影片:  '{nfo_path}' ")
+                                self.logger.info(f"'{nfo_log}', 重复影片路径 : '{os.path.dirname(nfo_path)}' ")
+                                self.logger.info(f"'{nfo_log}', 重复影片名 :   '{os.path.basename(nfo_path)}' ")                                
                                 if remove_duplicate_nfo_file == "yes":
                                     os.remove(nfo_path)
-                                    self.logger.info(f"删除重复影片nfo : '{nfo_path}' ")
+                                    self.logger.info(f"'{nfo_log}', 删除重复影片nfo : '{nfo_path}' ")
 
             end_time = time.time()
             total_time = end_time - start_time
@@ -117,12 +123,16 @@ class EmbyOperator:
             if tmdbid_element is not None:
                 query_tmdbid = tmdbid_element.text.strip()
                 #self.logger.info(f"在 '{nfo_path}' 中找到 tmdbid: {query_tmdbid}")
-                return query_tmdbid
+                return query_tmdbid, False
 
         except ET.ParseError as e:
             self.logger.error(f"解析错误：无法解析文件 '{nfo_path}'，错误信息: {e}")
             #异常的原因可能是xml不完整,再次尝试强制解析
-            return self.force_extract_tmdbid_from_file(nfo_path)  # 修改这里，添加 self
+            query_tmdbid = self.force_extract_tmdbid_from_file(nfo_path)  # 修改这里，添加 self
+            if query_tmdbid is not None:
+                return query_tmdbid , True
+            else:
+                return None
         except Exception as e:
             self.logger.error(f"发生错误：在处理文件 '{nfo_path}' 时出错，错误信息: {e}")
 
