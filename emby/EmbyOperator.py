@@ -132,11 +132,11 @@ class EmbyOperator:
             if query_tmdbid is not None:
                 return query_tmdbid , True
             else:
-                return None
+                return None, False  # 修改这里，返回两个值
         except Exception as e:
             self.logger.error(f"发生错误：在处理文件 '{nfo_path}' 时出错，错误信息: {e}")
 
-        return None
+        return None, False  # 修改这里，返回两个值
 
     def force_extract_tmdbid_from_file(self,file_path):
         with open(file_path, 'r', encoding='utf-8') as file:
