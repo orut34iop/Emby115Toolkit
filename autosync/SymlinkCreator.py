@@ -10,6 +10,7 @@ import logging
 from utils.logger import setup_logger
 
 symlink_name_dict = {"symlink":"软链接","strm":"strm文件"}
+max_queries_per_second = 2
 
 class SymlinkCreator:
     def __init__(
@@ -18,11 +19,12 @@ class SymlinkCreator:
         target_folder,
         allowed_extensions,
         symlink_mode="symlink",
-        symlink_size=20,
+        symlink_size=0,
         cloud_type=None,
         cloud_root_path=None,
         cloud_url=None,
         num_threads=8,
+        enable_115_protect=False,
         logger=None  # 添加logger参数
     ):
         self.source_folders = source_folders  # 改为保存文件夹列表
@@ -34,6 +36,7 @@ class SymlinkCreator:
         self.cloud_root_path = cloud_root_path
         self.cloud_url = cloud_url
         self.num_threads = num_threads
+        self.enable_115_protect = enable_115_protect
         self.created_links = 0
         self.existing_links = 0
         self.symlink_name = symlink_name_dict.get(self.symlink_mode)
@@ -46,15 +49,15 @@ class SymlinkCreator:
                 self.existing_links += 1
                 self.logger.info(f"线程 {thread_name}: {self.symlink_name}已存在，跳过:{dst}")
                 return
-            file_size = os.path.getsize(src)
-            if file_size <= self.symlink_size * 1024 * 1024:
-                shutil.copy2(src, dst)
-            else:
-                os.symlink(src, dst)
+            os.symlink(src, dst)
+
             self.created_links += 1
             self.logger.info(f"线程 {thread_name}: {src} => {dst}")
         except Exception as e:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
+		
+        if self.enable_115_protect:
+            time.sleep(max_queries_per_second)
 
     def check_strm(self, strm_path):
         with open(strm_path, "r") as f:
@@ -162,7 +165,10 @@ class SymlinkCreator:
             if not os.path.exists(source_folder):
                 self.logger.warning(f"源文件夹不存在: {source_folder}")
                 continue
-                
+            
+            if self.enable_115_protect:
+                time.sleep(max_queries_per_second)
+
             self.logger.info(f"扫描源文件夹: {source_folder}")
             for dp, dn, filenames in os.walk(source_folder):
                 for f in filenames:
@@ -177,6 +183,9 @@ class SymlinkCreator:
 
             # 确保目标文件夹存在
             os.makedirs(self.target_folder, exist_ok=True)
+
+            if self.enable_115_protect:
+                self.num_threads = 1
 
             threads = []
             for i in range(self.num_threads):

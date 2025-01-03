@@ -302,7 +302,7 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions = config
+            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect = config
 
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
@@ -310,6 +310,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info(f"目标文件夹: {target_folder}")
             self.logger.info(f"线程数: {num_threads}")
             self.logger.info(f"允许的扩展名: {allowed_extensions}")
+            self.logger.info(f"115防封选项: {enable_115_protect}")
         
             # 创建元数据复制器
             copyer = MetadataCopyer(
@@ -317,6 +318,7 @@ class ExportSymlinkTab(BaseTab):
                 target_folder=target_folder,
                 allowed_extensions=allowed_extensions,
                 num_threads=num_threads,
+                enable_115_protect=enable_115_protect,
                 logger=self.logger
             )
 
@@ -338,6 +340,7 @@ class ExportSymlinkTab(BaseTab):
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
+        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
 
         # 验证源文件夹
         if not source_folders or not source_folders[0]:
@@ -354,13 +357,14 @@ class ExportSymlinkTab(BaseTab):
             self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
             return None
 
-        return source_folders, target_folder, num_threads, allowed_extensions
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
+        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -379,6 +383,7 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=soft_link_extensions,
             num_threads=num_threads,
+			enable_115_protect = enable_115_protect,
             logger=self.logger  # 传递logger
         )
 
@@ -411,6 +416,7 @@ class ExportSymlinkTab(BaseTab):
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
+        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -426,6 +432,7 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=allowed_extensions,
             num_threads=num_threads,
+            enable_115_protect = enable_115_protect,
             logger=self.logger  # 传递logger
         )
 

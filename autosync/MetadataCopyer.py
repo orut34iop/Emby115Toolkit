@@ -5,9 +5,10 @@ import queue
 import logging
 import shutil
 from typing import List
+max_queries_per_second = 2
 
 class MetadataCopyer:
-    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=8, logger=None):
+    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, logger=None):
         """
         初始化MetadataCopyer
         Args:
@@ -21,6 +22,7 @@ class MetadataCopyer:
         self.target_folder = target_folder
         self.metadata_extensions = allowed_extensions
         self.num_threads = num_threads
+        self.enable_115_protect = enable_115_protect
         self.copied_metadatas = 0
         self.existing_links = 0
         self.file_queue = queue.Queue()
@@ -29,20 +31,14 @@ class MetadataCopyer:
     def copy_metadata(self, source, target_file, thread_name):
         try:
             if os.path.exists(target_file):
-                source_timestamp = os.path.getmtime(source)
-                target_timestamp = os.path.getmtime(target_file)
-                if source_timestamp > target_timestamp:
-                    os.makedirs(os.path.dirname(target_file), exist_ok=True)
-                    shutil.copy2(source, target_file)
-                    self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
-                    self.copied_metadatas += 1
-                else:
-                    self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
-                    self.existing_links += 1
+                self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
+                self.existing_links += 1
             else:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
                 self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
+                if self.enable_115_protect:
+                    time.sleep(max_queries_per_second)
                 self.copied_metadatas += 1
         except Exception as e:
             self.logger.error(f"元数据复制出错:{e}")
@@ -68,7 +64,10 @@ class MetadataCopyer:
             if not os.path.exists(source_folder):
                 self.logger.warning(f"源文件夹不存在: {source_folder}")
                 continue
-                
+
+            if self.enable_115_protect:
+                time.sleep(max_queries_per_second)
+
             self.logger.info(f"扫描源文件夹: {source_folder}")
             for dp, dn, filenames in os.walk(source_folder):
                 for f in filenames:
@@ -84,6 +83,10 @@ class MetadataCopyer:
             # 确保目标文件夹存在
             os.makedirs(self.target_folder, exist_ok=True)
             
+            if self.enable_115_protect:
+                self.num_threads = 1
+                self.logger.info("开启115防封")
+
             threads = []
             for i in range(self.num_threads):
                 thread_name = f"Thread-{i + 1}"
