@@ -1,4 +1,5 @@
 import os
+import sys
 import yaml
 
 class Config:
@@ -14,7 +15,17 @@ class Config:
     def _initialize(self):
         """初始化配置"""
         # 获取程序根目录
-        self.config_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        """
+        根据当前是否为打包后的EXE文件来决定配置文件的保存位置。
+        如果是EXE，则返回EXE所在的目录；如果是Python脚本，则返回脚本所在的目录。
+        """
+        if getattr(sys, 'frozen', False):
+            # 打包成EXE的情况
+            self.config_dir = os.path.dirname(sys.executable)
+        else:
+            # Python脚本的情况
+            self.config_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
         self.config_file = os.path.join(self.config_dir, 'config.yaml')
         
         # 确保配置文件存在
