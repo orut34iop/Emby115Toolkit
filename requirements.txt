@@ -8,3 +8,6 @@ watchdog>=2.1.9   # 文件系统事件监控
 
 # 工具库
 tqdm>=4.65.0      # 进度条
+
+# 新增依赖
+pyinstaller
