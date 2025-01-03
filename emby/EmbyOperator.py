@@ -179,9 +179,8 @@ class EmbyOperator:
                 if user['Name'] == self.user_name:
                     self.logger.info(f"Found! User Name: {self.user_name}, User ID: {user['Id']}")
                     return user['Id']
-
         else:
-			self.logger.error(f"Request failed, status code: {response.status_code}")
+            self.logger.error(f"Request failed, status code: {response.status_code}")
             self.logger.error(response.text)
 
     # 合并同一个TMDb ID下的不同版本
