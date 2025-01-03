@@ -21,15 +21,19 @@ class Mirror115TreeTab(BaseTab):
         if config:
             # 加载目标文件
             if 'tree_file' in config:
+                tree_file = config['tree_file']
+                tree_file = os.path.normpath(tree_file)
                 self.tree_file_entry.delete(0, tk.END)
-                self.tree_file_entry.insert(0, config['tree_file'])
-                self.logger.info(f"加载115目录树文件: {config['tree_file']}")
+                self.tree_file_entry.insert(0, tree_file)
+                self.logger.info(f"加载115目录树文件: {tree_file}")
             
             # 加载导出目录
             if 'export_folder' in config:
+                export_folder = config['export_folder']
+                export_folder = os.path.normpath(export_folder)
                 self.export_folder_entry.delete(0, tk.END)
-                self.export_folder_entry.insert(0, config['export_folder'])
-                self.logger.info(f"加载导出镜像文件夹: {config['export_folder']}")
+                self.export_folder_entry.insert(0, export_folder)
+                self.logger.info(f"加载导出镜像文件夹: {export_folder}")
             
             # 加载修复乱码设置
             if 'fix_garbled_text' in config:
@@ -39,8 +43,14 @@ class Mirror115TreeTab(BaseTab):
     def save_config(self):
         """保存当前设置到配置文件"""
         # 更新配置
-        self.config.set('mirror_115_tree', 'tree_file', self.tree_file_entry.get().strip())
-        self.config.set('mirror_115_tree', 'export_folder', self.export_folder_entry.get().strip())
+        tree_file = self.tree_file_entry.get().strip()
+        tree_file = os.path.normpath(tree_file) # 规范化路径
+        self.config.set('mirror_115_tree', 'tree_file', tree_file)
+    
+        export_folder = self.export_folder_entry.get().strip()
+        export_folder = os.path.normpath(export_folder) # 规范化路径
+        self.config.set('mirror_115_tree', 'export_folder', export_folder)
+    
         self.config.set('mirror_115_tree', 'fix_garbled_text', bool(self.fix_garbled_var.get()))
         
         # 保存到文件
@@ -82,6 +92,7 @@ class Mirror115TreeTab(BaseTab):
                 filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
             )
             if file_path:
+                file_path = os.path.normpath(file_path)
                 self.tree_file_entry.delete(0, tk.END)
                 self.tree_file_entry.insert(0, file_path)
                 self.logger.info(f"已选择115目录树文件: {file_path}")

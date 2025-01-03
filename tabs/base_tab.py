@@ -64,7 +64,6 @@ class BaseTab:
         }
 
     def scan_string(self, input_string):
-        input_string = input_string.replace('\\', '/')
         """解析拖拽数据中的路径"""
         result = []
         i = 0
@@ -74,13 +73,17 @@ class BaseTab:
                 start = i
                 while i < len(input_string) and input_string[i] != '}':
                     i += 1
-                result.append(input_string[start:i])
+                #规范化路径
+                path = os.path.normpath(input_string[start:i])
+                result.append(path)
                 i += 1
             else:
                 start = i
                 while i < len(input_string) and input_string[i] != ' ':
                     i += 1
-                result.append(input_string[start:i])
+                #规范化路径
+                path = os.path.normpath(input_string[start:i])
+                result.append(path)
 
             if i < len(input_string) and input_string[i] == ' ':
                 i += 1

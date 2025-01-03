@@ -30,15 +30,20 @@ class ExportSymlinkTab(BaseTab):
             
             # 加载目标文件夹
             if 'target_folder' in config:
+                target_folder = config['target_folder']
+                target_folder = os.path.normpath(target_folder)
+
                 self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, config['target_folder'])
-                self.logger.info(f"加载目标文件夹: {config['target_folder']}")
+                self.target_entry.insert(0, target_folder)
+                self.logger.info(f"加载目标文件夹: {target_folder}")
             
             # 加载链接文件夹列表
             if 'link_folders' in config and config['link_folders']:
+                # 规范化每个链接文件夹路径
+                normalized_link_folders = [os.path.normpath(path) for path in config['link_folders']]
                 self.link_text.delete('1.0', tk.END)
-                self.link_text.insert('1.0', '\n'.join(config['link_folders']))
-                self.logger.info(f"加载链接文件夹列表: {config['link_folders']}")
+                self.link_text.insert('1.0', '\n'.join(normalized_link_folders))
+                self.logger.info(f"加载链接文件夹列表: {normalized_link_folders}")
             
             # 加载后缀设置
             if 'link_suffixes' in config:
@@ -59,7 +64,11 @@ class ExportSymlinkTab(BaseTab):
     def save_config(self):
         """保存当前设置到配置文件"""
         # 获取链接文件夹列表
-        link_folders = [path.strip() for path in self.link_text.get('1.0', tk.END).strip().split('\n') if path.strip()]
+        link_folders = [
+            os.path.normpath(source_path.strip()) # 规范化路径
+            for source_path in self.link_text.get('1.0', tk.END).strip().split('\n') 
+            if source_path.strip()
+        ]
         
         # 获取后缀列表
         link_suffixes = [suffix.strip() for suffix in self.link_suffix_entry.get().split(';') if suffix.strip()]
@@ -67,7 +76,9 @@ class ExportSymlinkTab(BaseTab):
         
         # 更新配置
         self.config.set('export_symlink', 'link_folders', link_folders)
-        self.config.set('export_symlink', 'target_folder', self.target_entry.get().strip())
+        target_folder = self.target_entry.get().strip()
+        target_folder = os.path.normpath(target_folder) # 规范化路径
+        self.config.set('export_symlink', 'target_folder', target_folder)
         self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
@@ -141,6 +152,8 @@ class ExportSymlinkTab(BaseTab):
         def browse_target():
             folder = filedialog.askdirectory(title="选择目标文件夹")
             if folder:
+                #规范化路径
+                folder = os.path.normpath(folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, folder)
                 self.logger.info(f"已选择目标文件夹: {folder}")

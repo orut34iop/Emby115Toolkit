@@ -35,6 +35,7 @@ class MergeFilesTab(BaseTab):
         def browse_scrap():
             folder = filedialog.askdirectory(title="选择刮削文件夹")
             if folder:
+                folder = os.path.normpath(folder)
                 self.scrap_entry.delete(0, tk.END)
                 self.scrap_entry.insert(0, folder)
                 self.logger.info(f"已选择刮削文件夹: {folder}")
@@ -57,6 +58,7 @@ class MergeFilesTab(BaseTab):
         def browse_target():
             folder = filedialog.askdirectory(title="选择视频文件夹")
             if folder:
+                folder = os.path.normpath(folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, folder)
                 self.logger.info(f"已选择视频文件夹: {folder}")
@@ -93,7 +95,7 @@ class MergeFilesTab(BaseTab):
         
         protect_115_check = ttk.Checkbutton(
             btn_frame, 
-            text="开启115防封",
+            text="开启115 防封",
             variable=self.protect_115_var,
             command=self.save_config,
             style="Check.TCheckbutton",
@@ -115,28 +117,36 @@ class MergeFilesTab(BaseTab):
     
     def on_scrap_drop(self, event):
         folder = event.data.strip('{}')
-        folder = folder.replace('\\', '/')
+        folder = os.path.normpath(folder)
         self.scrap_entry.delete(0, tk.END)
         self.scrap_entry.insert(0, folder)
         self.save_config()
     
     def on_target_drop(self, event):
         folder = event.data.strip('{}')
-        folder = folder.replace('\\', '/')
+        folder = os.path.normpath(folder)
         self.target_entry.delete(0, tk.END)
         self.target_entry.insert(0, folder)
         self.save_config()
     
     def save_config(self):
-        self.config.set('merge_file', 'scrap_folder', self.scrap_entry.get())
-        self.config.set('merge_file', 'target_folder', self.target_entry.get())
+        # 更新配置
+        scrap_folder = self.scrap_entry.get().strip()
+        scrap_folder = os.path.normpath(scrap_folder) # 规范化路径
+        self.config.set('merge_file', 'scrap_folder', scrap_folder)
+        # 更新配置
+        target_folder = self.target_entry.get().strip()
+        target_folder = os.path.normpath(target_folder) # 规范化路径
+        self.config.set('merge_file', 'target_folder', target_folder)
         # 保存115防封设置
         self.config.set('merge_file', 'enable_115_protect', bool(self.protect_115_var.get()))
         self.config.save()
     
     def load_config(self):
         scrap_folder = self.config.get('merge_file', 'scrap_folder', default='')
+        scrap_folder = os.path.normpath(scrap_folder)
         target_folder = self.config.get('merge_file', 'target_folder', default='')
+        target_folder = os.path.normpath(target_folder)
         self.scrap_entry.insert(0, scrap_folder)
         self.target_entry.insert(0, target_folder)
         

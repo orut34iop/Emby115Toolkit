@@ -21,14 +21,18 @@ class DeleteSymlinkTab(BaseTab):
         if config:
             # 加载目标文件夹
             if 'target_folder' in config:
+                target_folder = config['target_folder']
+                target_folder = os.path.normpath(target_folder)
                 self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, config['target_folder'])
-                self.logger.info(f"加载目标文件夹: {config['target_folder']}")
+                self.target_entry.insert(0, target_folder)
+                self.logger.info(f"加载目标文件夹: {target_folder}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
         # 更新配置
-        self.config.set('delete_symlink', 'target_folder', self.target_entry.get().strip())
+        target_folder = self.target_entry.get().strip()
+        target_folder = os.path.normpath(target_folder) # 规范化路径
+        self.config.set('delete_symlink', 'target_folder', target_folder)
         
         # 保存到文件
         self.config.save()
@@ -66,6 +70,8 @@ class DeleteSymlinkTab(BaseTab):
         def browse_target():
             folder = filedialog.askdirectory(title="选择目标文件夹")
             if folder:
+                #规范化路径
+                folder = os.path.normpath(folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, folder)
                 self.logger.info(f"已选择目标文件夹: {folder}")

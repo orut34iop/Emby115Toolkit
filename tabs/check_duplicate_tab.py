@@ -21,9 +21,11 @@ class CheckDuplicateTab(BaseTab):
         if config:
             # 加载目标文件夹
             if 'target_folder' in config:
+                target_folder = config['target_folder']
+                normalized_target_folder = os.path.normpath(target_folder)
                 self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, config['target_folder'])
-                self.logger.info(f"加载目标文件夹: {config['target_folder']}")
+                self.target_entry.insert(0, target_folder)
+                self.logger.info(f"加载目标文件夹: {target_folder}")
             
             # 加载Emby URL
             if 'emby_url' in config:
@@ -40,7 +42,9 @@ class CheckDuplicateTab(BaseTab):
     def save_config(self):
         """保存当前设置到配置文件"""
         # 更新配置
-        self.config.set('check_duplicate', 'target_folder', self.target_entry.get().strip())
+        target_folder = self.target_entry.get().strip()
+        target_folder = os.path.normpath(target_folder) # 规范化路径
+        self.config.set('check_duplicate', 'target_folder', target_folder)
         self.config.set('check_duplicate', 'emby_url', self.emby_url_entry.get().strip())
         self.config.set('check_duplicate', 'emby_api', self.emby_api_entry.get().strip())
         
@@ -65,8 +69,10 @@ class CheckDuplicateTab(BaseTab):
         self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
         
         def browse_target():
-            folder = filedialog.askdirectory(title="选择目标文件夹")
+            folder = filedialog.askdirectory(title="选择目标文件夹")   
             if folder:
+                #规范化路径
+                folder = os.path.normpath(folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, folder)
                 self.logger.info(f"已选择目标文件夹: {folder}")
