@@ -31,11 +31,11 @@ class UpdateGenresTab(BaseTab):
                 self.emby_api_entry.insert(0, config['emby_api'])
                 self.logger.info(f"加载Emby API: {config['emby_api']}")
 
-            # 加载Emby User ID
-            if 'emby_userid' in config:
-                self.emby_userid_entry.delete(0, tk.END)
-                self.emby_userid_entry.insert(0, config['emby_userid'])
-                self.logger.info(f"加载Emby User ID: {config['emby_userid']}")
+            # 加载Emby User Name
+            if 'emby_username' in config:
+                self.emby_username_entry.delete(0, tk.END)
+                self.emby_username_entry.insert(0, config['emby_username'])
+                self.logger.info(f"加载Emby User Name: {config['emby_username']}")
 
 
     def save_config(self):
@@ -43,7 +43,7 @@ class UpdateGenresTab(BaseTab):
         # 更新配置
         self.config.set('update_genres', 'emby_url', self.emby_url_entry.get().strip())
         self.config.set('update_genres', 'emby_api', self.emby_api_entry.get().strip())
-        self.config.set('update_genres', 'emby_userid', self.emby_userid_entry.get().strip())        
+        self.config.set('update_genres', 'emby_username', self.emby_username_entry.get().strip())        
         # 保存到文件
         self.config.save()
         self.logger.info("配置已保存")
@@ -69,13 +69,13 @@ class UpdateGenresTab(BaseTab):
         self.emby_api_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         self.emby_api_entry.bind('<FocusOut>', lambda e: self.save_config())
 
-        # Emby User ID 输入框
-        emby_userid_frame = ttk.LabelFrame(self.frame, text="Emby User Id", padding=(5, 5, 5, 5))
-        emby_userid_frame.pack(fill='x', padx=5, pady=5)
+        # Emby User Name 输入框
+        emby_username_frame = ttk.LabelFrame(self.frame, text="Emby User Name", padding=(5, 5, 5, 5))
+        emby_username_frame.pack(fill='x', padx=5, pady=5)
         
-        self.emby_userid_entry = ttk.Entry(emby_userid_frame)
-        self.emby_userid_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
-        self.emby_userid_entry.bind('<FocusOut>', lambda e: self.save_config())
+        self.emby_username_entry = ttk.Entry(emby_username_frame)
+        self.emby_username_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_username_entry.bind('<FocusOut>', lambda e: self.save_config())
         
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
@@ -98,18 +98,18 @@ class UpdateGenresTab(BaseTab):
     def update_genres(self):
         server_url = self.emby_url_entry.get().strip()
         api_key = self.emby_api_entry.get().strip()
-        user_id = self.emby_userid_entry.get().strip()
+        user_name = self.emby_username_entry.get().strip()
         
         if not server_url or not api_key or not user_id:
             self.logger.warning("Emby URL,User ID或API密钥为空")
             return
         
-        self.logger.info(f"开始更新流派: Emby URL={server_url}, Emby API={api_key},Emby USERID={user_id}")
+        self.logger.info(f"开始更新流派: Emby URL={server_url}, Emby API={api_key},Emby USER Name={user_name}")
             
         embyOperator = EmbyOperator(
             server_url=server_url,
             api_key=api_key,
-            user_id=user_id,
+            user_name=user_name,
             logger=self.logger  # 传递logger
         )
         

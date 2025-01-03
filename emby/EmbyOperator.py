@@ -19,12 +19,13 @@ class EmbyOperator:
         self,
         server_url,
         api_key,
-        user_id=None,
+        user_name=None,
         logger=None  # 添加logger参数
     ):
         self.server_url = server_url
         self.api_key = api_key
-        self.user_id = user_id
+        self.user_name = user_name
+        self.user_id = None
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def check_duplicate(self, target_folder, callback):
@@ -163,6 +164,26 @@ class EmbyOperator:
                 grouped_movies[tmdb_id].append(movie)
         return grouped_movies
 
+    def emby_get_user_id(self):
+       # 构造请求URL
+        url = f'{self.server_url}/Users/Public?api_key={self.api_key}'
+
+        # 发送GET请求
+        response = requests.get(url)
+
+        # 检查请求是否成功
+        if response.status_code == 200:
+            users = response.json()
+            for user in users:
+                self.logger.info(f"User Name: {user['Name']}, User ID: {user['Id']}")
+                if user['Name'] == self.user_name:
+                    self.logger.info(f"Found! User Name: {self.user_name}, User ID: {user['Id']}")
+                    return user['Id']
+
+        else:
+			self.logger.error(f"Request failed, status code: {response.status_code}")
+            self.logger.error(response.text)
+
     # 合并同一个TMDb ID下的不同版本
     def merge_movie_versions(self, grouped_movies):
         merged_movies = []
@@ -211,6 +232,12 @@ class EmbyOperator:
             'X-Emby-Token': self.api_key,
             'Content-Type': 'application/json'
         }
+
+        self.user_id = self.emby_get_user_id()
+        if not self.user_id:
+            self.logger.error("Failed to retrieve user ID.")
+            return None
+
         detail_item_endpoint = f'{self.server_url}/users/{self.user_id}/items/{movie_id}'
         detail_item_response = requests.get(detail_item_endpoint, headers=headers)
 
