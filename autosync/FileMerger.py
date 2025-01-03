@@ -5,23 +5,24 @@ import logging
 import shutil
 from utils.logger import setup_logger
 from utils.listdir import list_files
-
+max_queries_per_second = 2
 class FileMerger:
-    def __init__(self, merge_file_path: str, video_file_path: str, logger=None):
+    def __init__(self, metadata_folder_path: str, video_folder_path: str,enable_115_protect=False,  logger=None):
         """
         初始化FileMerger类
-        :param merge_file_path: 包含nfo文件路径的文本文件
-        :param video_file_path: 包含视频文件路径的文本文件
+        :param metadata_folder_path: 包含nfo文件夹路径
+        :param video_folder_path: 包含视频文件夹路径
         """
-        self.merge_file_path = merge_file_path
-        self.video_file_path = video_file_path
+        self.metadata_folder_path = metadata_folder_path
+        self.video_folder_path = video_folder_path
+        self.enable_115_protect = enable_115_protect
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
         
         # 验证文件存在
-        if not os.path.exists(merge_file_path):
-            raise FileNotFoundError(f"文件不存在: {merge_file_path}")
-        if not os.path.exists(video_file_path):
-            raise FileNotFoundError(f"文件不存在: {video_file_path}")
+        if not os.path.exists(metadata_folder_path):
+            raise FileNotFoundError(f"文件不存在: {metadata_folder_path}")
+        if not os.path.exists(video_folder_path):
+            raise FileNotFoundError(f"文件不存在: {video_folder_path}")
 
     
     def find_matching_video(self, nfo_path: str) -> str:
@@ -82,8 +83,10 @@ class FileMerger:
     
     def run(self):
         """
-        运行同步处理
+        运行同步处理,返回处理时间和消息
         """
+        result = {'total_time': 0, 'message': ''}
+        
         def run_in_thread():
             self.logger.info("开始处理文件匹配...")
             match_count = 0
@@ -92,18 +95,22 @@ class FileMerger:
 
             try:
                 
-                # 遍历文件夹并保存刮削文件夹里的文件列表
-                self.logger.info(f"开始扫描{self.merge_file_path}文件夹...")
-                file_count,_, merge_file_output_path = list_files(self.merge_file_path)
+                # 遍历文件夹并保存刮削文件夹里的元文件列表
+                self.logger.info(f"开始扫描{self.metadata_folder_path}文件夹...")
+                file_count,_, metadata_file_output_path = list_files(self.metadata_folder_path)
                 self.logger.info(f"共发现 {file_count} 个文件")
-                if merge_file_output_path:
-                    self.logger.info(f"文件列表已保存到: {merge_file_output_path}")
+                if metadata_file_output_path:
+                    self.logger.info(f"元文件列表已保存到: {metadata_file_output_path}")
+
+                if self.enable_115_protect:
+                    time.sleep(max_queries_per_second)
+                
                 # 遍历文件夹并保存文件列表
-                self.logger.info(f"开始扫描{self.video_file_path}文件夹...")
-                file_count,_, video_files_output_path = list_files(self.video_file_path)
+                self.logger.info(f"开始扫描{self.video_folder_path}文件夹...")
+                file_count,_, video_files_output_path = list_files(self.video_folder_path)
                 self.logger.info(f"共发现 {file_count} 个文件")
                 if video_files_output_path:
-                    self.logger.info(f"文件列表已保存到: {video_files_output_path}")
+                    self.logger.info(f"视频文件列表已保存到: {video_files_output_path}")
 
 
                 # 读取视频文件列表
@@ -115,8 +122,8 @@ class FileMerger:
                 logging.info(f"已加载视频文件列表，共 {len(self.video_files)} 个文件")
 
 
-                # 读取merge文件列表
-                with open(merge_file_output_path, 'r', encoding='utf-8') as f:
+                # 读取元文件列表
+                with open(metadata_file_output_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         file_path = line.strip()
                         
@@ -135,6 +142,9 @@ class FileMerger:
                                 if self.move_video_file(matching_video, file_path):
                                     move_count += 1
                                 logging.info("-" * 50)
+
+                                if self.enable_115_protect:
+                                    time.sleep(max_queries_per_second)  # 防止115服务器检测
                 
                 message = f"处理完成，共找到 {match_count} 个匹配，成功移动 {move_count} 个文件"
                 
@@ -145,8 +155,9 @@ class FileMerger:
             finally:
                 end_time = time.time()
                 total_time = end_time - start_time
+                self.logger.info(message)
                 self.logger.info('完成::: 更新合并文件')
-                return total_time, message
+                return
 
         thread = threading.Thread(target=run_in_thread)
         thread.start()

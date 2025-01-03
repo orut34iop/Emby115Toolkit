@@ -172,14 +172,5 @@ class MergeFilesTab(BaseTab):
         # 记录115防封状态
         self.logger.info(f"115防封状态: {'开启' if enable_115_protect else '关闭'}")
         
-        file_merger = FileMerger(scrap_folder, target_folder, self.logger)
-        total_time, message = file_merger.run()
-        
-        # 显示总结信息
-        summary = (
-            f"合并文件完成\n"
-            f"{message}\n"
-            f"总耗时: {total_time:.2f} 秒\n"
-        )
-        self.logger.info(summary)
-
+        file_merger = FileMerger(scrap_folder, target_folder, enable_115_protect, self.logger)
+        file_merger.run()
