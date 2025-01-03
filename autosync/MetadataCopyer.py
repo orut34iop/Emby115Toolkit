@@ -50,7 +50,7 @@ class MetadataCopyer:
                 break
                 
             source_file, source_folder = item
-            relative_path = os.path.relpath(source_file, source_folder)
+            relative_path = os.path.relpath(source_file, os.path.dirname(source_folder))
             target_file = os.path.join(self.target_folder, relative_path)
             
             # 确保目标文件夹存在，如果不存在则创建
