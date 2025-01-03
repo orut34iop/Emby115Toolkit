@@ -144,9 +144,11 @@ class MergeFilesTab(BaseTab):
     
     def load_config(self):
         scrap_folder = self.config.get('merge_file', 'scrap_folder', default='')
-        scrap_folder = os.path.normpath(scrap_folder)
+        if not scrap_folder and scrap_folder != '':
+            scrap_folder = os.path.normpath(scrap_folder)
         target_folder = self.config.get('merge_file', 'target_folder', default='')
-        target_folder = os.path.normpath(target_folder)
+        if not target_folder and target_folder != '':
+            target_folder = os.path.normpath(target_folder)
         self.scrap_entry.insert(0, scrap_folder)
         self.target_entry.insert(0, target_folder)
         

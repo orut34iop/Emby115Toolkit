@@ -31,7 +31,8 @@ class ExportSymlinkTab(BaseTab):
             # 加载目标文件夹
             if 'target_folder' in config:
                 target_folder = config['target_folder']
-                target_folder = os.path.normpath(target_folder)
+                if not target_folder and target_folder != '':  # 空字符串也是有效路径
+                    target_folder = os.path.normpath(target_folder)
 
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, target_folder)
@@ -77,7 +78,8 @@ class ExportSymlinkTab(BaseTab):
         # 更新配置
         self.config.set('export_symlink', 'link_folders', link_folders)
         target_folder = self.target_entry.get().strip()
-        target_folder = os.path.normpath(target_folder) # 规范化路径
+        if not target_folder and target_folder != '':
+            target_folder = os.path.normpath(target_folder) # 规范化路径
         self.config.set('export_symlink', 'target_folder', target_folder)
         self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
