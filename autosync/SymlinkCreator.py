@@ -10,7 +10,6 @@ import logging
 from utils.logger import setup_logger
 
 symlink_name_dict = {"symlink":"软链接","strm":"strm文件"}
-max_queries_per_second = 2
 
 class SymlinkCreator:
     def __init__(
@@ -25,6 +24,7 @@ class SymlinkCreator:
         cloud_url=None,
         num_threads=8,
         enable_115_protect=False,
+        op_interval_sec = 0,
         logger=None  # 添加logger参数
     ):
         self.source_folders = source_folders  # 改为保存文件夹列表
@@ -41,6 +41,7 @@ class SymlinkCreator:
         self.existing_links = 0
         self.symlink_name = symlink_name_dict.get(self.symlink_mode)
         self.file_queue = queue.Queue()
+        self.op_interval_sec = op_interval_sec
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def create_symlink(self, src, dst, thread_name):
@@ -57,7 +58,7 @@ class SymlinkCreator:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
 		
         if self.enable_115_protect:
-            time.sleep(max_queries_per_second)
+            time.sleep(self.op_interval_sec)
 
     def check_strm(self, strm_path):
         with open(strm_path, "r") as f:
@@ -167,7 +168,7 @@ class SymlinkCreator:
                 continue
             
             if self.enable_115_protect:
-                time.sleep(max_queries_per_second)
+                time.sleep(self.op_interval_sec)
 
             self.logger.info(f"扫描源文件夹: {source_folder}")
             for dp, dn, filenames in os.walk(source_folder):

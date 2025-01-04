@@ -28,6 +28,11 @@ class ExportSymlinkTab(BaseTab):
                 self.thread_spinbox.set(config['thread_count'])
                 self.logger.info(f"加载线程数: {config['thread_count']}")
             
+            # 加载文件操作时间间隔
+            if 'op_interval_sec' in config:
+                self.op_interval_spinbox.set(config['op_interval_sec'])
+                self.logger.info(f"加载文件操作时间间隔(秒): {config['op_interval_sec']}")
+
             # 加载目标文件夹
             if 'target_folder' in config:
                 target_folder = config['target_folder']
@@ -80,8 +85,10 @@ class ExportSymlinkTab(BaseTab):
         target_folder = self.target_entry.get().strip()
         if not target_folder and target_folder != '':
             target_folder = os.path.normpath(target_folder) # 规范化路径
+
         self.config.set('export_symlink', 'target_folder', target_folder)
         self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
+        self.config.set('export_symlink', 'op_interval_sec', int(self.op_interval_spinbox.get()))
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
@@ -207,7 +214,18 @@ class ExportSymlinkTab(BaseTab):
             takefocus=False  # 禁用焦点
         )
         protect_115_check.pack(side='left', padx=5)
+
+        # 文件操作时间间隔设置
+        op_interval_label = ttk.Label(thread_frame, text="文件操作时间间隔(秒):")
+        op_interval_label.pack(side='left', padx=5)
         
+        self.op_interval_spinbox = ttk.Spinbox(
+            thread_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
+        )
+        self.op_interval_spinbox.set(4)  # 默认值为4秒
+        self.op_interval_spinbox.pack(side='left', padx=5)
+        self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
+
         # 后缀设置
         suffix_frame = ttk.Frame(self.frame)
         suffix_frame.pack(fill='x', padx=5, pady=5)
@@ -304,7 +322,7 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect = config
+            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec = config
 
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
@@ -313,6 +331,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info(f"线程数: {num_threads}")
             self.logger.info(f"允许的扩展名: {allowed_extensions}")
             self.logger.info(f"115防封选项: {enable_115_protect}")
+            self.logger.info(f"文件操作间隔时间(秒): {op_interval_sec}")
         
             # 创建元数据复制器
             copyer = MetadataCopyer(
@@ -321,6 +340,7 @@ class ExportSymlinkTab(BaseTab):
                 allowed_extensions=allowed_extensions,
                 num_threads=num_threads,
                 enable_115_protect=enable_115_protect,
+                op_interval_sec = op_interval_sec,
                 logger=self.logger
             )
 
@@ -343,6 +363,7 @@ class ExportSymlinkTab(BaseTab):
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
+        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
 
         # 验证源文件夹
         if not source_folders or not source_folders[0]:
@@ -359,7 +380,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
             return None
 
-        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
@@ -367,6 +388,7 @@ class ExportSymlinkTab(BaseTab):
         num_threads = self.config.get('export_symlink', 'thread_count')
         soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
+        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -386,6 +408,7 @@ class ExportSymlinkTab(BaseTab):
             allowed_extensions=soft_link_extensions,
             num_threads=num_threads,
 			enable_115_protect = enable_115_protect,
+            op_interval_sec = op_interval_sec,
             logger=self.logger  # 传递logger
         )
 
@@ -419,6 +442,7 @@ class ExportSymlinkTab(BaseTab):
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
+        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -435,6 +459,7 @@ class ExportSymlinkTab(BaseTab):
             allowed_extensions=allowed_extensions,
             num_threads=num_threads,
             enable_115_protect = enable_115_protect,
+            op_interval_sec = op_interval_sec,
             logger=self.logger  # 传递logger
         )
 

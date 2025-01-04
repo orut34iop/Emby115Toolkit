@@ -5,10 +5,10 @@ import queue
 import logging
 import shutil
 from typing import List
-max_queries_per_second = 2
+
 
 class MetadataCopyer:
-    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, logger=None):
+    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, op_interval_sec=0, logger=None):
         """
         初始化MetadataCopyer
         Args:
@@ -25,6 +25,7 @@ class MetadataCopyer:
         self.enable_115_protect = enable_115_protect
         self.copied_metadatas = 0
         self.existing_links = 0
+        self.op_interval_sec = op_interval_sec
         self.file_queue = queue.Queue()
         self.logger = logger or logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class MetadataCopyer:
                 shutil.copy2(source, target_file)
                 self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
                 if self.enable_115_protect:
-                    time.sleep(max_queries_per_second)
+                    time.sleep(self.op_interval_sec)
                 self.copied_metadatas += 1
         except Exception as e:
             self.logger.error(f"元数据复制出错:{e}")
@@ -66,7 +67,7 @@ class MetadataCopyer:
                 continue
 
             if self.enable_115_protect:
-                time.sleep(max_queries_per_second)
+                time.sleep(self.op_interval_sec)
 
             self.logger.info(f"扫描源文件夹: {source_folder}")
             for dp, dn, filenames in os.walk(source_folder):

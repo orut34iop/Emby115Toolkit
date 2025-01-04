@@ -103,6 +103,17 @@ class MergeFilesTab(BaseTab):
         )
         protect_115_check.pack(side='left', padx=5)
 
+        # 文件操作时间间隔设置
+        op_interval_label = ttk.Label(btn_frame, text="文件操作时间间隔(秒):")
+        op_interval_label.pack(side='left', padx=5)
+        
+        self.op_interval_spinbox = ttk.Spinbox(
+            btn_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
+        )
+        self.op_interval_spinbox.set(4)  # 默认值为4秒
+        self.op_interval_spinbox.pack(side='left', padx=5)
+        self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
+
         # 日志区域
         log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -140,6 +151,7 @@ class MergeFilesTab(BaseTab):
         self.config.set('merge_file', 'target_folder', target_folder)
         # 保存115防封设置
         self.config.set('merge_file', 'enable_115_protect', bool(self.protect_115_var.get()))
+        self.config.set('merge_file', 'op_interval_sec', int(self.op_interval_spinbox.get()))
         self.config.save()
     
     def load_config(self):
@@ -156,12 +168,18 @@ class MergeFilesTab(BaseTab):
         enable_115_protect = self.config.get('merge_file', 'enable_115_protect', default=False)
         self.protect_115_var.set(enable_115_protect)
         self.logger.info(f"加载115防封设置: {enable_115_protect}")
+
+        # 加载文件操作时间间隔
+        op_interval_sec = self.config.get('merge_file', 'op_interval_sec', default='4')
+        self.op_interval_spinbox.set(op_interval_sec)
+        self.logger.info(f"加载文件操作时间间隔(秒): {op_interval_sec}")
     
     def merge_file(self):
         """合并文件"""
         scrap_folder = self.scrap_entry.get()
         target_folder = self.target_entry.get()
         enable_115_protect = self.protect_115_var.get()  # 获取115防封设置
+        op_interval_sec = self.op_interval_spinbox.get()  # 获取115防封设置
         
         # 检查文件路径权限
         if not os.access(scrap_folder, os.R_OK):
@@ -174,5 +192,5 @@ class MergeFilesTab(BaseTab):
         # 记录115防封状态
         self.logger.info(f"115防封状态: {'开启' if enable_115_protect else '关闭'}")
         
-        file_merger = FileMerger(scrap_folder, target_folder, enable_115_protect, self.logger)
+        file_merger = FileMerger(scrap_folder, target_folder, enable_115_protect,op_interval_sec, self.logger)
         file_merger.run()
