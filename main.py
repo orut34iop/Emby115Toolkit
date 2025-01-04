@@ -82,12 +82,12 @@ class EmbyToolkit:
         self.config.set('last_tab_index', 'index', selected_tab_index)
         self.config.save()
 
-
+def on_closing():
+    root.destroy()  # 销毁Tkinter窗口
+    sys.exit()  # 退出Python解释器,以确保多线程环境下的立即中止退出
 
 def main():
-    def on_closing():
-        root.destroy()  # 销毁Tkinter窗口
-        sys.exit()  # 退出Python解释器
+    global root
     root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
     style = ttk.Style(root)
     style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
