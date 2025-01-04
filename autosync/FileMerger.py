@@ -97,8 +97,11 @@ class FileMerger:
                 
                 # 遍历文件夹并保存刮削文件夹里的元文件列表
                 self.logger.info(f"开始扫描{self.metadata_folder_path}文件夹...")
-                file_count,_, metadata_file_output_path = list_files(self.metadata_folder_path)
+                file_count, _, metadata_file_output_path = list_files(self.metadata_folder_path, enable_115_protect=self.enable_115_protect, logger=self.logger)
                 self.logger.info(f"共发现 {file_count} 个文件")
+                if file_count == 0:
+                    message = f"元数据文件夹为空: {self.metadata_folder_path}"
+                    return
                 if metadata_file_output_path:
                     self.logger.info(f"元文件列表已保存到: {metadata_file_output_path}")
 
@@ -107,11 +110,13 @@ class FileMerger:
                 
                 # 遍历文件夹并保存文件列表
                 self.logger.info(f"开始扫描{self.video_folder_path}文件夹...")
-                file_count,_, video_files_output_path = list_files(self.video_folder_path)
+                file_count, _, video_files_output_path = list_files(self.video_folder_path, enable_115_protect=self.enable_115_protect, logger=self.logger)
                 self.logger.info(f"共发现 {file_count} 个文件")
+                if file_count == 0:
+                    message = f"视频文件夹为空: {self.video_folder_path}"
+                    return
                 if video_files_output_path:
                     self.logger.info(f"视频文件列表已保存到: {video_files_output_path}")
-
 
                 # 读取视频文件列表
                 with open(video_files_output_path, 'r', encoding='utf-8') as f:
@@ -120,7 +125,6 @@ class FileMerger:
                 self.video_files = [line.strip() for line in self.video_files]
                 
                 logging.info(f"已加载视频文件列表，共 {len(self.video_files)} 个文件")
-
 
                 # 读取元文件列表
                 with open(metadata_file_output_path, 'r', encoding='utf-8') as f:
@@ -156,7 +160,7 @@ class FileMerger:
                 end_time = time.time()
                 total_time = end_time - start_time
                 self.logger.info(message)
-                self.logger.info('完成::: 更新合并文件')
+                self.logger.info('合并文件结束')
                 return
 
         thread = threading.Thread(target=run_in_thread)

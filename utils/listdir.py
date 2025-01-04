@@ -16,30 +16,16 @@ def generate_output_filename(folder_path: str) -> str:
     timestamp = time.strftime('%Y%m%d_%H%M%S')
     return f"{folder_name}_files_{timestamp}.txt"
 
-def list_files(folder_path: str) -> tuple[list[str], str]:
+def list_files(folder_path: str, enable_115_protect,output_path = "",is_first_call = True,logger = None) -> tuple[int, list[str], str]:
+
+    list_files_logger = logger or logging.getLogger(__name__)  # 使用传递的logger
     """
     遍历文件夹，获取所有文件的绝对路径并保存到文本文件
     :param folder_path: 要遍历的文件夹路径
     :return: (文件数量, 文件路径列表, 输出文件路径)
     """
-    try:
-        # 确保文件夹路径存在
-        if not os.path.exists(folder_path):
-            logging.error(f"文件夹不存在: {folder_path}")
-            return 0, [], ""
-
-        # 获取所有文件的绝对路径
-        file_paths = []
-        for root, _, files in os.walk(folder_path):
-            for file in files:
-                abs_path = os.path.abspath(os.path.join(root, file))
-                file_paths.append(abs_path)
-                logging.debug(f"找到文件: {abs_path}")
-
-        if not file_paths:
-            logging.warning(f"文件夹为空: {folder_path}")
-            return 0, [], ""
-
+    if is_first_call:
+        list_files_logger.info("list_files : This is the first call.")
         # 生成输出文件名
         output_filename = generate_output_filename(folder_path)
         
@@ -49,20 +35,57 @@ def list_files(folder_path: str) -> tuple[list[str], str]:
         
         # 完整的输出文件路径
         output_path = os.path.join(output_dir, output_filename)
+        # 删除同名文件
+        if os.path.exists(output_path):
+            try:
+                os.remove(file_path)
+            except OSError as e:
+                list_files_logger.error(f"无法删除文件 {file_path}: {e}")
+    else:
+        if enable_115_protect:
+            list_files_logger.info("list_files 115防封已启用")
+            time.sleep(2)
 
-        # 写入文件
-        with open(output_path, 'w', encoding='utf-8') as f:
-            for file_path in file_paths:
-                f.write(f"{file_path}\n")
+        list_files_logger.info("list_files : This is sub call.")
+        list_files_logger.info(f"folder_path: {folder_path}")
+
+    try:
+        # 确保文件夹路径存在
+        if not os.path.exists(folder_path):
+            list_files_logger.error(f"文件夹不存在: {folder_path}")
+            return 0, [], ""
+
+        file_paths = []
+        for entry in os.scandir(folder_path):
+            if entry.is_file():
+                abs_path = entry.path
+                file_paths.append(abs_path)
+                list_files_logger.debug(f"找到文件: {abs_path}")
+            elif entry.is_dir():
+                # 递归调用list_files处理子目录
+                sub_folder_count, sub_folder_files, _ = list_files(entry.path,enable_115_protect,output_path,is_first_call=False, logger=list_files_logger)
+                file_paths.extend(sub_folder_files)
+
+        if not file_paths:
+            list_files_logger.info(f"文件夹为空: {folder_path}")
+            return 0, [], ""
+
 
         file_count = len(file_paths)
-        logging.info(f"已保存文件列表到: {output_path}")
-        logging.info(f"共找到 {file_count} 个文件")
 
-        return file_count, file_paths, output_path
+        if is_first_call:
+            # 退出递归时,写入文件
+            with open(output_path, 'a', encoding='utf-8') as f:
+                if file_paths:
+                    for file_path in file_paths:
+                        f.write(f"{file_path}\n")
+            list_files_logger.info(f"已保存文件列表到: {output_path}")
+            list_files_logger.info(f"找到 {file_count} 个文件")
+
+        return file_count, file_paths, str(output_path)
 
     except Exception as e:
-        logging.error(f"遍历文件夹时出错: {str(e)}")
+        list_files_logger.error(f"遍历文件夹时出错: {str(e)}")
         return 0, [], ""
 
 def get_file_count(folder_path: str) -> int:
@@ -75,5 +98,5 @@ def get_file_count(folder_path: str) -> int:
         count = sum(len(files) for _, _, files in os.walk(folder_path))
         return count
     except Exception as e:
-        logging.error(f"获取文件数量时出错: {str(e)}")
+        #logging.error(f"获取文件数量时出错: {str(e)}")
         return 0
