@@ -41,10 +41,35 @@ class Config:
             'export_symlink': {
                 'link_suffixes': ['.mkv', '.iso', '.ts', '.mp4', '.avi', '.rmvb', 
                                 '.wmv', '.m2ts', '.mpg', '.flv', '.rm'],
-                'meta_suffixes': ['.nfo', '.jpg', '.png', '.svg', '.ass', '.srt', '.sup'],
+                'meta_suffixes': ['.nfo', '.jpg', '.png', '.ass', '.srt'],
                 'thread_count': 4,
+                'op_interval_sec': 4,
+                'enable_115_protect': False,
                 'link_folders': [],
                 'target_folder': ''
+            },
+            'delete_symlink': {
+                'target_folder': ''
+            },
+            'merge_file': {
+                'scrap_folder': '',
+                'target_folder': '',
+                'enable_115_protect': False,
+                'op_interval_sec': 4,
+            },
+            'merge_version': {
+                'emby_url': '',
+                'emby_api': ''
+            },
+            'update_genres': {
+                'emby_url': '',
+                'emby_api': '',
+                'emby_username': ''
+            },
+            'mirror_115_tree': {
+                'tree_file': '',
+                'export_folder': '',
+                'fix_garbled_text': False
             }
         }
     
