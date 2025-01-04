@@ -3,6 +3,7 @@ from tkinter import ttk
 from ttkthemes import ThemedTk
 from tkinterdnd2 import TkinterDnD
 import os
+import sys
 from tabs import (
     ExportSymlinkTab,
     DeleteSymlinkTab,
@@ -81,11 +82,17 @@ class EmbyToolkit:
         self.config.set('last_tab_index', 'index', selected_tab_index)
         self.config.save()
 
+
+
 def main():
+    def on_closing():
+        root.destroy()  # 销毁Tkinter窗口
+        sys.exit()  # 退出Python解释器
     root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
     style = ttk.Style(root)
     style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
     app = EmbyToolkit(root)
+    root.protocol("WM_DELETE_WINDOW", on_closing)  # 设置关闭窗口时的回调函数
     root.mainloop()
 
 if __name__ == "__main__":
