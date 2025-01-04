@@ -19,7 +19,7 @@ class EmbyOperator:
         self.server_url = server_url
         self.api_key = api_key
         self.user_name = user_name
-		self.user_id = None
+        self.user_id = None
         self.delete_nfo = delete_nfo
         self.delete_nfo_folder = delete_nfo_folder
         self.logger = logger or logging.getLogger(__name__)
