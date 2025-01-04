@@ -39,6 +39,15 @@ class CheckDuplicateTab(BaseTab):
                 self.emby_api_entry.delete(0, tk.END)
                 self.emby_api_entry.insert(0, config['emby_api'])
                 self.logger.info(f"加载Emby API: {config['emby_api']}")
+            
+            # 加载重复时删除nfo文件设置
+            if 'delete_nfo' in config:
+                self.delete_nfo_var.set(config['delete_nfo'])
+                self.logger.info(f"加载重复时删除nfo文件设置: {config['delete_nfo']}")
+            # 加载重复时删除nfo所在的文件夹设置
+            if 'delete_nfo_folder' in config:
+                self.delete_nfo_folder_var.set(config['delete_nfo_folder'])
+                self.logger.info(f"加载重复时删除nfo所在的文件夹设置: {config['delete_nfo_folder']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -49,8 +58,10 @@ class CheckDuplicateTab(BaseTab):
         self.config.set('check_duplicate', 'target_folder', target_folder)
         self.config.set('check_duplicate', 'emby_url', self.emby_url_entry.get().strip())
         self.config.set('check_duplicate', 'emby_api', self.emby_api_entry.get().strip())
-        
-        # 保存到文件
+        # 保存重复时删除nfo文件设置
+        self.config.set('check_duplicate', 'delete_nfo', bool(self.delete_nfo_var.get()))
+        # 保存重复时删除nfo所在的文件夹设置
+        self.config.set('check_duplicate', 'delete_nfo_folder', bool(self.delete_nfo_folder_var.get()))
         self.config.save()
         self.logger.info("配置已保存")
         
@@ -107,6 +118,25 @@ class CheckDuplicateTab(BaseTab):
         check_duplicate_btn = ttk.Button(btn_frame, text="开始查重", command=self.check_duplicate)
         check_duplicate_btn.pack(side='left', padx=5)
         
+        # 新增勾选框
+        self.delete_nfo_var = tk.BooleanVar(value=False)
+        delete_nfo_check = ttk.Checkbutton(
+            btn_frame, 
+            text="重复时删除nfo文件",
+            variable=self.delete_nfo_var,
+            command=self.save_config
+        )
+        delete_nfo_check.pack(side='left', padx=5)
+        
+        self.delete_nfo_folder_var = tk.BooleanVar(value=False)
+        delete_nfo_folder_check = ttk.Checkbutton(
+            btn_frame, 
+            text="重复时删除nfo所在的文件夹",
+            variable=self.delete_nfo_folder_var,
+            command=self.save_config
+        )
+        delete_nfo_folder_check.pack(side='left', padx=5)
+        
         # 日志区域
         log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -151,22 +181,26 @@ class CheckDuplicateTab(BaseTab):
         
         self.logger.info(f"开始查重: 目标文件夹={target_folder}, Emby URL={server_url}, Emby API={api_key}")
         
+        # 获取勾选框状态
+        delete_nfo = self.delete_nfo_var.get()
+        delete_nfo_folder = self.delete_nfo_folder_var.get()
+        
+        self.logger.info(f"重复时删除nfo文件: {'是' if delete_nfo else '否'}")
+        self.logger.info(f"重复时删除nfo所在的文件夹: {'是' if delete_nfo_folder else '否'}")
+        
         # 查重逻辑
         # ...实现查重的逻辑...
             
         embyOperator = EmbyOperator(
             server_url=server_url,
             api_key=api_key,
+            delete_nfo=delete_nfo,
+            delete_nfo_folder=delete_nfo_folder,
             logger=self.logger  # 传递logger
         )
         
-        def on_check_complete(total_time, message):
-            summary = (
-                f"影剧查重完成\n"
-                f"总耗时: {total_time:.2f} 秒\n"
-                f"{message}"
-            )
-            self.logger.info(summary)
+        def on_check_complete(message):
+            self.logger.info(message)
         
         # 运行查重
         embyOperator.check_duplicate(target_folder, on_check_complete)
