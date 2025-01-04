@@ -82,9 +82,17 @@ class EmbyToolkit:
         self.config.set('last_tab_index', 'index', selected_tab_index)
         self.config.save()
 
-def on_closing():
-    root.destroy()  # 销毁Tkinter窗口
-    sys.exit()  # 退出Python解释器,以确保多线程环境下的立即中止退出
+def force_exit():
+    '''
+    sys.exit() 通常会允许Python执行清理操作，
+    但在多线程环境中，它并不总是能立即终止所有线程。
+    如果希望快速退出，可以在捕获到 SystemExit 异常时调用 os._exit()。
+    '''
+    try:
+        root.destroy() # 销毁Tkinter窗口
+        sys.exit(0)# 退出Python解释器,以确保多线程环境下的立即中止退出
+    except SystemExit:
+        os._exit(0) 
 
 def main():
     global root
@@ -92,7 +100,7 @@ def main():
     style = ttk.Style(root)
     style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
     app = EmbyToolkit(root)
-    root.protocol("WM_DELETE_WINDOW", on_closing)  # 设置关闭窗口时的回调函数
+    root.protocol("WM_DELETE_WINDOW", force_exit)  # 设置关闭窗口时的回调函数
     root.mainloop()
 
 if __name__ == "__main__":
