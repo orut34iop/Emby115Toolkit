@@ -101,7 +101,7 @@ class UpdateGenresTab(BaseTab):
         user_name = self.emby_username_entry.get().strip()
         
         if not server_url or not api_key or not user_name:
-            self.logger.warning("Emby URL,User ID或API密钥为空")
+            self.logger.warning("Emby URL,User Name或API密钥为空")
             return
         
         self.logger.info(f"开始更新流派: Emby URL={server_url}, Emby API={api_key},Emby USER Name={user_name}")
@@ -114,7 +114,7 @@ class UpdateGenresTab(BaseTab):
         )
         
         def on_check_complete(message):
-            self.logger.info(message)
+            self.logger.info("更新流派结束")
         
         # 运行查重
         embyOperator.update_genress(on_check_complete)

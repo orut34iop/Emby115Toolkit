@@ -261,6 +261,7 @@ class EmbyOperator:
     def emby_tv_translate_genres_and_update_whole_item(self):
         total_count = 0
         update_count = 0
+        updated_series = []
 
         genres_map = {
             'Action': '动作',
@@ -342,6 +343,7 @@ class EmbyOperator:
 
                     if update_response.status_code in [200, 204]:
                         update_count += 1
+                        updated_series.append(tv)
                         self.logger.info(f"剧集: {tv['Name']} 流派信息已更新。(Total updates: {update_count})")
                     else:
                         self.logger.error(f"更新失败，状态码: {update_response.status_code}(Total updates: {update_count})")
@@ -356,9 +358,12 @@ class EmbyOperator:
         if update_count == 0:
             self.logger.info("没有需要更新的剧集流派信息。")  
 
+        return updated_series
+
     def emby_movie_translate_genres_and_update_whole_item(self):
         total_count = 0
         update_count = 0
+        updated_movies = []
         genres_map = {
             'Action': '动作', 
             'Adult': '成人', 
@@ -386,6 +391,7 @@ class EmbyOperator:
             'Mystery': '悬疑', 
             'News': '新闻',
             'Reality TV': '真人秀',
+			'Reality': '真人秀',
             'Romance': '爱情', 
             'Science Fiction': '科幻', 
             'Short': '短片', 
@@ -441,6 +447,7 @@ class EmbyOperator:
 
                     if update_response.status_code in [200, 204]:
                         update_count += 1
+                        updated_movies.append(movie)
                         self.logger.info(f"影片: {movie['Name']} 流派信息已更新。(Total updates: {update_count})")
                     else:
                         self.logger.error(f"更新失败，状态码: {update_response.status_code}(Total updates: {update_count})")
@@ -454,6 +461,8 @@ class EmbyOperator:
         self.logger.info(f"影片共 {total_count} 部")
         if update_count == 0:
             self.logger.info("没有需要更新的影片流派信息。")    
+
+        return updated_movies
 
     # 列出库中所有的影片流派
     def emby_get_all_movie_genres(self):
@@ -546,15 +555,38 @@ class EmbyOperator:
             self.logger.error(f"Request failed, status code: {response.status_code}")
             self.logger.error(response.text)
 
-    def update_genress(self, callback):
+    def update_genress(self, callback=None):
         def run_update_genress_check():
             self.logger.info(f"开始更新影片流派信息...")
-            self.emby_movie_translate_genres_and_update_whole_item()
+            updated_movies = self.emby_movie_translate_genres_and_update_whole_item()
             self.logger.info(f"完成更新影片流派信息")
             self.logger.info(f"开始更新剧集流派信息...")
-            self.emby_tv_translate_genres_and_update_whole_item()
-            self.logger.info(f"完成更新影片流派信息")
-            message = f"完成更新所有影剧流派"
+            updated_series = self.emby_tv_translate_genres_and_update_whole_item()
+            self.logger.info(f"完成更新剧集流派信息")
+
+            # 汇总信息
+            if updated_movies:
+                updated_movies_info = "\n".join([f"影片: {movie['Name']}" for movie in updated_movies])
+                movies_message = f"更新的影片数量: {len(updated_movies)}\n更新的影片:\n{updated_movies_info}\n"
+            else:
+                movies_message = "没有需要更新的影片流派信息。\n"
+
+            if updated_series:
+                updated_series_info = "\n".join([f"剧集: {series['Name']}" for series in updated_series])
+                series_message = f"更新的剧集数量: {len(updated_series)}\n更新的剧集:\n{updated_series_info}\n"
+            else:
+                series_message = "没有需要更新的剧集流派信息。\n"
+
+            message = (
+                f"\n"
+                f"----------------------------------------\n"
+                f"完成更新所有影剧流派\n"
+                f"{movies_message}"
+                f"{series_message}"
+                f"----------------------------------------\n"
+            )
+
+            self.logger.info(message)
             if callback:
                 callback(message)
 
