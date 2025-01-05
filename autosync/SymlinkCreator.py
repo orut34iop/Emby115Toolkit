@@ -58,6 +58,7 @@ class SymlinkCreator:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
 		
         if self.enable_115_protect:
+            self.logger.info(f"线程 {thread_name}: 启动115防封机制,sleep {self.op_interval_sec} 秒")
             time.sleep(self.op_interval_sec)
 
     def check_strm(self, strm_path):
@@ -138,6 +139,11 @@ class SymlinkCreator:
             source_file, source_folder = item
             relative_path = os.path.relpath(source_file, os.path.dirname(source_folder))
             target_file = os.path.join(self.target_folder, relative_path)
+            self.logger.info(f"source_file:   {source_file}")
+            self.logger.info(f"source_folder: {source_folder}")
+            self.logger.info(f"relative_path: {relative_path}")
+            self.logger.info(f"target_file:   {target_file}")
+
             
             # 确保目标文件夹存在
             os.makedirs(os.path.dirname(target_file), exist_ok=True)
@@ -162,20 +168,26 @@ class SymlinkCreator:
 
     def get_source_files(self):
         """遍历所有源文件夹获取符合条件的文件"""
+        def scan_directory(directory):
+            if self.enable_115_protect:
+                self.logger.info(f"启动115防封机制,sleep {self.op_interval_sec} 秒")
+                time.sleep(self.op_interval_sec)
+
+            self.logger.info(f"开始扫描文件夹: {directory}")
+            with os.scandir(directory) as it:
+                for entry in it:
+                    if entry.is_file() and entry.name.lower().endswith(self.allowed_extensions):
+                        yield entry.path, directory
+                    elif entry.is_dir():
+                        yield from scan_directory(entry.path)
+
         for source_folder in self.source_folders:
             if not os.path.exists(source_folder):
                 self.logger.warning(f"源文件夹不存在: {source_folder}")
                 continue
-            
-            if self.enable_115_protect:
-                time.sleep(self.op_interval_sec)
 
             self.logger.info(f"扫描源文件夹: {source_folder}")
-            for dp, dn, filenames in os.walk(source_folder):
-                for f in filenames:
-                    source_file = os.path.join(dp, f)
-                    if source_file.lower().endswith(self.allowed_extensions):
-                        yield source_file, source_folder
+            yield from scan_directory(source_folder)
 
     def run(self,callback):
         def run_symlink_create_check():
