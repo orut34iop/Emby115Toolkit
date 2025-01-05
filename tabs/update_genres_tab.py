@@ -100,7 +100,7 @@ class UpdateGenresTab(BaseTab):
         api_key = self.emby_api_entry.get().strip()
         user_name = self.emby_username_entry.get().strip()
         
-        if not server_url or not api_key or not user_id:
+        if not server_url or not api_key or not user_name:
             self.logger.warning("Emby URL,User ID或API密钥为空")
             return
         

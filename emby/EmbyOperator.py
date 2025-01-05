@@ -186,9 +186,9 @@ class EmbyOperator:
         if response.status_code == 200:
             users = response.json()
             for user in users:
-                self.logger.info(f"User Name: {user['Name']}, User ID: {user['Id']}")
+                # self.logger.info(f"User Name: {user['Name']}, User ID: {user['Id']}")
                 if user['Name'] == self.user_name:
-                    self.logger.info(f"Found! User Name: {self.user_name}, User ID: {user['Id']}")
+                    self.logger.info(f"User Name: {self.user_name} if found, User ID is : {user['Id']}")
                     return user['Id']
         else:
             self.logger.error(f"Request failed, status code: {response.status_code}")
