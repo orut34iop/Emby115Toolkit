@@ -50,9 +50,9 @@ class MetadataCopyer:
             item = self.file_queue.get()
             if item is None:
                 break
-                
-            source_file, source_folder = item
-            relative_path = os.path.relpath(source_file, os.path.dirname(source_folder))
+
+            source_file, source_folder, root_directory = item
+            relative_path = os.path.relpath(source_file, os.path.dirname(root_directory))
             target_file = os.path.join(self.target_folder, relative_path)
             
             # 确保目标文件夹存在，如果不存在则创建
@@ -62,18 +62,23 @@ class MetadataCopyer:
 
     def get_source_files(self):
         """遍历所有源文件夹获取符合条件的文件"""
-        def scan_directory(directory):
+        def scan_directory(directory,root_directory=None):
+            if root_directory is None:
+                self.logger.error("scan_directory root_directory 值未设置")
+                return iter([])
+
             if self.enable_115_protect:
                 self.logger.info(f"启动115防封机制,sleep {self.op_interval_sec} 秒")
                 time.sleep(self.op_interval_sec)
 
             self.logger.info(f"开始扫描文件夹: {directory}")
+            self.logger.info(f"文件夹根目录:   {root_directory}")
             with os.scandir(directory) as it:
                 for entry in it:
                     if entry.is_file() and entry.name.lower().endswith(self.metadata_extensions):
-                        yield entry.path, directory
+                        yield entry.path, directory, root_directory
                     elif entry.is_dir():
-                        yield from scan_directory(entry.path)
+                        yield from scan_directory(entry.path, root_directory)
 
         for source_folder in self.source_folders:
             if not os.path.exists(source_folder):
@@ -81,7 +86,8 @@ class MetadataCopyer:
                 continue
 
             self.logger.info(f"扫描源文件夹: {source_folder}")
-            yield from scan_directory(source_folder)
+            root_directory = source_folder
+            yield from scan_directory(source_folder, root_directory)
 
     def run(self,callback):
         def run_meta_copy_check():
@@ -103,8 +109,8 @@ class MetadataCopyer:
                 thread.start()
 
             # 添加所有源文件到队列
-            for source_file, source_folder in self.get_source_files():
-                self.file_queue.put((source_file, source_folder))
+            for source_file, source_folder, root_directory in self.get_source_files():
+                self.file_queue.put((source_file, source_folder, root_directory))
 
             # 添加停止任务
             for _ in range(self.num_threads):
