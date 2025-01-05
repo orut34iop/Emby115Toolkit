@@ -72,7 +72,7 @@ class MetadataCopyer:
                 time.sleep(self.op_interval_sec)
 
             self.logger.info(f"开始扫描文件夹: {directory}")
-            self.logger.info(f"文件夹根目录:   {root_directory}")
+            # self.logger.info(f"文件夹根目录:   {root_directory}")
             with os.scandir(directory) as it:
                 for entry in it:
                     if entry.is_file() and entry.name.lower().endswith(self.metadata_extensions):
