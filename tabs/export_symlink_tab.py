@@ -424,6 +424,9 @@ class ExportSymlinkTab(BaseTab):
     def is_admin(self):
         """检查是否为管理员权限"""
         try:
+            #如果当前处于调试模式下,不切换管理员模式
+            if sys.gettrace():
+                return True
             return ctypes.windll.shell32.IsUserAnAdmin()
         except:
             return False
