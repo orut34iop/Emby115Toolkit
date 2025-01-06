@@ -248,11 +248,10 @@ class Mirror115TreeTab(BaseTab):
         )
 
         # 运行目录树镜像创建
-        time_taken, message = mirror.run()
+        mirror.run()
         
         # 显示总结信息
         summary = (
             f"目录树镜像创建完成\n"
-            f"总耗时: {time_taken:.2f} 秒\n"
         )
         self.logger.info(summary)

@@ -67,26 +67,35 @@ class TreeMirror:
         
         for line in lines:
             line = line.strip()
-            level = line.count('|')
             if line.startswith('|——'):
+                level = 1
                 name = line[3:].strip()  # 修复拼写错误
             elif line.startswith('| |-'):
+                level = 2
                 name = line[4:].strip()
             elif line.startswith('| | |-'):
+                level = 3
                 name = line[6:].strip()
             elif line.startswith('| | | |-'):
+                level = 4
                 name = line[8:].strip()
             elif line.startswith('| | | | |-'):
+                level = 5
                 name = line[10:].strip()
             elif line.startswith('| | | | | |-'):
+                level = 6
                 name = line[12:].strip()
             elif line.startswith('| | | | | | |-'):
+                level = 7
                 name = line[14:].strip()
             elif line.startswith('| | | | | | | |-'):
+                level = 8
                 name = line[16:].strip()
             elif line.startswith('| | | | | | | | |-'):
+                level = 9
                 name = line[18:].strip()
             elif line.startswith('| | | | | | | | | |-'):
+                level = 10
                 name = line[20:].strip()
             else:
                 continue
@@ -94,7 +103,7 @@ class TreeMirror:
         
         return tuples_list
 
-    def create_empty_files_from_list(self,file_path: str, tmp_dir: str, fix_garbled) -> None:
+    def create_empty_files_from_list(self, file_path: str, tmp_dir: str, fix_garbled) -> None:
         """
         根据目录树文件创建空文件结构
         Args:
@@ -108,21 +117,27 @@ class TreeMirror:
         
         file_items = self.parse_lines_to_tuples(file_path)
         current_dir = tmp_dir
-        pre_level = 1 # init
-        pre_item_type = '' # init
-        inogre_level = 0 # init
-        for item in file_items:
+        pre_level = 1  # init
+        pre_item_type = ''  # init
+        ignore_level = 0  # init
+        for outer_index, item in enumerate(file_items):
+            next_item_level = 0
+            next_item_name = None
             level, name = item
-            
-            empty_file_path = '' # RESET
+            name = re.sub(r'[\\/*?:"<>|]', "_", name)
+            if outer_index < len(file_items) - 1:
+                next_item = file_items[outer_index + 1]
+                next_item_level, next_item_name = next_item
+
+            empty_file_path = ''  # RESET
 
             try:
                 # 如果前面有异常错误的文件夹,跳过出错的目录下所有的子目录和文件
-                if inogre_level > 0 and level > inogre_level: 
-                    self.logger.info(f'ingogre : {name}')
+                if ignore_level > 0 and level > ignore_level: 
+                    self.logger.info(f'ignore : {name}')
                     continue
                 else:
-                    inogre_level = 0
+                    ignore_level = 0
 
                 if level == 1:
                     current_dir = os.path.join(tmp_dir, name)
@@ -132,7 +147,19 @@ class TreeMirror:
                     pre_item_type = 'dir'
                     os.makedirs(current_dir, exist_ok=True)
                 else:
-                    if not re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name):  #名称尾部不是'.xxx',表示2或者3或者4个数字或大小写字母,判定为目录
+                    item_type = 'UNKNOWN'
+
+                    # 下面这两者种情况都说明"演唱会.mp4"是文件夹
+                    # | |-演唱会.mp4
+                    # | | |-陈百强83演唱会.avi
+
+                    # | |-演唱会.mp4
+                    # | | |-演唱会
+                    if re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name):
+                        if next_item_name and next_item_level > level:
+                            self.logger.error(f'注意:识别为文件夹 {name}')
+                            item_type = 'DIR'
+
                         '''
                         ########对于 pre_item_type == 'dir' 的情况
                         子一级  level == pre_level + 1
@@ -162,6 +189,8 @@ class TreeMirror:
                         | | |-folder
                         '''
 
+
+                    if not re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name) or item_type == 'DIR':  # 名称尾部不是'.xxx',表示2或者3或者4个数字或大小写字母,判定为目录
                         if pre_item_type == 'dir':  # 上一个是文件,回到上级目录
                             if level == pre_level + 1:  # 子目录
                                 current_dir = os.path.join(current_dir, name)
@@ -188,12 +217,11 @@ class TreeMirror:
                             else:  # 致命错误
                                 self.logger.error(f'level error! pls check: {name}')
                                 return
-                        elif pre_item_type == '': # 初始状态
+                        elif pre_item_type == '':  # 初始状态
                             pass
                         else:  # 致命错误
                             self.logger.error(f'level error! pls check: {name}')
                             return
-
 
                         try:
                             if self.fix_garbled:
@@ -204,7 +232,7 @@ class TreeMirror:
                             self.logger.info(f'{pre_level} -- {level} dir  :  {current_dir}')
                         except Exception as e:
                             self.logger.error(f"Error creating directory: {e}")
-                            inogre_level = level
+                            ignore_level = level
                             return
                         
                     else:  # 文件
@@ -255,7 +283,7 @@ class TreeMirror:
                                 return
                             elif level == pre_level:  # 同级目录的文件
                                 empty_file_path = os.path.join(current_dir, name)
-                            elif level < pre_level:  # 上级目录(可能多级)的文件!!!!!!!!!!!需要测试检查 !!!!!!!!!!!
+                            elif level < pre_level:  # 上级目录(可能多级)的文件 !!!!!!!!!!!需要测试检查 !!!!!!!!!!!
                                 for _ in range(pre_level - level):
                                     current_dir = os.path.dirname(current_dir)
                                 empty_file_path = os.path.join(current_dir, name)                         
@@ -267,7 +295,6 @@ class TreeMirror:
                         else:  # 致命错误
                             self.logger.error(f'level error! pls check: {name}')
                             return
-                        
 
                         try:
                             if self.fix_garbled:
@@ -279,14 +306,14 @@ class TreeMirror:
                             continue
                         except Exception as e:
                             self.logger.error(f"Error creating file: {e}")
-                            inogre_level = level
+                            ignore_level = level
                             return
             except Exception as e:
                 self.logger.error(f"Error processing {name}: {e}")
                 current_dir = os.path.dirname(current_dir)  # 回到上一级目录
                 self.logger.error(f'Error , set current_dir: {current_dir}')
-                inogre_level = level
-                return #异常直接退出
+                ignore_level = level
+                return  # 异常直接退出
     
     def run(self):
         """
@@ -302,7 +329,7 @@ class TreeMirror:
             total_time = end_time - start_time
             message = f"生成文件镜像完成{self.export_folder}:总耗时 {total_time:.2f} 秒"
             self.logger.info(message)
-            return total_time, message
+            return
 
         thread = threading.Thread(target=run_in_thread)
         thread.start()
