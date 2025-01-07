@@ -110,10 +110,7 @@ class TreeMirror:
             file_path: 目录树文件路径
             tmp_dir: 输出目录路径
         """
-        # 清空目录
-        if os.path.exists(tmp_dir):
-            shutil.rmtree(tmp_dir)
-        os.makedirs(tmp_dir)
+        os.makedirs(tmp_dir, exist_ok=True)
         
         file_items = self.parse_lines_to_tuples(file_path)
         current_dir = tmp_dir
