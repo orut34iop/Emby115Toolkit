@@ -32,11 +32,11 @@ class EmbyOperator:
             new_items_info = []
             duplicate_items_info = []
             self.logger.info(f"连接emby服务器 : {self.server_url} ......")
-            all_movies = self.get_all_movies()
+            all_movies = self.get_all_media()
             if not all_movies:
-                self.logger.info("Emby库里没有影片")
+                self.logger.info("Emby库里没有影剧")
                 return    
-            self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影片")
+            self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影剧")
     
             self.logger.info(f"开始查询...")
             # 遍历指定路径下的所有子目录和文件
@@ -54,35 +54,35 @@ class EmbyOperator:
                                 nfo_log = "NFO校验通过"
 
                             if not self.query_movies_by_tmdbid(all_movies, query_emdb_value):
-                                self.logger.info(f"{nfo_log}, 发现新影片 : {nfo_path} ")
-                                self.logger.info(f"{nfo_log}, 新影片路径 : {os.path.dirname(nfo_path)}")
-                                self.logger.info(f"{nfo_log}, 新影片名 :   {os.path.basename(nfo_path)}")
-                                new_items_info.append(f"{nfo_log}, 新影片  : {nfo_path}")
+                                self.logger.info(f"{nfo_log}, 发现新影剧 : {nfo_path} ")
+                                self.logger.info(f"{nfo_log}, 新影剧路径 : {os.path.dirname(nfo_path)}")
+                                self.logger.info(f"{nfo_log}, 新影剧名 :   {os.path.basename(nfo_path)}")
+                                new_items_info.append(f"{nfo_log}, 新影剧  : {nfo_path}")
                             else:
                                 duplicate_items += 1
-                                self.logger.info(f"{nfo_log}, 发现重复影片:  {nfo_path}")
-                                self.logger.info(f"{nfo_log}, 重复影片路径 : {os.path.dirname(nfo_path)}")
-                                self.logger.info(f"{nfo_log}, 重复影片名 :   {os.path.basename(nfo_path)}")
-                                duplicate_items_info.append(f"{nfo_log}, 重复影片 : {nfo_path}")
+                                self.logger.info(f"{nfo_log}, 发现重复影剧:  {nfo_path}")
+                                self.logger.info(f"{nfo_log}, 重复影剧路径 : {os.path.dirname(nfo_path)}")
+                                self.logger.info(f"{nfo_log}, 重复影剧名 :   {os.path.basename(nfo_path)}")
+                                duplicate_items_info.append(f"{nfo_log}, 重复影剧 : {nfo_path}")
                                 if self.delete_nfo:
                                     os.remove(nfo_path)
-                                    self.logger.info(f"{nfo_log}, 删除重复影片nfo : {nfo_path}")
+                                    self.logger.info(f"{nfo_log}, 删除重复影剧nfo : {nfo_path}")
                                 if self.delete_nfo_folder:
                                     folder_path = os.path.dirname(nfo_path)
                                     shutil.rmtree(folder_path)
-                                    self.logger.info(f"{nfo_log}, 删除重复影片所在的文件夹 : {folder_path}")
+                                    self.logger.info(f"{nfo_log}, 删除重复影剧所在的文件夹 : {folder_path}")
 
             end_time = time.time()
             total_time = end_time - start_time
             message = (
                 f"\n"
-                f"====================完成影片查重==================\n"
+                f"====================完成影剧查重==================\n"
                 f"====================查重结果汇总==================\n"
-                f"====================新影片==================\n" + "\n".join(new_items_info) + "\n"
-                f"====================重复影片==================\n" + "\n".join(duplicate_items_info)+ "\n"
-                f"NFO文件处理  ：{'已删除' if self.delete_nfo else '保留'}重复影片对应的nfo文件\n"
-                f"NFO文件夹处理：{'已删除' if self.delete_nfo_folder else '保留'}重复影片对应的nfo文件所在的目录\n"
-                f"====================影片查重结束==================\n"
+                f"====================新影剧==================\n" + "\n".join(new_items_info) + "\n"
+                f"====================重复影剧==================\n" + "\n".join(duplicate_items_info)+ "\n"
+                f"NFO文件处理  ：{'已删除' if self.delete_nfo else '保留'}重复影剧对应的nfo文件\n"
+                f"NFO文件夹处理：{'已删除' if self.delete_nfo_folder else '保留'}重复影剧对应的nfo文件所在的目录\n"
+                f"====================影剧查重结束==================\n"
                 f"更新汇总数据:总耗时 {total_time:.2f} 秒, 共查询影剧数：{total_items}个，发现重复影剧：{duplicate_items}\n"
             )
             if callback:
@@ -91,12 +91,12 @@ class EmbyOperator:
         thread = threading.Thread(target=run_check)
         thread.start()
 
-    # 获取所有影片的信息
-    def get_all_movies(self):
+    # 获取所有影剧的信息
+    def get_all_media(self):
         url = f"{self.server_url}/emby/Items"
         params = {
             "api_key": self.api_key,
-            "IncludeItemTypes": "Movie",
+            "IncludeItemTypes": "Movie,Series",
             "Recursive": True,
             "Fields": "ProviderIds,Path",
         }
@@ -118,9 +118,9 @@ class EmbyOperator:
         for movie in movies:
             tmdb_id = movie.get("ProviderIds", {}).get("Tmdb", "")
             if tmdb_value == tmdb_id:
-                # self.logger.info(f"影片 '{movie['Name']}' 存在于 Emby 库中，TMDB 值: {tmdb_value}")
+                # self.logger.info(f"影剧 '{movie['Name']}' 存在于 Emby 库中，TMDB 值: {tmdb_value}")
                 return True
-        # self.logger.info(f"没有找到与 TMDB 值 {tmdb_value} 相同的影片。")
+        # self.logger.info(f"没有找到与 TMDB 值 {tmdb_value} 相同的影剧。")
         return False
 
     def extract_tmdbid_from_nfo(self, nfo_path):
@@ -219,7 +219,7 @@ class EmbyOperator:
 
     def merge_versions(self, callback):
         def run_merge_versions_check():
-            all_movies = self.get_all_movies()
+            all_movies = self.get_all_media()
             if not all_movies:
                 self.logger.info("Emby库里没有影片")
                 return
