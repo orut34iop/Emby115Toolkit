@@ -16,7 +16,7 @@ class FileMerger:
         self.metadata_folder_path = metadata_folder_path
         self.video_folder_path = video_folder_path
         self.enable_115_protect = enable_115_protect
-        self.op_interval_sec = op_interval_sec
+        self.op_interval_sec = int(op_interval_sec)
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
         
         # 验证文件存在

@@ -243,7 +243,7 @@ class EmbyOperator:
             'Content-Type': 'application/json'
         }
 
-        self.user_id = self.emby_get_user_id()
+        self.user_id = self.user_id or self.emby_get_user_id()
         if not self.user_id:
             self.logger.error("Failed to retrieve user ID.")
             return None
@@ -270,7 +270,7 @@ class EmbyOperator:
             'Biography': '传记',
             'Comedy': '喜剧',
             'Crime': '犯罪',
-            'Documentary': '纪录',
+            'Documentary': '纪录片',
             'Drama': '剧情',
             'Family': '家庭',
             'Fantasy': '奇幻',
@@ -283,7 +283,7 @@ class EmbyOperator:
             'Music': '音乐',
             'Musical': '音乐剧',
             'Mystery': '悬疑',
-            'Reality': '真人秀',
+            'Reality': '纪实',
             'Reality TV': '真人秀电视',
             'Romance': '浪漫',
             'Sci-Fi & Fantasy': '科幻与奇幻',
@@ -374,7 +374,7 @@ class EmbyOperator:
             'Children': '儿童', 
             'Comedy': '喜剧', 
             'Crime': '犯罪', 
-            'Documentary': '纪录',
+            'Documentary': '纪录片',
             'Drama': '剧情', 
             'Eastern': '东方', 
             'Erotic': '情色',
@@ -397,7 +397,7 @@ class EmbyOperator:
             'Short': '短片', 
             'Sport': '运动',
             'Suspense': '悬念', 
-            'TV Movie': '电视影片', 
+            'TV Movie': '电视电影', 
             'Thriller': '惊悚', 
             'War': '战争', 
             'Western': '西部',
