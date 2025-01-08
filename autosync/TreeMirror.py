@@ -39,7 +39,7 @@ class TreeMirror:
         Raises:
             UnicodeDecodeError: 当所有编码都无法正确读取文件时
         """
-        encodings = ['utf-8', 'gbk', 'ansi', 'mbcs', 'gb2312']
+        encodings = ['utf-8', 'gbk', 'ansi', 'mbcs', 'gb2312','utf-16']
         
         for encoding in encodings:
             try:
@@ -48,7 +48,8 @@ class TreeMirror:
             except UnicodeDecodeError:
                 continue
         
-        raise UnicodeDecodeError(f"无法使用以下编码读取文件: {encodings}")
+        self.logger.error(f"无法使用以下编码读取文件: {encodings}")
+        raise UnicodeDecodeError("read_file_with_encodings", file_path, 0, 0, "无法使用以下编码读取文件")
 
     def parse_lines_to_tuples(self,file_path: str) -> List[Tuple[int, str]]:
         """
