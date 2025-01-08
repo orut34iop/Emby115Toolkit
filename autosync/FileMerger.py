@@ -134,6 +134,10 @@ class FileMerger:
                         
                         # 检查是否是nfo文件
                         if file_path.lower().endswith('.nfo'):
+
+                            if os.path.basename(file_path).lower() == "tvshow.nfo".lower():
+                                continue
+
                             # 查找匹配的视频文件
                             matching_video = self.find_matching_video(file_path)
                             
@@ -150,6 +154,9 @@ class FileMerger:
 
                                 if self.enable_115_protect:
                                     time.sleep(self.op_interval_sec)  # 防止115服务器检测
+                                
+                            else:
+                                self.logger.error(f"没有找到匹配的视频文件: {file_path}")
                 
                 message = f"处理完成，共找到 {match_count} 个匹配，成功移动 {move_count} 个文件"
                 
