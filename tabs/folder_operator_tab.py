@@ -6,18 +6,18 @@ from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
 from autosync.SymlinkDeleter import SymlinkDeleter
+from emby.EmbyOperator import EmbyOperator
 
-class DeleteSymlinkTab(BaseTab):
+class ManipulateFolderTab(BaseTab):
     def __init__(self, frame, log_dir):
         super().__init__(frame, log_dir)
         self.config = Config()
         self.init_ui()
         self.load_config()
-        self.logger.info("删除软链接标签页初始化完成")
         
     def load_config(self):
         """从配置文件加载设置"""
-        config = self.config.get('delete_symlink')
+        config = self.config.get('manipulate_folder')
         if config:
             # 加载目标文件夹
             if 'target_folder' in config:
@@ -32,7 +32,7 @@ class DeleteSymlinkTab(BaseTab):
         # 更新配置
         target_folder = self.target_entry.get().strip()
         target_folder = os.path.normpath(target_folder) # 规范化路径
-        self.config.set('delete_symlink', 'target_folder', target_folder)
+        self.config.set('manipulate_folder', 'target_folder', target_folder)
         
         # 保存到文件
         self.config.save()
@@ -53,7 +53,7 @@ class DeleteSymlinkTab(BaseTab):
         
     def init_ui(self):
         # 使用说明
-        desc_label = ttk.Label(self.frame, text="使用说明: 选择或拖拽文件夹到输入框即可删除软链接")
+        desc_label = ttk.Label(self.frame, text="使用说明: 选择或拖拽文件夹到输入框")
         desc_label.pack(fill='x', padx=5, pady=5)
         
         # 目标文件夹选择
@@ -90,6 +90,12 @@ class DeleteSymlinkTab(BaseTab):
         delete_symlink_btn = ttk.Button(btn_frame, text="删除软链接", command=self.delete_symlink)
         delete_symlink_btn.pack(side='left', padx=5)
         
+        delete_videos_btn = ttk.Button(btn_frame, text="删除所有视频文件", command=self.delete_all_videos)
+        delete_videos_btn.pack(side='left', padx=5)
+        
+        check_metadata_btn = ttk.Button(btn_frame, text="检查刮削数据完整性", command=self.check_metadata_integrity)
+        check_metadata_btn.pack(side='left', padx=5)
+        
         # 日志区域
         log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -98,9 +104,9 @@ class DeleteSymlinkTab(BaseTab):
         self.log_text.pack(fill='both', expand=True, padx=5)
         
         # 设置日志系统
-        log_file = os.path.join(self.log_dir, 'delete_symlink.log')
-        self.logger = setup_logger('delete_symlink', self.log_text, log_file)
-        self.logger.info("删除软链接标签页初始化完成")
+        log_file = os.path.join(self.log_dir, 'manipulate_folder.log')
+        self.logger = setup_logger('manipulate_folder', self.log_text, log_file)
+        self.logger.info("文件夹操作标签页初始化完成")
         
     def on_target_drop(self, event):
         """处理目标文件夹拖放事件"""
@@ -124,7 +130,7 @@ class DeleteSymlinkTab(BaseTab):
             self.save_config()
 
     def delete_symlink(self):
-        target_folder = self.config.get('delete_symlink', 'target_folder')
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
 
         # 获取路径
         if not target_folder:
@@ -147,4 +153,35 @@ class DeleteSymlinkTab(BaseTab):
             f"总耗时: {time_taken:.2f} 秒\n"
         )
         self.logger.info(summary)
+
+    def delete_all_videos(self):
+        """删除所有视频文件"""
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
+        
+        if not target_folder:
+            self.logger.info("提示: 目标文件夹路径为空")
+            return
+            
+        self.logger.info(f"开始删除视频文件: {target_folder}")
+
+        embyOperator = EmbyOperator(
+            logger=self.logger  # 传递logger
+        )
+        embyOperator.clear_files_by_type(target_folder, 'VIDEO')
+
+
+    def check_metadata_integrity(self):
+        """检查刮削数据完整性"""
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
+        
+        if not target_folder:
+            self.logger.info("提示: 目标文件夹路径为空")
+            return
+            
+        self.logger.info(f"开始检查刮削数据完整性: {target_folder}")
+
+        embyOperator = EmbyOperator(
+            logger=self.logger  # 传递logger
+        )
+        embyOperator.check_metadata_integrity(target_folder)
 

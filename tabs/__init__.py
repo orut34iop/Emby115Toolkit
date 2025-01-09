@@ -1,5 +1,5 @@
 from .export_symlink_tab import ExportSymlinkTab
-from .delete_symlink_tab import DeleteSymlinkTab
+from .folder_operator_tab import ManipulateFolderTab
 from .check_duplicate_tab import CheckDuplicateTab
 from .merge_files_tab import MergeFilesTab
 from .merge_version_tab import MergeVersionTab
@@ -8,7 +8,7 @@ from .mirror_115_tree_tab import Mirror115TreeTab
 
 __all__ = [
     'ExportSymlinkTab',
-    'DeleteSymlinkTab',
+    'ManipulateFolderTab',
     'CheckDuplicateTab',
     'MergeFilesTab',
     'MergeVersionTab',

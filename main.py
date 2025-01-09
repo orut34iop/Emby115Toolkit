@@ -6,7 +6,7 @@ import os
 import sys
 from tabs import (
     ExportSymlinkTab,
-    DeleteSymlinkTab,
+    ManipulateFolderTab,
     CheckDuplicateTab,
     MergeFilesTab,
     MergeVersionTab,
@@ -36,7 +36,7 @@ class EmbyToolkit:
         # 创建各个选项卡
         self.tabs = {
             "导出软链接": ttk.Frame(self.notebook),
-            "删除软链接": ttk.Frame(self.notebook),
+            "文件夹操作": ttk.Frame(self.notebook),
             "emby影剧查重": ttk.Frame(self.notebook),
             "文件合并": ttk.Frame(self.notebook),
             "emby合并版本": ttk.Frame(self.notebook),
@@ -68,7 +68,7 @@ class EmbyToolkit:
         """初始化所有标签页"""
         # 为每个标签页创建对应的类实例
         ExportSymlinkTab(self.tabs["导出软链接"], self.log_dir)
-        DeleteSymlinkTab(self.tabs["删除软链接"], self.log_dir)
+        ManipulateFolderTab(self.tabs["文件夹操作"], self.log_dir)
         CheckDuplicateTab(self.tabs["emby影剧查重"], self.log_dir)
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
         MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)

@@ -13,9 +13,12 @@ import urllib.parse
 import shutil
 import logging
 from utils.logger import setup_logger
+from pathlib import Path
 
+# 定义视频文件扩展名
+VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm'}
 class EmbyOperator:
-    def __init__(self, server_url, api_key, user_name=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
+    def __init__(self, server_url=None, api_key=None, user_name=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
         self.server_url = server_url
         self.api_key = api_key
         self.user_name = user_name
@@ -594,3 +597,140 @@ class EmbyOperator:
         
         thread = threading.Thread(target=run_update_genress_check)
         thread.start()
+
+
+    def clear_files_by_type(self, folderPath, filetype= 'VIDEO', callback=None):
+        def run_clear_files_by_type_check():
+            num = 0
+            # 要删除的文件后缀
+            for root, dirs, files in os.walk(folderPath):
+                for file in files:
+                    if any(file.lower().endswith(ext) for ext in VIDEO_EXTENSIONS):
+                        file_path = os.path.join(root, file)
+                        try:
+                            os.remove(file_path)
+                            num += 1
+                            self.logger.info(f"删除文件:: {file} 共删除文件数目: {num}")
+                        except Exception as e:
+                            self.logger.error(f"发生错误：在删除文件 '{file_path}' 时出错，错误信息: {e}")
+
+            message = (
+                f"\n"
+                f"----------------完成文件删除----------------------------\n"
+                f"----------------共删除文件数目： {num}------------------\n"
+            )
+
+            self.logger.info(message)
+            if callback:
+                callback(message)
+
+            return
+        
+        thread = threading.Thread(target=run_clear_files_by_type_check)
+        thread.start()
+
+    def check_metadata_integrity(self, folderPath, callback=None):
+        def run_check_metadata_integrity_check():
+            video_check_result = self.check_video_files(folderPath)
+            nfo_check_result = self.check_nfo_files(folderPath)
+
+            for video in video_check_result['no_nfo_videos']:
+                self.logger.info(f"没有找到nfo文件的视频文件: {video}")
+            for nfo in nfo_check_result['no_video_nfo']:
+                self.logger.info(f"没有找到视频文件的nfo文件: {nfo}")
+
+            message = (
+                f"\n"
+                f"-------------汇总信息------------------------\n"
+                f"总共找到 {video_check_result['total_videos']} 个视频文件。\n"
+                f"其中有 {len(video_check_result['no_nfo_videos'])} 个视频文件没有找到对应的.nfo文件：\n"
+                f"总共找到 {nfo_check_result['total_nfo']} 个nfo文件。\n"
+                f"其中有 {len(nfo_check_result['no_video_nfo'])} 个nfo文件没有找到对应的视频文件：\n"
+                f"-------------检查结束------------------------\n"
+            )
+
+            self.logger.info(message)
+            if callback:
+                callback(message)
+
+            return
+        
+        thread = threading.Thread(target=run_check_metadata_integrity_check)
+        thread.start()
+
+
+    def find_related_videos(self, nfo_file_path):
+        """
+        对于给定的 .nfo 文件，查找相同文件夹下的同名视频文件。
+        
+        :param nfo_file_path: .nfo 文件的路径
+        :return: 包含同名视频文件路径的列表
+        """
+        # 获取 .nfo 文件所在的目录和不带后缀的文件名
+        nfo_dir = os.path.dirname(nfo_file_path)
+        base_name = os.path.splitext(os.path.basename(nfo_file_path))[0]
+        
+        # 查找同名但不同后缀的视频文件
+        for ext in VIDEO_EXTENSIONS:
+            video_path = os.path.join(nfo_dir, base_name + ext)
+            if os.path.isfile(video_path) or os.path.islink(video_path):
+                return video_path
+            
+        return None
+
+    def check_nfo_files(self, folder_path):
+        """
+        遍历给定文件夹中的所有 .nfo 文件，并检查对应的同名视频文件。
+        
+        :param folder_path: 要检查的文件夹路径
+        :return: 汇总查询结果的字典
+        """
+        # 初始化结果汇总
+        results = {
+            'total_nfo': 0,
+            'no_video_nfo': [],
+            'found_video_nfo': []
+        }    
+
+        # 使用 glob 递归查找所有的 .nfo 文件
+        for nfo_path in Path(folder_path).rglob('*.nfo'):
+            nfo_str_path = str(nfo_path)
+            if os.path.basename(nfo_str_path) in ('tvshow.nfo', 'season.nfo'):
+                continue
+            results['total_nfo'] += 1
+            
+            video_path = self.find_related_videos(nfo_str_path)
+
+            if video_path:
+                results['found_video_nfo'].append(nfo_str_path)
+            else:
+                results['no_video_nfo'].append(nfo_str_path)
+
+        return results
+
+    def check_video_files(self,folder_path):
+        # 初始化结果汇总
+        results = {
+            'total_videos': 0,
+            'no_nfo_videos': [],
+            'found_nfo_videos': []
+        }
+
+        # 遍历指定文件夹及其子文件夹
+        for root, _, files in os.walk(folder_path):
+            video_files = [f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS]
+            
+            for video_file in video_files:
+                results['total_videos'] += 1
+                base_name, _ = os.path.splitext(video_file)
+                nfo_file = base_name + '.nfo'
+                
+                video_full_path = os.path.join(root, video_file)
+                nfo_full_path = os.path.join(root, nfo_file)
+                
+                if not os.path.exists(nfo_full_path):
+                    results['no_nfo_videos'].append(video_full_path)
+                else:
+                    results['found_nfo_videos'].append(video_full_path)
+        
+        return results
