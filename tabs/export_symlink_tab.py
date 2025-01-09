@@ -138,8 +138,12 @@ class ExportSymlinkTab(BaseTab):
         link_frame = ttk.LabelFrame(self.frame, text="链接文件夹", padding=(5, 5, 5, 5))
         link_frame.pack(fill='x', padx=5, pady=5)
         
-        self.link_text = tk.Text(link_frame, height=4, wrap='none')
-        self.link_text.pack(fill='x', expand=True, padx=5)
+        # 创建容器来包装文本框和按钮
+        link_container = ttk.Frame(link_frame)
+        link_container.pack(fill='x', padx=5, pady=5)
+        
+        self.link_text = tk.Text(link_container, height=4, wrap='none')
+        self.link_text.pack(side='left', fill='x', expand=True)
         self.link_text.bind('<<Modified>>', lambda e: self.on_text_modified())
         
         # 启用拖放功能
@@ -163,8 +167,8 @@ class ExportSymlinkTab(BaseTab):
                 else:
                     self.logger.info("文件夹已存在，未添加重复路径")
         
-        link_browse = ttk.Button(link_frame, text="浏览", command=browse_folders)
-        link_browse.pack(padx=5, pady=(5,0))
+        link_browse = ttk.Button(link_container, text="浏览", command=browse_folders)
+        link_browse.pack(side='left', padx=5)
         
         # 目标文件夹选择
         target_frame = ttk.LabelFrame(self.frame, text="目标文件夹", padding=(5, 5, 5, 5))
