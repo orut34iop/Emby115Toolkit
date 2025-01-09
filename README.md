@@ -12,3 +12,4 @@ atv： infuse播放器
 
 how to run :  python main.py
 
+致谢： 项目中使用了shenxianmq的MediaHelper项目的部分代码，感谢shenxianmq!
