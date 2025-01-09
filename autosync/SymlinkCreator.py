@@ -45,6 +45,7 @@ class SymlinkCreator:
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def create_symlink(self, src, dst, thread_name):
+        # src = src.replace(r"C:\115disk\Emby115Toolkit\tmp-mirror-emptyfiles", r"D:\115")
         try:
             if os.path.exists(dst):
                 self.existing_links += 1
