@@ -213,15 +213,22 @@ class ExportSymlinkTab(BaseTab):
         )
         replace_path_check.pack(side='left', padx=(0, 20))
 
-        # 原路径输入框 - 在勾选框右侧
-        ttk.Label(replace_path_container, text="原路径:").pack(side='left', padx=(0, 5))
-        self.original_path_entry = ttk.Entry(replace_path_container, width=35)
-        self.original_path_entry.pack(side='left', padx=(0, 20))
+        # 创建左右两个容器来分别放置原路径和替换路径
+        left_container = ttk.Frame(replace_path_container)
+        left_container.pack(side='left', fill='x', expand=True, padx=(0, 10))
         
-        # 替换路径输入框 - 在原路径输入框右侧
-        ttk.Label(replace_path_container, text="替换路径:").pack(side='left', padx=(0, 5))
-        self.replace_path_entry = ttk.Entry(replace_path_container, width=35)
-        self.replace_path_entry.pack(side='left')
+        right_container = ttk.Frame(replace_path_container)
+        right_container.pack(side='left', fill='x', expand=True)
+
+        # 原路径输入框 - 放在左侧容器
+        ttk.Label(left_container, text="原路径:").pack(side='left', padx=(0, 5))
+        self.original_path_entry = ttk.Entry(left_container)  # 移除固定宽度
+        self.original_path_entry.pack(side='left', fill='x', expand=True)
+        
+        # 替换路径输入框 - 放在右侧容器
+        ttk.Label(right_container, text="替换路径:").pack(side='left', padx=(0, 5))
+        self.replace_path_entry = ttk.Entry(right_container)  # 移除固定宽度
+        self.replace_path_entry.pack(side='left', fill='x', expand=True)
 
         # 绑定输入框的FocusOut事件来保存配置
         self.original_path_entry.bind('<FocusOut>', lambda e: self.save_config())

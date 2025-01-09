@@ -99,6 +99,16 @@ def main():
     root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
     style = ttk.Style(root)
     style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
+    
+    # 设置最小窗口大小
+    root.minsize(800, 600)
+    
+    # 窗口最大化
+    root.state('zoomed')  # Windows系统使用'zoomed'
+    # 如果在其他系统上可能需要使用:
+    # root.attributes('-zoomed', True)  # Linux系统
+    # root.attributes('-fullscreen', True)  # 完全全屏
+    
     app = EmbyToolkit(root)
     root.protocol("WM_DELETE_WINDOW", force_exit)  # 设置关闭窗口时的回调函数
     root.mainloop()
