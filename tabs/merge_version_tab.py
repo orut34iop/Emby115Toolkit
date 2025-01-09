@@ -43,7 +43,7 @@ class MergeVersionTab(BaseTab):
         
     def init_ui(self):
         # 使用说明
-        desc_label = ttk.Label(self.frame, text="使用说明: 自动合并Emby库中的电影")
+        desc_label = ttk.Label(self.frame, text="使用说明: 合并Emby库中相同tmdbid的电影")
         desc_label.pack(fill='x', padx=5, pady=5)
         
         # Emby URL 输入框
