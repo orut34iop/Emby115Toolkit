@@ -226,19 +226,10 @@ class ExportSymlinkTab(BaseTab):
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
-        # 同步线程数选择和115防封设置
-        thread_frame = ttk.Frame(self.frame)
-        thread_frame.pack(fill='x', padx=5, pady=5)
+        # 115防封和时间间隔设置
+        protect_frame = ttk.Frame(self.frame)
+        protect_frame.pack(fill='x', padx=5, pady=5)
         
-        thread_label = ttk.Label(thread_frame, text="同步线程数:")
-        thread_label.pack(side='left', padx=5)
-        
-        self.thread_spinbox = ttk.Spinbox(thread_frame, from_=1, to=16, width=10)
-        self.thread_spinbox.set(4)  # 默认值
-        self.thread_spinbox.pack(side='left', padx=5)
-        self.thread_spinbox.bind('<FocusOut>', lambda e: self.save_config())
-
-        # 添加115防封勾选框
         self.protect_115_var = tk.BooleanVar(value=False)
         
         # 创建勾选框样式
@@ -258,7 +249,7 @@ class ExportSymlinkTab(BaseTab):
         )
         
         protect_115_check = ttk.Checkbutton(
-            thread_frame, 
+            protect_frame, 
             text="开启115 防封",
             variable=self.protect_115_var,
             command=self.save_config,
@@ -268,15 +259,27 @@ class ExportSymlinkTab(BaseTab):
         protect_115_check.pack(side='left', padx=5)
 
         # 文件操作时间间隔设置
-        op_interval_label = ttk.Label(thread_frame, text="文件操作时间间隔(秒):")
+        op_interval_label = ttk.Label(protect_frame, text="文件操作时间间隔(秒):")
         op_interval_label.pack(side='left', padx=5)
         
         self.op_interval_spinbox = ttk.Spinbox(
-            thread_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
+            protect_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
         )
         self.op_interval_spinbox.set(4)  # 默认值为4秒
         self.op_interval_spinbox.pack(side='left', padx=5)
         self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
+
+        # 同步线程数设置 - 移动到这个位置
+        thread_count_frame = ttk.Frame(self.frame)
+        thread_count_frame.pack(fill='x', padx=5, pady=5)
+        
+        thread_label = ttk.Label(thread_count_frame, text="同步线程数:")
+        thread_label.pack(side='left', padx=5)
+        
+        self.thread_spinbox = ttk.Spinbox(thread_count_frame, from_=1, to=16, width=10)
+        self.thread_spinbox.set(4)  # 默认值
+        self.thread_spinbox.pack(side='left', padx=5)
+        self.thread_spinbox.bind('<FocusOut>', lambda e: self.save_config())
 
         # 后缀设置
         suffix_frame = ttk.Frame(self.frame)
