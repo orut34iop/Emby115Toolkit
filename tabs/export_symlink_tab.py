@@ -66,6 +66,11 @@ class ExportSymlinkTab(BaseTab):
             if 'enable_115_protect' in config:
                 self.protect_115_var.set(config['enable_115_protect'])
                 self.logger.info(f"加载115防封设置: {config['enable_115_protect']}")
+            
+            # 加载替换文件路径设置
+            if 'replace_file_path' in config:
+                self.replace_path_var.set(config['replace_file_path'])
+                self.logger.info(f"加载替换文件路径设置: {config['replace_file_path']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -92,6 +97,7 @@ class ExportSymlinkTab(BaseTab):
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
+        self.config.set('export_symlink', 'replace_file_path', bool(self.replace_path_var.get()))
         
         # 保存到文件
         self.config.save()
@@ -171,6 +177,21 @@ class ExportSymlinkTab(BaseTab):
         target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
         target_browse.pack(side='right', padx=5)
         
+        # 添加替换文件路径勾选框 - 移动到目标文件夹框的下方
+        replace_path_frame = ttk.Frame(self.frame)
+        replace_path_frame.pack(fill='x', padx=10, pady=(0, 5))
+        
+        self.replace_path_var = tk.BooleanVar(value=False)
+        replace_path_check = ttk.Checkbutton(
+            replace_path_frame, 
+            text="替换文件路径",
+            variable=self.replace_path_var,
+            command=self.on_replace_path_change,
+            style="Check.TCheckbutton",
+            takefocus=False
+        )
+        replace_path_check.pack(side='left')
+
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
@@ -320,7 +341,7 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec = config
+            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, replace_file_path = config
 
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
@@ -330,6 +351,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info(f"允许的扩展名: {allowed_extensions}")
             self.logger.info(f"115防封选项: {enable_115_protect}")
             self.logger.info(f"文件操作间隔时间(秒): {op_interval_sec}")
+            self.logger.info(f"替换文件路径选项: {replace_file_path}")
         
             # 创建元数据复制器
             copyer = MetadataCopyer(
@@ -362,6 +384,7 @@ class ExportSymlinkTab(BaseTab):
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
         op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
+        replace_file_path = self.config.get('export_symlink', 'replace_file_path')
 
         # 验证源文件夹
         if not source_folders or not source_folders[0]:
@@ -378,7 +401,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
             return None
 
-        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec, replace_file_path
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
@@ -469,3 +492,8 @@ class ExportSymlinkTab(BaseTab):
 
         # 运行元数据复制
         copyer.run(on_download_metadata_complete)
+
+    def on_replace_path_change(self):
+        """处理替换文件路径设置变化"""
+        self.save_config()
+        self.logger.info(f"替换文件路径功能已{'开启' if self.replace_path_var.get() else '关闭'}")
