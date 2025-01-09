@@ -190,13 +190,17 @@ class ExportSymlinkTab(BaseTab):
         target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
         target_browse.pack(side='right', padx=5)
         
-        # 添加替换文件路径勾选框和路径输入框 - 移动到目标文件夹框的下方
-        replace_path_frame = ttk.Frame(self.frame)
-        replace_path_frame.pack(fill='x', padx=10, pady=(0, 5))
+        # 添加替换文件路径设置框架
+        replace_path_frame = ttk.LabelFrame(self.frame, text="文件路径替换设置", padding=(5, 5, 5, 5))
+        replace_path_frame.pack(fill='x', padx=5, pady=5)
+        
+        # 替换文件路径勾选框和输入框的容器
+        replace_path_container = ttk.Frame(replace_path_frame)
+        replace_path_container.pack(fill='x', padx=5, pady=2)
         
         self.replace_path_var = tk.BooleanVar(value=False)
         replace_path_check = ttk.Checkbutton(
-            replace_path_frame, 
+            replace_path_container, 
             text="替换文件路径",
             variable=self.replace_path_var,
             command=self.on_replace_path_change,
@@ -206,13 +210,13 @@ class ExportSymlinkTab(BaseTab):
         replace_path_check.pack(side='left', padx=(0, 20))
 
         # 原路径输入框 - 在勾选框右侧
-        ttk.Label(replace_path_frame, text="原路径:").pack(side='left', padx=(0, 5))
-        self.original_path_entry = ttk.Entry(replace_path_frame, width=35)
+        ttk.Label(replace_path_container, text="原路径:").pack(side='left', padx=(0, 5))
+        self.original_path_entry = ttk.Entry(replace_path_container, width=35)
         self.original_path_entry.pack(side='left', padx=(0, 20))
         
         # 替换路径输入框 - 在原路径输入框右侧
-        ttk.Label(replace_path_frame, text="替换路径:").pack(side='left', padx=(0, 5))
-        self.replace_path_entry = ttk.Entry(replace_path_frame, width=35)
+        ttk.Label(replace_path_container, text="替换路径:").pack(side='left', padx=(0, 5))
+        self.replace_path_entry = ttk.Entry(replace_path_container, width=35)
         self.replace_path_entry.pack(side='left')
 
         # 绑定输入框的FocusOut事件来保存配置
