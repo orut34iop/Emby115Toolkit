@@ -226,9 +226,13 @@ class ExportSymlinkTab(BaseTab):
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
-        # 115防封和时间间隔设置
-        protect_frame = ttk.Frame(self.frame)
+        # 115防封和时间间隔设置 - 使用LabelFrame包装
+        protect_frame = ttk.LabelFrame(self.frame, text="115防封设置", padding=(5, 5, 5, 5))
         protect_frame.pack(fill='x', padx=5, pady=5)
+        
+        # 115防封设置容器
+        protect_container = ttk.Frame(protect_frame)
+        protect_container.pack(fill='x', padx=5, pady=2)
         
         self.protect_115_var = tk.BooleanVar(value=False)
         
@@ -249,7 +253,7 @@ class ExportSymlinkTab(BaseTab):
         )
         
         protect_115_check = ttk.Checkbutton(
-            protect_frame, 
+            protect_container, 
             text="开启115 防封",
             variable=self.protect_115_var,
             command=self.save_config,
@@ -259,50 +263,54 @@ class ExportSymlinkTab(BaseTab):
         protect_115_check.pack(side='left', padx=5)
 
         # 文件操作时间间隔设置
-        op_interval_label = ttk.Label(protect_frame, text="文件操作时间间隔(秒):")
+        op_interval_label = ttk.Label(protect_container, text="文件操作时间间隔(秒):")
         op_interval_label.pack(side='left', padx=5)
         
         self.op_interval_spinbox = ttk.Spinbox(
-            protect_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
+            protect_container, from_=0, to=60, width=10, command=self.save_config, state='readonly'
         )
         self.op_interval_spinbox.set(4)  # 默认值为4秒
         self.op_interval_spinbox.pack(side='left', padx=5)
         self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
 
-        # 同步线程数设置 - 移动到这个位置
-        thread_count_frame = ttk.Frame(self.frame)
-        thread_count_frame.pack(fill='x', padx=5, pady=5)
+        # 创建同步设置框架
+        sync_settings_frame = ttk.LabelFrame(self.frame, text="同步设置", padding=(5, 5, 5, 5))
+        sync_settings_frame.pack(fill='x', padx=5, pady=5)
         
-        thread_label = ttk.Label(thread_count_frame, text="同步线程数:")
+        # 同步线程数设置
+        thread_container = ttk.Frame(sync_settings_frame)
+        thread_container.pack(fill='x', padx=5, pady=2)
+        
+        thread_label = ttk.Label(thread_container, text="同步线程数:")
         thread_label.pack(side='left', padx=5)
         
-        self.thread_spinbox = ttk.Spinbox(thread_count_frame, from_=1, to=16, width=10)
+        self.thread_spinbox = ttk.Spinbox(thread_container, from_=1, to=16, width=10)
         self.thread_spinbox.set(4)  # 默认值
         self.thread_spinbox.pack(side='left', padx=5)
         self.thread_spinbox.bind('<FocusOut>', lambda e: self.save_config())
 
-        # 后缀设置
-        suffix_frame = ttk.Frame(self.frame)
-        suffix_frame.pack(fill='x', padx=5, pady=5)
+        # 后缀设置容器
+        suffix_container = ttk.Frame(sync_settings_frame)
+        suffix_container.pack(fill='x', padx=5, pady=2)
         
         # 软链接后缀
-        link_suffix_label = ttk.Label(suffix_frame, text="软链接后缀:")
+        link_suffix_label = ttk.Label(suffix_container, text="软链接后缀:")
         link_suffix_label.pack(side='left', padx=5)
         
-        self.link_suffix_entry = ttk.Entry(suffix_frame)
+        self.link_suffix_entry = ttk.Entry(suffix_container)
         self.link_suffix_entry.insert(0, ".mkv;.iso;.ts;.mp4;.avi;.rmvb;.wmv;.m2ts;.mpg;.flv;.rm")
         self.link_suffix_entry.pack(side='left', fill='x', expand=True, padx=5)
         self.link_suffix_entry.bind('<FocusOut>', lambda e: self.save_config())
         
         # 元数据后缀
-        meta_suffix_label = ttk.Label(suffix_frame, text="元数据后缀:")
+        meta_suffix_label = ttk.Label(suffix_container, text="元数据后缀:")
         meta_suffix_label.pack(side='left', padx=5)
         
-        self.meta_suffix_entry = ttk.Entry(suffix_frame)
+        self.meta_suffix_entry = ttk.Entry(suffix_container)
         self.meta_suffix_entry.insert(0, ".nfo;.jpg;.png;.svg;.ass;.srt;.sup")
         self.meta_suffix_entry.pack(side='left', fill='x', expand=True, padx=5)
         self.meta_suffix_entry.bind('<FocusOut>', lambda e: self.save_config())
-        
+
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="开始同步", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
