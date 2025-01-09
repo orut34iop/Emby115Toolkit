@@ -270,15 +270,13 @@ class ExportSymlinkTab(BaseTab):
         clear_list_btn.pack(side='left', padx=5)
         
         # 日志区域
-        log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
-        log_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        self.log_text = tk.Text(log_frame, height=10, wrap='word')
-        self.log_text.pack(fill='both', expand=True, padx=5)
-        
+        self.log_frame, self.log_text = self.create_log_frame(self.frame)
+        self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
         # 设置日志系统
         log_file = os.path.join(self.log_dir, 'export_symlink.log')
         self.logger = setup_logger('export_symlink', self.log_text, log_file)
+
         self.logger.info("导出软链接标签页初始化完成")
         
     def on_target_drop(self, event):

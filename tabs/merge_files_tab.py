@@ -115,11 +115,8 @@ class MergeFilesTab(BaseTab):
         self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
 
         # 日志区域
-        log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
-        log_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        self.log_text = tk.Text(log_frame, height=10, wrap='word')
-        self.log_text.pack(fill='both', expand=True, padx=5)
+        self.log_frame, self.log_text = self.create_log_frame(self.frame)
+        self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
         # 设置日志系统
         log_file = os.path.join(self.log_dir, 'merge_file.log')

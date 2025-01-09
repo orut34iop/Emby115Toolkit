@@ -40,15 +40,8 @@ class BaseTab:
         stop_btn.pack(side='left', padx=5)
         
         # 创建日志区域
-        log_frame = ttk.LabelFrame(self.frame, text="日志", padding=(5, 5, 5, 5))
+        log_frame, log_text = self.create_log_frame(self.frame)
         log_frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        log_text = tk.Text(log_frame, height=10, wrap='word')
-        log_text.pack(side='left', fill='both', expand=True)
-        
-        scrollbar = ttk.Scrollbar(log_frame, orient='vertical', command=log_text.yview)
-        scrollbar.pack(side='right', fill='y')
-        log_text.configure(yscrollcommand=scrollbar.set)
         
         # 设置日志系统
         log_file = os.path.join(self.log_dir, f'{self.frame.winfo_name()}.log')
@@ -62,6 +55,35 @@ class BaseTab:
             'log_text': log_text,
             'logger': logger
         }
+
+    def create_log_frame(self, parent, text="日志"):
+        """创建带滚动条的日志框架"""
+        log_frame = ttk.LabelFrame(parent, text=text, padding=(5, 5, 5, 5))
+        
+        # 创建文本框架
+        text_frame = ttk.Frame(log_frame)
+        text_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # 创建滚动条
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side='right', fill='y')
+        
+        # 创建文本框并配置滚动条
+        log_text = tk.Text(text_frame, height=10, wrap='word')
+        log_text.pack(side='left', fill='both', expand=True)
+        
+        # 绑定滚动条
+        log_text.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=log_text.yview)
+        
+        # 配置自动滚动
+        def on_log_change(event):
+            log_text.see(tk.END)
+            log_text.update_idletasks()
+            
+        log_text.bind('<<Modified>>', on_log_change)
+        
+        return log_frame, log_text
 
     def scan_string(self, input_string):
         """解析拖拽数据中的路径"""
