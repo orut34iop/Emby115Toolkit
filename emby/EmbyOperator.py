@@ -299,7 +299,8 @@ class EmbyOperator:
             'Thriller': '惊悚',
             'Travel': '旅行',
             'War': '战争',
-            'Western': '西部'
+            'Western': '西部',
+            'Animal': '动物'
         }
 
         headers = {
@@ -404,7 +405,8 @@ class EmbyOperator:
             'Thriller': '惊悚', 
             'War': '战争', 
             'Western': '西部',
-            'superhero': '超级英雄'
+            'superhero': '超级英雄',
+            'Animal': '动物'
         }
 
         headers = {
