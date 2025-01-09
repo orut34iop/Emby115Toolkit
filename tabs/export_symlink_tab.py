@@ -68,9 +68,9 @@ class ExportSymlinkTab(BaseTab):
                 self.logger.info(f"加载115防封设置: {config['enable_115_protect']}")
             
             # 加载替换文件路径设置
-            if 'replace_file_path' in config:
-                self.replace_path_var.set(config['replace_file_path'])
-                self.logger.info(f"加载替换文件路径设置: {config['replace_file_path']}")
+            if 'enable_replace_path' in config:
+                self.replace_path_var.set(config['enable_replace_path'])
+                self.logger.info(f"加载替换文件路径设置: {config['enable_replace_path']}")
             
             # 加载原路径和替换路径
             if 'original_path' in config:
@@ -108,7 +108,7 @@ class ExportSymlinkTab(BaseTab):
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
-        self.config.set('export_symlink', 'replace_file_path', bool(self.replace_path_var.get()))
+        self.config.set('export_symlink', 'enable_replace_path', bool(self.replace_path_var.get()))
         self.config.set('export_symlink', 'original_path', self.original_path_entry.get().strip())
         self.config.set('export_symlink', 'replace_path', self.replace_path_entry.get().strip())
         
@@ -195,7 +195,7 @@ class ExportSymlinkTab(BaseTab):
         target_browse.pack(side='right', padx=5)
         
         # 添加替换文件路径设置框架
-        replace_path_frame = ttk.LabelFrame(self.frame, text="文件路径替换设置", padding=(5, 5, 5, 5))
+        replace_path_frame = ttk.LabelFrame(self.frame, text="软链接文件路径替换设置", padding=(5, 5, 5, 5))
         replace_path_frame.pack(fill='x', padx=5, pady=5)
         
         # 替换文件路径勾选框和输入框的容器
@@ -394,8 +394,7 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, replace_file_path = config
-
+            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path = config      
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
             self.logger.info(f"源文件夹: {source_folders}")
@@ -404,7 +403,9 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info(f"允许的扩展名: {allowed_extensions}")
             self.logger.info(f"115防封选项: {enable_115_protect}")
             self.logger.info(f"文件操作间隔时间(秒): {op_interval_sec}")
-            self.logger.info(f"替换文件路径选项: {replace_file_path}")
+            self.logger.info(f"替换文件路径选项: {enable_replace_path}")
+            self.logger.info(f"替换原路径: {original_path}")
+            self.logger.info(f"替换新路径: {replace_path}")
         
             # 创建元数据复制器
             copyer = MetadataCopyer(
@@ -437,7 +438,9 @@ class ExportSymlinkTab(BaseTab):
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
         op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
-        replace_file_path = self.config.get('export_symlink', 'replace_file_path')
+        enable_replace_path = self.config.get('export_symlink', 'enable_replace_path')
+        original_path = self.config.get('export_symlink', 'original_path')
+        replace_path = self.config.get('export_symlink', 'replace_path')        
 
         # 验证源文件夹
         if not source_folders or not source_folders[0]:
@@ -454,7 +457,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
             return None
 
-        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec, replace_file_path
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec, enable_replace_path, original_path, replace_path
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
@@ -463,6 +466,9 @@ class ExportSymlinkTab(BaseTab):
         soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
         enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
         op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
+        enable_replace_path = self.config.get('export_symlink', 'enable_replace_path')
+        original_path = self.config.get('export_symlink', 'original_path')
+        replace_path = self.config.get('export_symlink', 'replace_path')
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -481,8 +487,11 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=soft_link_extensions,
             num_threads=num_threads,
-			enable_115_protect = enable_115_protect,
-            op_interval_sec = op_interval_sec,
+			enable_115_protect=enable_115_protect,
+            op_interval_sec=op_interval_sec,
+            enable_replace_path=enable_replace_path,
+            original_path=original_path,
+            replace_path=replace_path,
             logger=self.logger  # 传递logger
         )
 

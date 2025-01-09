@@ -25,6 +25,9 @@ class SymlinkCreator:
         num_threads=8,
         enable_115_protect=False,
         op_interval_sec = 0,
+        enable_replace_path=False,
+        original_path=None,
+        replace_path=None,
         logger=None  # 添加logger参数
     ):
         self.source_folders = source_folders  # 改为保存文件夹列表
@@ -42,10 +45,22 @@ class SymlinkCreator:
         self.symlink_name = symlink_name_dict.get(self.symlink_mode)
         self.file_queue = queue.Queue()
         self.op_interval_sec = op_interval_sec
+        self.enable_replace_path = enable_replace_path
+        self.original_path = original_path
+        self.replace_path = replace_path       
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
 
     def create_symlink(self, src, dst, thread_name):
-        # src = src.replace(r"C:\115disk\Emby115Toolkit\tmp-mirror-emptyfiles", r"D:\115")
+        if self.enable_replace_path:
+            if self.original_path:
+                self.original_path = os.path.normpath(self.original_path)
+            if self.replace_path:
+                self.replace_path = os.path.normpath(self.replace_path)
+            self.logger.info(f"线程 {thread_name}: 替换f{self.original_path} 为 f{self.replace_path}")
+            src = src.replace(f"{self.original_path}", f"{self.replace_path}") 
+            src = os.path.normpath(src)
+            dst = os.path.normpath(dst)
+                     
         try:
             if os.path.exists(dst):
                 self.existing_links += 1
@@ -54,7 +69,7 @@ class SymlinkCreator:
             os.symlink(src, dst)
 
             self.created_links += 1
-            self.logger.info(f"线程 {thread_name}: {src} => {dst}")
+            self.logger.info(f"线程 {thread_name}: 创建软链接文件 {dst} --指向--> {src}")
         except Exception as e:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
 		

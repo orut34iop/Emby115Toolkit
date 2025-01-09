@@ -46,7 +46,10 @@ class Config:
                 'op_interval_sec': 4,
                 'enable_115_protect': False,
                 'link_folders': [],
-                'target_folder': ''
+                'target_folder': '',
+                'enable_replace_path': False,
+                'original_path': '',
+                'replace_path': ''
             },
             'delete_symlink': {
                 'target_folder': ''
