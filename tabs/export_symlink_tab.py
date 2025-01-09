@@ -71,6 +71,17 @@ class ExportSymlinkTab(BaseTab):
             if 'replace_file_path' in config:
                 self.replace_path_var.set(config['replace_file_path'])
                 self.logger.info(f"加载替换文件路径设置: {config['replace_file_path']}")
+            
+            # 加载原路径和替换路径
+            if 'original_path' in config:
+                self.original_path_entry.delete(0, tk.END)
+                self.original_path_entry.insert(0, config['original_path'])
+                self.logger.info(f"加载原路径: {config['original_path']}")
+            
+            if 'replace_path' in config:
+                self.replace_path_entry.delete(0, tk.END)
+                self.replace_path_entry.insert(0, config['replace_path'])
+                self.logger.info(f"加载替换路径: {config['replace_path']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -98,6 +109,8 @@ class ExportSymlinkTab(BaseTab):
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
         self.config.set('export_symlink', 'replace_file_path', bool(self.replace_path_var.get()))
+        self.config.set('export_symlink', 'original_path', self.original_path_entry.get().strip())
+        self.config.set('export_symlink', 'replace_path', self.replace_path_entry.get().strip())
         
         # 保存到文件
         self.config.save()
@@ -177,7 +190,7 @@ class ExportSymlinkTab(BaseTab):
         target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
         target_browse.pack(side='right', padx=5)
         
-        # 添加替换文件路径勾选框 - 移动到目标文件夹框的下方
+        # 添加替换文件路径勾选框和路径输入框 - 移动到目标文件夹框的下方
         replace_path_frame = ttk.Frame(self.frame)
         replace_path_frame.pack(fill='x', padx=10, pady=(0, 5))
         
@@ -190,7 +203,21 @@ class ExportSymlinkTab(BaseTab):
             style="Check.TCheckbutton",
             takefocus=False
         )
-        replace_path_check.pack(side='left')
+        replace_path_check.pack(side='left', padx=(0, 20))
+
+        # 原路径输入框 - 在勾选框右侧
+        ttk.Label(replace_path_frame, text="原路径:").pack(side='left', padx=(0, 5))
+        self.original_path_entry = ttk.Entry(replace_path_frame, width=35)
+        self.original_path_entry.pack(side='left', padx=(0, 20))
+        
+        # 替换路径输入框 - 在原路径输入框右侧
+        ttk.Label(replace_path_frame, text="替换路径:").pack(side='left', padx=(0, 5))
+        self.replace_path_entry = ttk.Entry(replace_path_frame, width=35)
+        self.replace_path_entry.pack(side='left')
+
+        # 绑定输入框的FocusOut事件来保存配置
+        self.original_path_entry.bind('<FocusOut>', lambda e: self.save_config())
+        self.replace_path_entry.bind('<FocusOut>', lambda e: self.save_config())
 
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
