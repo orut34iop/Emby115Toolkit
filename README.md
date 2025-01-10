@@ -70,9 +70,11 @@
 
 ## 使用方法
 
-1. 安装依赖：
+下载代码到本地，然后 cd Emby115Toolkit 目录
 
-2. how to run :  python main.py
+1. 安装依赖：  pip install -r requirements.txt
+
+2. 运行程序:   python main.py
 
 
 
