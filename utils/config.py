@@ -40,7 +40,7 @@ class Config:
         return {
             'export_symlink': {
                 'link_suffixes': ['.mkv', '.iso', '.ts', '.mp4', '.avi', '.rmvb', 
-                                '.wmv', '.m2ts', '.mpg', '.flv', '.rm'],
+                                '.wmv', '.m2ts', '.mpg', '.flv', '.rm', '.m4v'],
                 'meta_suffixes': ['.nfo', '.jpg', '.png', '.ass', '.srt'],
                 'thread_count': 4,
                 'op_interval_sec': 4,

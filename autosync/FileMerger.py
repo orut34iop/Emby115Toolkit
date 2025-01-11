@@ -41,7 +41,7 @@ class FileMerger:
             video_ext = os.path.splitext(video_path)[1].lower()
 
             # 检查文件名是否匹配且扩展名是.mkv或.ts
-            if video_name == nfo_name and video_ext in ['.mkv', '.ts', '.iso', '.mp4', '.avi', '.rmvb', '.wmv', '.m2ts', '.mpg', '.flv', '.mov', '.vob', '.webm', '.divx', '.3gp', '.rm']:
+            if video_name == nfo_name and video_ext in ['.mkv', '.ts', '.iso', '.mp4', '.avi', '.rmvb', '.wmv', '.m2ts', '.mpg', '.flv', '.mov', '.vob', '.webm', '.divx', '.3gp', '.rm', '.m4v']:
                 return video_path
                 
         return ""

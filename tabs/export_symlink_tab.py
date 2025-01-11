@@ -309,7 +309,7 @@ class ExportSymlinkTab(BaseTab):
         link_suffix_label.pack(side='left', padx=5)
         
         self.link_suffix_entry = ttk.Entry(suffix_container)
-        self.link_suffix_entry.insert(0, ".mkv;.iso;.ts;.mp4;.avi;.rmvb;.wmv;.m2ts;.mpg;.flv;.rm")
+        self.link_suffix_entry.insert(0, ".mkv;.iso;.ts;.mp4;.avi;.rmvb;.wmv;.m2ts;.mpg;.flv;.rm;.m4v")
         self.link_suffix_entry.pack(side='left', fill='x', expand=True, padx=5)
         self.link_suffix_entry.bind('<FocusOut>', lambda e: self.save_config())
         
