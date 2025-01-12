@@ -134,12 +134,16 @@ class ExportSymlinkTab(BaseTab):
         desc_label = ttk.Label(self.frame, text="使用说明: 将文件夹拖拽到输入框即可生成软链接表（自动忽略重复路径）")
         desc_label.pack(fill='x', padx=5, pady=5)
         
-        # 链接文件夹选择
-        link_frame = ttk.LabelFrame(self.frame, text="链接文件夹", padding=(5, 5, 5, 5))
-        link_frame.pack(fill='x', padx=5, pady=5)
+        # 创建统一的文件夹选择框架
+        folder_frame = ttk.LabelFrame(self.frame, text="文件夹设置", padding=(5, 5, 5, 5))
+        folder_frame.pack(fill='x', padx=5, pady=5)
+        
+        # 链接文件夹部分
+        link_label = ttk.Label(folder_frame, text="链接文件夹:")
+        link_label.pack(fill='x', padx=5, pady=(5,0))
         
         # 创建容器来包装文本框和按钮
-        link_container = ttk.Frame(link_frame)
+        link_container = ttk.Frame(folder_frame)
         link_container.pack(fill='x', padx=5, pady=5)
         
         self.link_text = tk.Text(link_container, height=4, wrap='none')
@@ -170,12 +174,15 @@ class ExportSymlinkTab(BaseTab):
         link_browse = ttk.Button(link_container, text="浏览", command=browse_folders)
         link_browse.pack(side='left', padx=5)
         
-        # 目标文件夹选择
-        target_frame = ttk.LabelFrame(self.frame, text="目标文件夹", padding=(5, 5, 5, 5))
-        target_frame.pack(fill='x', padx=5, pady=5)
+        # 目标文件夹部分
+        target_label = ttk.Label(folder_frame, text="目标文件夹:")
+        target_label.pack(fill='x', padx=5, pady=(5,0))
         
-        self.target_entry = ttk.Entry(target_frame)
-        self.target_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        target_container = ttk.Frame(folder_frame)
+        target_container.pack(fill='x', padx=5, pady=5)
+        
+        self.target_entry = ttk.Entry(target_container)
+        self.target_entry.pack(side='left', fill='x', expand=True)
         
         # 启用拖放功能
         self.target_entry.drop_target_register(DND_FILES)
@@ -184,15 +191,14 @@ class ExportSymlinkTab(BaseTab):
         def browse_target():
             folder = filedialog.askdirectory(title="选择目标文件夹")
             if folder:
-                #规范化路径
                 folder = os.path.normpath(folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, folder)
                 self.logger.info(f"已选择目标文件夹: {folder}")
                 self.save_config()
         
-        target_browse = ttk.Button(target_frame, text="浏览", command=browse_target)
-        target_browse.pack(side='right', padx=5)
+        target_browse = ttk.Button(target_container, text="浏览", command=browse_target)
+        target_browse.pack(side='left', padx=5)
         
         # 添加替换文件路径设置框架
         replace_path_frame = ttk.LabelFrame(self.frame, text="软链接文件路径替换设置", padding=(5, 5, 5, 5))

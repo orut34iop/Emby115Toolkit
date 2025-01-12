@@ -56,7 +56,7 @@ class SymlinkCreator:
                 self.original_path = os.path.normpath(self.original_path)
             if self.replace_path:
                 self.replace_path = os.path.normpath(self.replace_path)
-            self.logger.info(f"线程 {thread_name}: 替换f{self.original_path} 为 f{self.replace_path}")
+            self.logger.info(f"线程 {thread_name}: 替换{self.original_path} 为 {self.replace_path}")
             src = src.replace(f"{self.original_path}", f"{self.replace_path}") 
             src = os.path.normpath(src)
             dst = os.path.normpath(dst)
