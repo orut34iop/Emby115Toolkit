@@ -4,6 +4,7 @@ from ttkthemes import ThemedTk
 from tkinterdnd2 import TkinterDnD
 import os
 import sys
+import platform  # 添加在文件开头的import部分
 from tabs import (
     ExportSymlinkTab,
     ManipulateFolderTab,
@@ -94,6 +95,16 @@ def force_exit():
     except SystemExit:
         os._exit(0) 
 
+def maximize_window(root):
+    """跨平台窗口最大化"""
+    system = platform.system().lower()
+    if system == 'windows':
+        root.state('zoomed')
+    elif system == 'linux':
+        root.attributes('-zoomed', True)
+    else:  # macOS或其他系统
+        root.attributes('-fullscreen', True)
+
 def main():
     global root
     root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
@@ -103,11 +114,8 @@ def main():
     # 设置最小窗口大小
     root.minsize(800, 600)
     
-    # 窗口最大化
-    root.state('zoomed')  # Windows系统使用'zoomed'
-    # 如果在其他系统上可能需要使用:
-    # root.attributes('-zoomed', True)  # Linux系统
-    # root.attributes('-fullscreen', True)  # 完全全屏
+    # 使用跨平台窗口最大化函数
+    maximize_window(root)
     
     app = EmbyToolkit(root)
     root.protocol("WM_DELETE_WINDOW", force_exit)  # 设置关闭窗口时的回调函数
