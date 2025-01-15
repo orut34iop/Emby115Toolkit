@@ -1,6 +1,6 @@
 # Emby115Toolkit
 
-针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows中运行.
+针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows/Linux中运行.
 
 ## 我的环境
 
