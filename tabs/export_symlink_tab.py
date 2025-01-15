@@ -516,12 +516,13 @@ class ExportSymlinkTab(BaseTab):
             if sys.platform == 'win32':
                 #如果当前处于调试模式下,不切换管理员模式
                 if sys.gettrace():
-	                return True
+                    return True
                 return ctypes.windll.shell32.IsUserAnAdmin()
             elif sys.platform == 'linux' or sys.platform == 'darwin':
-                return os.geteuid() == 0
+                return True #不需要切换管理员模式
+                #return os.geteuid() == 0
             else:
-                return False
+                return True	#不需要切换管理员模式
         except:
             return False
 
