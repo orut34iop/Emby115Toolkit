@@ -513,19 +513,27 @@ class ExportSymlinkTab(BaseTab):
     def is_admin(self):
         """检查是否为管理员权限"""
         try:
-            #如果当前处于调试模式下,不切换管理员模式
-            if sys.gettrace():
-                return True
-            return ctypes.windll.shell32.IsUserAnAdmin()
+            if sys.platform == 'win32':
+                #如果当前处于调试模式下,不切换管理员模式
+                if sys.gettrace():
+	                return True
+                return ctypes.windll.shell32.IsUserAnAdmin()
+            elif sys.platform == 'linux' or sys.platform == 'darwin':
+                return os.geteuid() == 0
+            else:
+                return False
         except:
             return False
 
     def run_as_admin(self):
         """以管理员权限重新运行"""
-        # params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
-        # ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-        # return False
+        if sys.platform == 'win32':
+            params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+        elif sys.platform == 'linux' or sys.platform == 'darwin':
+            # 使用sudo重新运行脚本
+            params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
+            os.execvp('sudo', ['sudo', sys.executable] + sys.argv)
         sys.exit()
 
     def download_metadata(self):
