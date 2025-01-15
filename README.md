@@ -72,10 +72,21 @@
 
 下载代码到本地，然后 cd Emby115Toolkit 目录
 
+Windows系统：
+
 1. 安装依赖：  pip install -r requirements.txt
 
 2. 运行程序:   python main.py
 
+Ubuntu系统：
 
+1. 安装依赖包：
+    sudo apt install python3-pip
+    sudo apt install python3-tkinter
+    sudo apt-get install python3-tk
+    pip3 install ttkthemes
+    pip3 install tkinterdnd2
+3. 运行程序
+   python3 main.py
 
 致谢： 项目中使用了shenxianmq的MediaHelper项目（https://github.com/shenxianmq/MediaHelper）的部分代码，感谢shenxianmq!
