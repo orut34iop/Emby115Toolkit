@@ -1,10 +1,10 @@
 # Emby115Toolkit
 
-针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows中运行.
+针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows/Linux中运行.
 
 ## 我的环境
 
-- Windows系统 (Linux/Mac系统未测试)
+- Windows系统 (Linux可用，Mac系统未测试)
 - Python 3.x
 - Windows主机：挂载CloudDrive2, 并运行Emby Server
 - 播放端推荐：Apple TV + Infuse播放器
