@@ -300,7 +300,8 @@ class EmbyOperator:
             'Travel': '旅行',
             'War': '战争',
             'Western': '西部',
-            'Animal': '动物'
+            'Animal': '动物',
+            'War & Politics': '战争与政治'
         }
 
         headers = {
@@ -406,7 +407,8 @@ class EmbyOperator:
             'War': '战争', 
             'Western': '西部',
             'superhero': '超级英雄',
-            'Animal': '动物'
+            'Animal': '动物',
+            'War & Politics': '战争与政治'
         }
 
         headers = {
