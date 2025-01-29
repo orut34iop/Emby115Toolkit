@@ -116,6 +116,28 @@ class EmbyOperator:
             self.logger.error("Response content:", response.content)  # 输出响应内容以便调试
         return []
 
+    # 获取所有影剧的信息
+    def get_movie_media(self):
+        url = f"{self.server_url}/emby/Items"
+        params = {
+            "api_key": self.api_key,
+            "IncludeItemTypes": "Movie",
+            "Recursive": True,
+            "Fields": "ProviderIds,Path",
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status()  # 检查请求是否成功
+            return response.json()["Items"]
+        except requests.exceptions.HTTPError as http_err:
+            self.logger.error(f"HTTP error occurred: {http_err}")  # 输出HTTP错误
+        except requests.exceptions.RequestException as err:
+            self.logger.error(f"Other error occurred: {err}")  # 输出其他错误
+        except ValueError:
+            self.logger.error("Error parsing JSON response")
+            self.logger.error("Response content:", response.content)  # 输出响应内容以便调试
+        return []
+
     # 查询TMDb ID
     def query_movies_by_tmdbid(self, movies, tmdb_value):
         for movie in movies:
@@ -222,7 +244,7 @@ class EmbyOperator:
 
     def merge_versions(self, callback):
         def run_merge_versions_check():
-            all_movies = self.get_all_media()
+            all_movies = self.get_movie_media() #只需要合并电影，TV Emby会自动合并
             if not all_movies:
                 self.logger.info("Emby库里没有影片")
                 return
