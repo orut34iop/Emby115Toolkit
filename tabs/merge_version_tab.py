@@ -94,7 +94,8 @@ class MergeVersionTab(BaseTab):
         )
         
         def on_check_complete(message):
-            self.logger.info(message)
+            pass
+            #self.logger.info(message)
         
         # 运行查重
         embyOperator.merge_versions(on_check_complete)

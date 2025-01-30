@@ -225,7 +225,8 @@ class EmbyOperator:
         for tmdb_id, movies in grouped_movies.items():
             if len(movies) > 1:
                 name = movies[0]["Name"]
-                self.logger.info(f"已发现相同版本的影片::: {name} \n")
+                self.logger.info("")
+                self.logger.info(f"已发现相同版本的影片::: {name}")
 
                 item_ids = ",".join(movie["Id"] for movie in movies)
                 merge_url = f"{self.server_url}/emby/Videos/MergeVersions"
@@ -233,12 +234,11 @@ class EmbyOperator:
                     "Ids": item_ids,
                     "X-Emby-Token": self.api_key,
                 }
-                self.logger.info(f"合并版本成功::: {name}\n")
                 response = requests.post(merge_url, params=payload)
                 if response.status_code == 204:
-                    self.logger.info(f"合并版本成功::: {name}")
+                    self.logger.info(f"合并版本成功:::         {name}")
                 else:
-                    self.logger.error(f"合并版本失败::: {name}")
+                    self.logger.error(f"合并版本失败:::         {name}")
                 merged_movies.append(movies[0])  # 暂时保留第一部影片为合并结果
         return merged_movies
 
