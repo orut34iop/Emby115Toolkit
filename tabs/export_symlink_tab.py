@@ -82,6 +82,11 @@ class ExportSymlinkTab(BaseTab):
                 self.replace_path_entry.delete(0, tk.END)
                 self.replace_path_entry.insert(0, config['replace_path'])
                 self.logger.info(f"加载替换路径: {config['replace_path']}")
+                
+            # 加载只下载剧集tvshow.nfo设置
+            if 'only_tvshow_nfo' in config:
+                self.only_tvshow_nfo_var.set(config['only_tvshow_nfo'])
+                self.logger.info(f"加载只下载剧集tvshow.nfo设置: {config['only_tvshow_nfo']}")
     
     def save_config(self):
         """保存当前设置到配置文件"""
@@ -108,6 +113,7 @@ class ExportSymlinkTab(BaseTab):
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
+        self.config.set('export_symlink', 'only_tvshow_nfo', bool(self.only_tvshow_nfo_var.get()))
         self.config.set('export_symlink', 'enable_replace_path', bool(self.replace_path_var.get()))
         self.config.set('export_symlink', 'original_path', self.original_path_entry.get().strip())
         self.config.set('export_symlink', 'replace_path', self.replace_path_entry.get().strip())
@@ -305,6 +311,18 @@ class ExportSymlinkTab(BaseTab):
         self.thread_spinbox.set(4)  # 默认值
         self.thread_spinbox.pack(side='left', padx=5)
         self.thread_spinbox.bind('<FocusOut>', lambda e: self.save_config())
+        
+        # 添加只下载剧集tvshow.nfo的勾选框
+        self.only_tvshow_nfo_var = tk.BooleanVar(value=False)
+        only_tvshow_nfo_check = ttk.Checkbutton(
+            thread_container,
+            text="只下载剧集tvshow.nfo",
+            variable=self.only_tvshow_nfo_var,
+            command=self.save_config,
+            style="Check.TCheckbutton",
+            takefocus=False
+        )
+        only_tvshow_nfo_check.pack(side='left', padx=5)
 
         # 后缀设置容器
         suffix_container = ttk.Frame(sync_settings_frame)
@@ -400,7 +418,7 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path = config      
+            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path, only_tvshow_nfo = config      
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
             self.logger.info(f"源文件夹: {source_folders}")
@@ -412,6 +430,7 @@ class ExportSymlinkTab(BaseTab):
             self.logger.info(f"替换文件路径选项: {enable_replace_path}")
             self.logger.info(f"替换原路径: {original_path}")
             self.logger.info(f"替换新路径: {replace_path}")
+            self.logger.info(f"只下载剧集tvshow.nfo: {only_tvshow_nfo}")
         
             # 创建元数据复制器
             copyer = MetadataCopyer(
@@ -420,7 +439,8 @@ class ExportSymlinkTab(BaseTab):
                 allowed_extensions=allowed_extensions,
                 num_threads=num_threads,
                 enable_115_protect=enable_115_protect,
-                op_interval_sec = op_interval_sec,
+                op_interval_sec=op_interval_sec,
+                only_tvshow_nfo=only_tvshow_nfo,
                 logger=self.logger
             )
 
@@ -463,7 +483,8 @@ class ExportSymlinkTab(BaseTab):
             self.logger.error(f"错误: 目标文件夹不存在: {target_folder}")
             return None
 
-        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect,op_interval_sec, enable_replace_path, original_path, replace_path
+        only_tvshow_nfo = self.config.get('export_symlink', 'only_tvshow_nfo')
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path, only_tvshow_nfo
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
@@ -559,8 +580,9 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=allowed_extensions,
             num_threads=num_threads,
-            enable_115_protect = enable_115_protect,
-            op_interval_sec = op_interval_sec,
+            enable_115_protect=enable_115_protect,
+            op_interval_sec=op_interval_sec,
+            only_tvshow_nfo=self.only_tvshow_nfo_var.get(),
             logger=self.logger  # 传递logger
         )
 

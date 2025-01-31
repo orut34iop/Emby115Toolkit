@@ -8,7 +8,7 @@ from typing import List
 
 
 class MetadataCopyer:
-    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, op_interval_sec=0, logger=None):
+    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, op_interval_sec=0, only_tvshow_nfo=False, logger=None):
         """
         初始化MetadataCopyer
         Args:
@@ -27,6 +27,7 @@ class MetadataCopyer:
         self.existing_links = 0
         self.op_interval_sec = op_interval_sec
         self.file_queue = queue.Queue()
+        self.only_tvshow_nfo = only_tvshow_nfo
         self.logger = logger or logging.getLogger(__name__)
 
     def copy_metadata(self, source, target_file, thread_name):
@@ -72,13 +73,31 @@ class MetadataCopyer:
                 time.sleep(self.op_interval_sec)
 
             self.logger.info(f"开始扫描文件夹: {directory}")
-            # self.logger.info(f"文件夹根目录:   {root_directory}")
-            with os.scandir(directory) as it:
-                for entry in it:
-                    if entry.is_file() and entry.name.lower().endswith(self.metadata_extensions):
-                        yield entry.path, directory, root_directory
-                    elif entry.is_dir():
-                        yield from scan_directory(entry.path, root_directory)
+
+            files = []  # 用于存储文件条目
+            directories = []  # 用于存储目录条目
+
+            try:
+                with os.scandir(directory) as it:
+                    for entry in it:
+                        if entry.is_file():
+                            files.append(entry)
+                        elif entry.is_dir():
+                            directories.append(entry)
+            except OSError as e:
+                self.logger.error(f"访问目录时发生错误: {e}")
+            
+            # 先处理文件
+            for file_entry in files:
+                if self.only_tvshow_nfo and (file_entry.name == "tvshow.nfo"):
+                    self.logger.info(f"发现文件: {file_entry.path}")
+                    yield file_entry.path, directory, root_directory
+                    return  # 如果找到 tvshow.nfo，直接返回,不需要再检查其他同一级的文件或文件夹
+                elif (not self.only_tvshow_nfo) and (file_entry.name.lower().endswith(self.metadata_extensions)):
+                    yield file_entry.path, directory, root_directory
+            # 再处理目录
+            for dir_entry in directories:
+                yield from scan_directory(dir_entry.path, root_directory)
 
         for source_folder in self.source_folders:
             if not os.path.exists(source_folder):
