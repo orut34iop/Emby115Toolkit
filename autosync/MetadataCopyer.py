@@ -89,7 +89,7 @@ class MetadataCopyer:
             
             # 先处理文件
             for file_entry in files:
-                if self.only_tvshow_nfo and (file_entry.name == "tvshow.nfo"):
+                if self.only_tvshow_nfo and (file_entry.name.lower() == "tvshow.nfo"):
                     self.logger.info(f"发现文件: {file_entry.path}")
                     yield file_entry.path, directory, root_directory
                     return  # 如果找到 tvshow.nfo，直接返回,不需要再检查其他同一级的文件或文件夹
