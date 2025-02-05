@@ -1,3 +1,5 @@
+更多交流和技术讨论，请加群：https://t.me/embyfans
+
 # Emby115Toolkit
 
 针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows/Linux中运行.
