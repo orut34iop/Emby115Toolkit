@@ -396,7 +396,7 @@ class EmbyOperator:
             'Adult': '成人', 
             'Adventure': '冒险', 
             'Animation': '动画', 
-            'Anime': '动漫',
+            'Anime': '动画',
             'Biography': '传记', 
             'Children': '儿童', 
             'Comedy': '喜剧', 
