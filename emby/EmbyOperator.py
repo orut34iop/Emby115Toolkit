@@ -467,7 +467,9 @@ class EmbyOperator:
                 translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
 
                 if original_genres != translated_genres:
+                    #这句代码可能有问题， genreitem['Id']值也同步需要更新，而不是使用已有的旧ID
                     genreitems = [{'Name': genres_map.get(genreitem['Name'], genreitem['Name']), 'Id': genreitem['Id']} for genreitem in movie.get('GenreItems', [])]
+                    
                     movie['Genres'] = translated_genres
                     movie['GenreItems'] = genreitems
 
