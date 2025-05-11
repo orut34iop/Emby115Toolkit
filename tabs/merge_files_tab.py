@@ -27,6 +27,9 @@ class MergeFilesTab(BaseTab):
         
         self.scrap_entry = ttk.Entry(scrap_frame)
         self.scrap_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        # 编辑后自动保存
+        self.scrap_entry.bind('<FocusOut>', lambda e: self.save_config())
+        self.scrap_entry.bind('<Return>', lambda e: self.save_config())
         
         # 启用拖放功能
         self.scrap_entry.drop_target_register(DND_FILES)
@@ -50,6 +53,9 @@ class MergeFilesTab(BaseTab):
         
         self.target_entry = ttk.Entry(target_frame)
         self.target_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        # 编辑后自动保存
+        self.target_entry.bind('<FocusOut>', lambda e: self.save_config())
+        self.target_entry.bind('<Return>', lambda e: self.save_config())
         
         # 启用拖放功能
         self.target_entry.drop_target_register(DND_FILES)
