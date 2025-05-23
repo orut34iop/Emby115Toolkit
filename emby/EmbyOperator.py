@@ -334,7 +334,7 @@ class EmbyOperator:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': 'Series',
-            'Fields': 'Genres',
+            'Fields': 'Genres,GenreItems',
             'Limit': '1000000'
         }
 
@@ -342,7 +342,23 @@ class EmbyOperator:
 
         if response.status_code == 200:
             tvs = response.json().get('Items', [])
-            
+
+            # Use a set to remove duplicate genres
+            all_genres = set()
+            all_genreitems = set()
+            for tv in tvs:
+                genres = tv.get('Genres', [])
+                genreitems = tv.get('GenreItems', [])
+                all_genres.update(genres)
+                for genre_item in genreitems:
+                    name = genre_item.get('Name')
+                    gid = genre_item.get('Id')
+                    if name and gid:
+                        all_genreitems.add((name, gid))
+            self.logger.info(f"剧集所有去重后的Genres: {sorted(all_genres)}")
+            self.logger.info(f"剧集所有去重后的GenreItems: {sorted(all_genreitems)}")
+
+
             for each_tv in tvs:
                 tv_id = each_tv['Id']
                 original_genres = each_tv.get('Genres', [])
@@ -360,8 +376,21 @@ class EmbyOperator:
                 original_genres = tv.get('Genres', [])
                 translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
 
-                if original_genres != translated_genres:
-                    genreitems = [{'Name': genres_map.get(genreitem['Name'], genreitem['Name']), 'Id': genreitem['Id']} for genreitem in tv.get('GenreItems', [])]
+                if original_genres != translated_genres:                                   
+                    # 根据 translated_genres，从 all_genreitems 中查找对应的 id
+                    genreitems = []
+                    for genre in translated_genres:
+                        # 在 all_genreitems 中查找名称为 genre 的元组
+                        found = False
+                        for name, gid in all_genreitems:
+                            if name == genre:
+                                genreitems.append({'Name': name, 'Id': gid})
+                                found = True
+                                break
+                        if not found:
+                            # 如果没有找到，Id 可以设为 None 或空字符串，EmbyServer会新分配有效ID
+                            genreitems.append({'Name': genre, 'Id': ''})
+
                     tv['Genres'] = translated_genres
                     tv['GenreItems'] = genreitems
 
@@ -441,7 +470,7 @@ class EmbyOperator:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': 'Movie',
-            'Fields': 'Genres',
+            'Fields': 'Genres,GenreItems',
             'Limit': '1000000'
         }
 
@@ -449,6 +478,21 @@ class EmbyOperator:
 
         if response.status_code == 200:
             movies = response.json().get('Items', [])
+            # Use a set to remove duplicate genres
+            all_genres = set()
+            all_genreitems = set()
+            for movie in movies:
+                genres = movie.get('Genres', [])
+                genreitems = movie.get('GenreItems', [])
+                all_genres.update(genres)
+                for genre_item in genreitems:
+                    name = genre_item.get('Name')
+                    gid = genre_item.get('Id')
+                    if name and gid:
+                        all_genreitems.add((name, gid))
+            self.logger.info(f"影片所有去重后的Genres: {sorted(all_genres)}")
+            self.logger.info(f"影片所有去重后的GenreItems: {sorted(all_genreitems)}")
+
             
             for each_movie in movies:
                 movie_id = each_movie['Id']
@@ -467,9 +511,21 @@ class EmbyOperator:
                 translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
 
                 if original_genres != translated_genres:
-                    #这句代码可能有问题， genreitem['Id']值也同步需要更新，而不是使用已有的旧ID
-                    genreitems = [{'Name': genres_map.get(genreitem['Name'], genreitem['Name']), 'Id': genreitem['Id']} for genreitem in movie.get('GenreItems', [])]
                     
+                    # 根据 translated_genres，从 all_genreitems 中查找对应的 id
+                    genreitems = []
+                    for genre in translated_genres:
+                        # 在 all_genreitems 中查找名称为 genre 的元组
+                        found = False
+                        for name, gid in all_genreitems:
+                            if name == genre:
+                                genreitems.append({'Name': name, 'Id': gid})
+                                found = True
+                                break
+                        if not found:
+                            # 如果没有找到，Id 可以设为 None 或空字符串，EmbyServer会新分配有效ID
+                            genreitems.append({'Name': genre, 'Id': ''})
+
                     movie['Genres'] = translated_genres
                     movie['GenreItems'] = genreitems
 
