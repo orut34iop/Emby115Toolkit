@@ -30,6 +30,7 @@ mergeLog/
 # IDE
 .idea/
 .vscode/
+.vs/
 *.swp
 *.swo
 
