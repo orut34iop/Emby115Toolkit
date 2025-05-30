@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
-from tkinterdnd2 import DND_FILES
+#from tkinterdnd2 import DND_FILES
 import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
@@ -87,8 +87,8 @@ class Mirror115TreeTab(BaseTab):
         self.tree_file_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         
         # 启用拖放功能
-        self.tree_file_entry.drop_target_register(DND_FILES)
-        self.tree_file_entry.dnd_bind('<<Drop>>', lambda e: self.on_tree_file_drop(e))
+        #self.tree_file_entry.drop_target_register(DND_FILES)
+        #self.tree_file_entry.dnd_bind('<<Drop>>', lambda e: self.on_tree_file_drop(e))
         
         def browse_tree_file():
             file_path = filedialog.askopenfilename(
@@ -114,8 +114,8 @@ class Mirror115TreeTab(BaseTab):
         self.export_folder_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         
         # 启用拖放功能
-        self.export_folder_entry.drop_target_register(DND_FILES)
-        self.export_folder_entry.dnd_bind('<<Drop>>', lambda e: self.on_export_folder_drop(e))
+        #self.export_folder_entry.drop_target_register(DND_FILES)
+        #self.export_folder_entry.dnd_bind('<<Drop>>', lambda e: self.on_export_folder_drop(e))
         
         def browse_export():
             folder = filedialog.askdirectory(title="选择导出镜像文件夹")

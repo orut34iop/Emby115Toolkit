@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
-from ttkthemes import ThemedTk
-from tkinterdnd2 import TkinterDnD
+#from ttkthemes import ThemedTk
+#from tkinterdnd2 import TkinterDnD
 import os
 import sys
 import platform  # 添加在文件开头的import部分
@@ -107,9 +107,9 @@ def maximize_window(root):
 
 def main():
     global root
-    root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
-    style = ttk.Style(root)
-    style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
+    root = tk.Tk()  # 使用标准Tkinter的Tk作为根窗口类
+    #style = ttk.Style(root)
+    #style.theme_use("clam")  # 使用clam主题，因为不能同时使用ThemedTk
     
     # 设置最小窗口大小
     root.minsize(800, 600)

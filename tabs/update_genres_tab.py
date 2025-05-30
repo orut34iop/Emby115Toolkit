@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog
-from tkinterdnd2 import DND_FILES
+#from tkinterdnd2 import DND_FILES
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config

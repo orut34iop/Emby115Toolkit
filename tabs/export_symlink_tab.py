@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
-from tkinterdnd2 import DND_FILES
+#from tkinterdnd2 import DND_FILES
 import os
 import ctypes
 import sys
@@ -157,8 +157,8 @@ class ExportSymlinkTab(BaseTab):
         self.link_text.bind('<<Modified>>', lambda e: self.on_text_modified())
         
         # 启用拖放功能
-        self.link_text.drop_target_register(DND_FILES)
-        self.link_text.dnd_bind('<<Drop>>', lambda e: self.on_folder_drop(e, self.link_text))
+        #self.link_text.drop_target_register(DND_FILES)
+        #self.link_text.dnd_bind('<<Drop>>', lambda e: self.on_folder_drop(e, self.link_text))
         
         def browse_folders():
             folder = filedialog.askdirectory(title="选择文件夹")
@@ -191,8 +191,8 @@ class ExportSymlinkTab(BaseTab):
         self.target_entry.pack(side='left', fill='x', expand=True)
         
         # 启用拖放功能
-        self.target_entry.drop_target_register(DND_FILES)
-        self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
+        #self.target_entry.drop_target_register(DND_FILES)
+        #self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
         
         def browse_target():
             folder = filedialog.askdirectory(title="选择目标文件夹")

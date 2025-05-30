@@ -3,7 +3,7 @@ import ctypes
 import sys
 import tkinter as tk
 from tkinter import ttk, filedialog
-from tkinterdnd2 import TkinterDnD, DND_FILES
+#from tkinterdnd2 import TkinterDnD, DND_FILES
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
@@ -32,8 +32,8 @@ class MergeFilesTab(BaseTab):
         self.scrap_entry.bind('<Return>', lambda e: self.save_config())
         
         # 启用拖放功能
-        self.scrap_entry.drop_target_register(DND_FILES)
-        self.scrap_entry.dnd_bind('<<Drop>>', self.on_scrap_drop)
+        #self.scrap_entry.drop_target_register(DND_FILES)
+        #self.scrap_entry.dnd_bind('<<Drop>>', self.on_scrap_drop)
         
         def browse_scrap():
             folder = filedialog.askdirectory(title="选择刮削文件夹")
@@ -58,8 +58,8 @@ class MergeFilesTab(BaseTab):
         self.target_entry.bind('<Return>', lambda e: self.save_config())
         
         # 启用拖放功能
-        self.target_entry.drop_target_register(DND_FILES)
-        self.target_entry.dnd_bind('<<Drop>>', self.on_target_drop)
+        #self.target_entry.drop_target_register(DND_FILES)
+        #self.target_entry.dnd_bind('<<Drop>>', self.on_target_drop)
         
         def browse_target():
             folder = filedialog.askdirectory(title="选择视频文件夹")
