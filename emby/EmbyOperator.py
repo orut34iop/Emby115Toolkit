@@ -16,7 +16,7 @@ from utils.logger import setup_logger
 from pathlib import Path
 
 # 定义视频文件扩展名
-VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm', '.m4v'}
+VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm', '.m4v', '.m2ts', '.webm', '.3gp', '.vob', '.divx', '.f4v', '.ogv', '.mxf', '.asf', '.mts'}
 class EmbyOperator:
     def __init__(self, server_url=None, api_key=None, user_name=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
         self.server_url = server_url
@@ -784,6 +784,8 @@ class EmbyOperator:
             nfo_str_path = str(nfo_path)
             if os.path.basename(nfo_str_path) in ('tvshow.nfo', 'season.nfo'):
                 continue
+            if not os.path.isfile(nfo_str_path):
+                continue
             results['total_nfo'] += 1
             
             video_path = self.find_related_videos(nfo_str_path)
@@ -807,7 +809,9 @@ class EmbyOperator:
         for root, _, files in os.walk(folder_path):
             video_files = [f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS]
             
-            for video_file in video_files:
+            for video_file in video_files:      
+                if not os.path.isfile(video_file):
+                    continue
                 results['total_videos'] += 1
                 base_name, _ = os.path.splitext(video_file)
                 nfo_file = base_name + '.nfo'
