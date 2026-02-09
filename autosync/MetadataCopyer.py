@@ -8,7 +8,7 @@ from typing import List
 
 
 class MetadataCopyer:
-    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, enable_115_protect=False, op_interval_sec=0, only_tvshow_nfo=False, logger=None):
+    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, only_tvshow_nfo=False, logger=None):
         """
         初始化MetadataCopyer
         Args:
@@ -22,10 +22,8 @@ class MetadataCopyer:
         self.target_folder = target_folder
         self.metadata_extensions = allowed_extensions
         self.num_threads = num_threads
-        self.enable_115_protect = enable_115_protect
         self.copied_metadatas = 0
         self.existing_links = 0
-        self.op_interval_sec = op_interval_sec
         self.file_queue = queue.Queue()
         self.only_tvshow_nfo = only_tvshow_nfo
         self.logger = logger or logging.getLogger(__name__)
@@ -39,9 +37,6 @@ class MetadataCopyer:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
                 self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
-                if self.enable_115_protect:
-                    self.logger.info(f"线程 {thread_name}: 启动115防封机制,sleep {self.op_interval_sec} 秒")
-                    time.sleep(self.op_interval_sec)
                 self.copied_metadatas += 1
         except Exception as e:
             self.logger.error(f"元数据复制出错:{e}")
@@ -67,10 +62,6 @@ class MetadataCopyer:
             if root_directory is None:
                 self.logger.error("scan_directory root_directory 值未设置")
                 return iter([])
-
-            if self.enable_115_protect:
-                self.logger.info(f"启动115防封机制,sleep {self.op_interval_sec} 秒")
-                time.sleep(self.op_interval_sec)
 
             self.logger.info(f"开始扫描文件夹: {directory}")
 
@@ -116,9 +107,7 @@ class MetadataCopyer:
             # 确保目标文件夹存在
             os.makedirs(self.target_folder, exist_ok=True)
             
-            if self.enable_115_protect:
-                self.num_threads = 1
-                self.logger.info("开启115防封")
+
 
             threads = []
             for i in range(self.num_threads):

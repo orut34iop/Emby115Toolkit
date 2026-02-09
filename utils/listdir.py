@@ -22,8 +22,6 @@ def list_files(folder_path: str, output_path = "", logger = None) -> tuple[int, 
     """
     遍历文件夹，获取所有文件的绝对路径并保存到文本文件
     :param folder_path: 要遍历的文件夹路径
-    :param enable_115_protect: 是否启用115防封
-    :param op_interval_sec: 操作间隔时间（秒）
     :param output_path: 输出文件路径
     :param logger: 日志记录器
     :return: (文件数量, 文件路径列表, 输出文件路径)

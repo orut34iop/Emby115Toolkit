@@ -43,8 +43,6 @@ class Config:
                                 '.wmv', '.m2ts', '.mpg', '.flv', '.rm', '.m4v'],
                 'meta_suffixes': ['.nfo', '.jpg', '.png', '.ass', '.srt'],
                 'thread_count': 4,
-                'op_interval_sec': 4,
-                'enable_115_protect': False,
                 'link_folders': [],
                 'target_folder': '',
                 'enable_replace_path': False,
@@ -57,8 +55,6 @@ class Config:
             'merge_file': {
                 'scrap_folder': '',
                 'target_folder': '',
-                'enable_115_protect': False,
-                'op_interval_sec': 4,
             },
             'merge_version': {
                 'emby_url': '',

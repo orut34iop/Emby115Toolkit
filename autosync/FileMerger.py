@@ -7,7 +7,7 @@ from utils.logger import setup_logger
 from utils.listdir import list_files
 
 class FileMerger:
-    def __init__(self, metadata_folder_path: str, video_folder_path: str,enable_115_protect=False, op_interval_sec=0,  logger=None):
+    def __init__(self, metadata_folder_path: str, video_folder_path: str, logger=None):
         """
         初始化FileMerger类
         :param metadata_folder_path: 包含nfo文件夹路径
@@ -15,8 +15,6 @@ class FileMerger:
         """
         self.metadata_folder_path = metadata_folder_path
         self.video_folder_path = video_folder_path
-        self.enable_115_protect = enable_115_protect
-        self.op_interval_sec = int(op_interval_sec)
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
         
         # 验证文件存在
@@ -105,9 +103,6 @@ class FileMerger:
                     return
                 if metadata_file_output_path:
                     self.logger.info(f"元文件列表已保存到: {metadata_file_output_path}")
-
-                if self.enable_115_protect:
-                    time.sleep(self.op_interval_sec)
                 
                 # 遍历文件夹并保存文件列表
                 self.logger.info(f"开始扫描{self.video_folder_path}文件夹...")
@@ -151,9 +146,6 @@ class FileMerger:
                                 if self.move_video_file(matching_video, file_path):
                                     move_count += 1
                                 logging.info("-" * 50)
-
-                                if self.enable_115_protect:
-                                    time.sleep(self.op_interval_sec)  # 防止115服务器检测
                                 
                             else:
                                 self.logger.error(f"没有找到匹配的视频文件: {file_path}")

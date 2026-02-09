@@ -80,46 +80,6 @@ class MergeFilesTab(BaseTab):
         merge_file_btn = ttk.Button(btn_frame, text="合并文件", command=self.merge_file)
         merge_file_btn.pack(side='left', padx=5)
 
-        # 添加115防封勾选框
-        self.protect_115_var = tk.BooleanVar(value=False)
-        
-        # 创建勾选框样式
-        style = ttk.Style()
-        style.configure(
-            "Check.TCheckbutton",
-            indicatorrelief='flat',  # 扁平化效果
-            indicatorcolor='#32CD32',  # 设置为绿色
-            indicatordiameter=20,  # 指示器大小
-            font=('Segoe UI', 9)  # 使用系统字体
-        )
-        style.map(
-            "Check.TCheckbutton",
-            background=[('active', '#f0f0f0')],  # 鼠标悬停时的背景色
-            indicatorcolor=[('selected', '#32CD32'),  # 选中时的颜色
-                          ('pressed', '#228B22')]  # 按下时的颜色
-        )
-        
-        protect_115_check = ttk.Checkbutton(
-            btn_frame, 
-            text="开启115 防封",
-            variable=self.protect_115_var,
-            command=self.save_config,
-            style="Check.TCheckbutton",
-            takefocus=False  # 禁用焦点
-        )
-        protect_115_check.pack(side='left', padx=5)
-
-        # 文件操作时间间隔设置
-        op_interval_label = ttk.Label(btn_frame, text="文件操作时间间隔(秒):")
-        op_interval_label.pack(side='left', padx=5)
-        
-        self.op_interval_spinbox = ttk.Spinbox(
-            btn_frame, from_=0, to=60, width=10, command=self.save_config, state='readonly'
-        )
-        self.op_interval_spinbox.set(4)  # 默认值为4秒
-        self.op_interval_spinbox.pack(side='left', padx=5)
-        self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
-
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
         self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -152,9 +112,6 @@ class MergeFilesTab(BaseTab):
         target_folder = self.target_entry.get().strip()
         target_folder = os.path.normpath(target_folder) # 规范化路径
         self.config.set('merge_file', 'target_folder', target_folder)
-        # 保存115防封设置
-        self.config.set('merge_file', 'enable_115_protect', bool(self.protect_115_var.get()))
-        self.config.set('merge_file', 'op_interval_sec', int(self.op_interval_spinbox.get()))
         self.config.save()
     
     def load_config(self):
@@ -166,23 +123,11 @@ class MergeFilesTab(BaseTab):
             target_folder = os.path.normpath(target_folder)
         self.scrap_entry.insert(0, scrap_folder)
         self.target_entry.insert(0, target_folder)
-        
-        # 加载115防封设置
-        enable_115_protect = self.config.get('merge_file', 'enable_115_protect', default=False)
-        self.protect_115_var.set(enable_115_protect)
-        self.logger.info(f"加载115防封设置: {enable_115_protect}")
-
-        # 加载文件操作时间间隔
-        op_interval_sec = self.config.get('merge_file', 'op_interval_sec', default='4')
-        self.op_interval_spinbox.set(op_interval_sec)
-        self.logger.info(f"加载文件操作时间间隔(秒): {op_interval_sec}")
     
     def merge_file(self):
         """合并文件"""
         scrap_folder = self.scrap_entry.get()
         target_folder = self.target_entry.get()
-        enable_115_protect = self.protect_115_var.get()  # 获取115防封设置
-        op_interval_sec = self.op_interval_spinbox.get()  # 获取115防封设置
         
         # 检查文件路径权限
         if not os.access(scrap_folder, os.R_OK):
@@ -192,8 +137,5 @@ class MergeFilesTab(BaseTab):
             self.logger.error(f"没有读取权限: {target_folder}")
             return
         
-        # 记录115防封状态
-        self.logger.info(f"115防封状态: {'开启' if enable_115_protect else '关闭'}")
-        
-        file_merger = FileMerger(scrap_folder, target_folder, enable_115_protect,op_interval_sec, self.logger)
+        file_merger = FileMerger(scrap_folder, target_folder, self.logger)
         file_merger.run()

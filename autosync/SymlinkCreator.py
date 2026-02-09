@@ -23,8 +23,6 @@ class SymlinkCreator:
         cloud_root_path=None,
         cloud_url=None,
         num_threads=8,
-        enable_115_protect=False,
-        op_interval_sec = 0,
         enable_replace_path=False,
         original_path=None,
         replace_path=None,
@@ -39,12 +37,10 @@ class SymlinkCreator:
         self.cloud_root_path = cloud_root_path
         self.cloud_url = cloud_url
         self.num_threads = num_threads
-        self.enable_115_protect = enable_115_protect
         self.created_links = 0
         self.existing_links = 0
         self.symlink_name = symlink_name_dict.get(self.symlink_mode)
         self.file_queue = queue.Queue()
-        self.op_interval_sec = op_interval_sec
         self.enable_replace_path = enable_replace_path
         self.original_path = original_path
         self.replace_path = replace_path       
@@ -72,10 +68,6 @@ class SymlinkCreator:
             self.logger.info(f"线程 {thread_name}: 创建软链接文件 {dst} --指向--> {src}")
         except Exception as e:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
-		
-        if self.enable_115_protect:
-            self.logger.info(f"线程 {thread_name}: 启动115防封机制,sleep {self.op_interval_sec} 秒")
-            time.sleep(self.op_interval_sec)
 
     def check_strm(self, strm_path):
         with open(strm_path, "r") as f:
@@ -194,9 +186,7 @@ class SymlinkCreator:
                         self.logger.info(f"发现文件: {source_file}")
                         yield source_file, source_folder
 
-            if self.enable_115_protect:
-                self.logger.info(f"启动115防封机制,sleep {self.op_interval_sec} 秒")
-                time.sleep(self.op_interval_sec)
+
 
     def run(self,callback):
         def run_symlink_create_check():
@@ -206,8 +196,7 @@ class SymlinkCreator:
             # 确保目标文件夹存在
             os.makedirs(self.target_folder, exist_ok=True)
 
-            if self.enable_115_protect:
-                self.num_threads = 1
+
 
             threads = []
             for i in range(self.num_threads):

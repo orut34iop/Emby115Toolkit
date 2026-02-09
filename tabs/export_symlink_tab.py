@@ -28,10 +28,7 @@ class ExportSymlinkTab(BaseTab):
                 self.thread_spinbox.set(config['thread_count'])
                 self.logger.info(f"加载线程数: {config['thread_count']}")
             
-            # 加载文件操作时间间隔
-            if 'op_interval_sec' in config:
-                self.op_interval_spinbox.set(config['op_interval_sec'])
-                self.logger.info(f"加载文件操作时间间隔(秒): {config['op_interval_sec']}")
+
 
             # 加载目标文件夹
             if 'target_folder' in config:
@@ -61,11 +58,6 @@ class ExportSymlinkTab(BaseTab):
                 self.meta_suffix_entry.delete(0, tk.END)
                 self.meta_suffix_entry.insert(0, ';'.join(config['meta_suffixes']))
                 self.logger.info(f"加载元数据后缀: {config['meta_suffixes']}")
-            
-            # 加载115防封设置
-            if 'enable_115_protect' in config:
-                self.protect_115_var.set(config['enable_115_protect'])
-                self.logger.info(f"加载115防封设置: {config['enable_115_protect']}")
             
             # 加载替换文件路径设置
             if 'enable_replace_path' in config:
@@ -109,10 +101,8 @@ class ExportSymlinkTab(BaseTab):
 
         self.config.set('export_symlink', 'target_folder', target_folder)
         self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
-        self.config.set('export_symlink', 'op_interval_sec', int(self.op_interval_spinbox.get()))
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
-        self.config.set('export_symlink', 'enable_115_protect', bool(self.protect_115_var.get()))
         self.config.set('export_symlink', 'only_tvshow_nfo', bool(self.only_tvshow_nfo_var.get()))
         self.config.set('export_symlink', 'enable_replace_path', bool(self.replace_path_var.get()))
         self.config.set('export_symlink', 'original_path', self.original_path_entry.get().strip())
@@ -249,53 +239,6 @@ class ExportSymlinkTab(BaseTab):
         # 验证目标文件夹
         self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
-        # 115防封和时间间隔设置 - 使用LabelFrame包装
-        protect_frame = ttk.LabelFrame(self.frame, text="115防封设置", padding=(5, 5, 5, 5))
-        protect_frame.pack(fill='x', padx=5, pady=5)
-        
-        # 115防封设置容器
-        protect_container = ttk.Frame(protect_frame)
-        protect_container.pack(fill='x', padx=5, pady=2)
-        
-        self.protect_115_var = tk.BooleanVar(value=False)
-        
-        # 创建勾选框样式
-        style = ttk.Style()
-        style.configure(
-            "Check.TCheckbutton",
-            indicatorrelief='flat',  # 扁平化效果
-            indicatorcolor='#32CD32',  # 设置为绿色
-            indicatordiameter=20,  # 指示器大小
-            font=('Segoe UI', 9)  # 使用系统字体
-        )
-        style.map(
-            "Check.TCheckbutton",
-            background=[('active', '#f0f0f0')],  # 鼠标悬停时的背景色
-            indicatorcolor=[('selected', '#32CD32'),  # 选中时的颜色
-                          ('pressed', '#228B22')]  # 按下时的颜色
-        )
-        
-        protect_115_check = ttk.Checkbutton(
-            protect_container, 
-            text="开启115 防封",
-            variable=self.protect_115_var,
-            command=self.save_config,
-            style="Check.TCheckbutton",
-            takefocus=False  # 禁用焦点
-        )
-        protect_115_check.pack(side='left', padx=5)
-
-        # 文件操作时间间隔设置
-        op_interval_label = ttk.Label(protect_container, text="文件操作时间间隔(秒):")
-        op_interval_label.pack(side='left', padx=5)
-        
-        self.op_interval_spinbox = ttk.Spinbox(
-            protect_container, from_=0, to=60, width=10, command=self.save_config, state='readonly'
-        )
-        self.op_interval_spinbox.set(4)  # 默认值为4秒
-        self.op_interval_spinbox.pack(side='left', padx=5)
-        self.op_interval_spinbox.bind('<FocusOut>', lambda e: self.save_config())
-
         # 创建同步设置框架
         sync_settings_frame = ttk.LabelFrame(self.frame, text="同步设置", padding=(5, 5, 5, 5))
         sync_settings_frame.pack(fill='x', padx=5, pady=5)
@@ -418,15 +361,13 @@ class ExportSymlinkTab(BaseTab):
             if not config:
                 return
 
-            source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path, only_tvshow_nfo = config      
+            source_folders, target_folder, num_threads, allowed_extensions, enable_replace_path, original_path, replace_path, only_tvshow_nfo = config      
             # 开始同步流程
             self.logger.info("=== 开始全同步操作 ===")
             self.logger.info(f"源文件夹: {source_folders}")
             self.logger.info(f"目标文件夹: {target_folder}")
             self.logger.info(f"线程数: {num_threads}")
             self.logger.info(f"允许的扩展名: {allowed_extensions}")
-            self.logger.info(f"115防封选项: {enable_115_protect}")
-            self.logger.info(f"文件操作间隔时间(秒): {op_interval_sec}")
             self.logger.info(f"替换文件路径选项: {enable_replace_path}")
             self.logger.info(f"替换原路径: {original_path}")
             self.logger.info(f"替换新路径: {replace_path}")
@@ -438,8 +379,6 @@ class ExportSymlinkTab(BaseTab):
                 target_folder=target_folder,
                 allowed_extensions=allowed_extensions,
                 num_threads=num_threads,
-                enable_115_protect=enable_115_protect,
-                op_interval_sec=op_interval_sec,
                 only_tvshow_nfo=only_tvshow_nfo,
                 logger=self.logger
             )
@@ -462,8 +401,6 @@ class ExportSymlinkTab(BaseTab):
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
-        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
-        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
         enable_replace_path = self.config.get('export_symlink', 'enable_replace_path')
         original_path = self.config.get('export_symlink', 'original_path')
         replace_path = self.config.get('export_symlink', 'replace_path')        
@@ -484,15 +421,13 @@ class ExportSymlinkTab(BaseTab):
             return None
 
         only_tvshow_nfo = self.config.get('export_symlink', 'only_tvshow_nfo')
-        return source_folders, target_folder, num_threads, allowed_extensions, enable_115_protect, op_interval_sec, enable_replace_path, original_path, replace_path, only_tvshow_nfo
+        return source_folders, target_folder, num_threads, allowed_extensions, enable_replace_path, original_path, replace_path, only_tvshow_nfo
 
     def create_symlink(self):
         source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
         soft_link_extensions = tuple(self.config.get('export_symlink', 'link_suffixes')) 
-        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
-        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
         enable_replace_path = self.config.get('export_symlink', 'enable_replace_path')
         original_path = self.config.get('export_symlink', 'original_path')
         replace_path = self.config.get('export_symlink', 'replace_path')
@@ -514,8 +449,6 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=soft_link_extensions,
             num_threads=num_threads,
-			enable_115_protect=enable_115_protect,
-            op_interval_sec=op_interval_sec,
             enable_replace_path=enable_replace_path,
             original_path=original_path,
             replace_path=replace_path,
@@ -562,9 +495,7 @@ class ExportSymlinkTab(BaseTab):
         source_folders = self.config.get('export_symlink', 'link_folders')
         target_folder = self.config.get('export_symlink', 'target_folder')
         num_threads = self.config.get('export_symlink', 'thread_count')
-        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes')) 
-        enable_115_protect = self.config.get('export_symlink', 'enable_115_protect')
-        op_interval_sec = self.config.get('export_symlink', 'op_interval_sec')
+        allowed_extensions = tuple(self.config.get('export_symlink', 'meta_suffixes'))
 
         # 获取路径列表
         if not source_folders or not source_folders[0]:
@@ -580,8 +511,6 @@ class ExportSymlinkTab(BaseTab):
             target_folder=target_folder,
             allowed_extensions=allowed_extensions,
             num_threads=num_threads,
-            enable_115_protect=enable_115_protect,
-            op_interval_sec=op_interval_sec,
             only_tvshow_nfo=self.only_tvshow_nfo_var.get(),
             logger=self.logger  # 传递logger
         )
