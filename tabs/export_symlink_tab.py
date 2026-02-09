@@ -8,6 +8,7 @@ import threading
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
+from utils.history_entry import HistoryEntry
 from autosync.MetadataCopyer import MetadataCopyer
 from autosync.SymlinkCreator import SymlinkCreator
 
@@ -170,31 +171,18 @@ class ExportSymlinkTab(BaseTab):
         link_browse = ttk.Button(link_container, text="浏览", command=browse_folders)
         link_browse.pack(side='left', padx=5)
         
-        # 目标文件夹部分
+        # 目标文件夹部分（带历史记录）
         target_label = ttk.Label(folder_frame, text="目标文件夹:")
         target_label.pack(fill='x', padx=5, pady=(5,0))
         
-        target_container = ttk.Frame(folder_frame)
-        target_container.pack(fill='x', padx=5, pady=5)
-        
-        self.target_entry = ttk.Entry(target_container)
-        self.target_entry.pack(side='left', fill='x', expand=True)
-        
-        # 启用拖放功能
-        self.target_entry.drop_target_register(DND_FILES)
-        self.target_entry.dnd_bind('<<Drop>>', lambda e: self.on_target_drop(e))
-        
-        def browse_target():
-            folder = filedialog.askdirectory(title="选择目标文件夹")
-            if folder:
-                folder = os.path.normpath(folder)
-                self.target_entry.delete(0, tk.END)
-                self.target_entry.insert(0, folder)
-                self.logger.info(f"已选择目标文件夹: {folder}")
-                self.save_config()
-        
-        target_browse = ttk.Button(target_container, text="浏览", command=browse_target)
-        target_browse.pack(side='left', padx=5)
+        self.target_entry = HistoryEntry(
+            folder_frame, 
+            self.config, 
+            'export_symlink', 
+            'target_folder'
+        )
+        self.target_entry.pack(fill='x', padx=5, pady=5)
+        self.target_entry.on_change = lambda path: self.save_config()
         
         # 添加替换文件路径设置框架
         replace_path_frame = ttk.LabelFrame(self.frame, text="软链接文件路径替换设置", padding=(5, 5, 5, 5))
@@ -222,22 +210,31 @@ class ExportSymlinkTab(BaseTab):
         right_container = ttk.Frame(replace_path_container)
         right_container.pack(side='left', fill='x', expand=True)
 
-        # 原路径输入框 - 放在左侧容器
+        # 原路径输入框 - 放在左侧容器（带历史记录）
         ttk.Label(left_container, text="原路径:").pack(side='left', padx=(0, 5))
-        self.original_path_entry = ttk.Entry(left_container)  # 移除固定宽度
+        self.original_path_entry = HistoryEntry(
+            left_container, 
+            self.config, 
+            'export_symlink', 
+            'original_path',
+            label_text=None
+        )
         self.original_path_entry.pack(side='left', fill='x', expand=True)
+        self.original_path_entry.on_change = lambda path: self.save_config()
         
-        # 替换路径输入框 - 放在右侧容器
+        # 替换路径输入框 - 放在右侧容器（带历史记录）
         ttk.Label(right_container, text="替换路径:").pack(side='left', padx=(0, 5))
-        self.replace_path_entry = ttk.Entry(right_container)  # 移除固定宽度
+        self.replace_path_entry = HistoryEntry(
+            right_container, 
+            self.config, 
+            'export_symlink', 
+            'replace_path',
+            label_text=None
+        )
         self.replace_path_entry.pack(side='left', fill='x', expand=True)
+        self.replace_path_entry.on_change = lambda path: self.save_config()
 
-        # 绑定输入框的FocusOut事件来保存配置
-        self.original_path_entry.bind('<FocusOut>', lambda e: self.save_config())
-        self.replace_path_entry.bind('<FocusOut>', lambda e: self.save_config())
 
-        # 验证目标文件夹
-        self.target_entry.bind('<FocusOut>', lambda e: self.validate_and_save_target())
         
         # 创建同步设置框架
         sync_settings_frame = ttk.LabelFrame(self.frame, text="同步设置", padding=(5, 5, 5, 5))
@@ -321,19 +318,8 @@ class ExportSymlinkTab(BaseTab):
         self.logger.info("导出软链接标签页初始化完成")
         
     def on_target_drop(self, event):
-        """处理目标文件夹拖放事件"""
-        data = event.data
-        if data:
-            paths = self.scan_string(data)
-            if paths:
-                path = paths[0].strip()  # 只取第一个路径
-                if os.path.exists(path) and os.path.isdir(path):
-                    self.target_entry.delete(0, tk.END)
-                    self.target_entry.insert(0, path)
-                    self.logger.info(f"已设置目标文件夹: {path}")
-                    self.save_config()
-                else:
-                    self.logger.warning("无效的目标文件夹路径")
+        """处理目标文件夹拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
 
     def validate_and_save_target(self):
         """验证并保存目标文件夹路径"""

@@ -5,6 +5,7 @@ import os
 from .base_tab import BaseTab
 from utils.logger import setup_logger
 from utils.config import Config
+from utils.history_entry import HistoryEntry
 from autosync.TreeMirror import TreeMirror
 
 class Mirror115TreeTab(BaseTab):
@@ -79,54 +80,29 @@ class Mirror115TreeTab(BaseTab):
         desc_label = ttk.Label(self.frame, text="使用说明: 选择或拖拽115导出的目录树文件到输入框即可创建目录树镜像")
         desc_label.pack(fill='x', padx=5, pady=5)
         
-        # 目录树文件选择
-        tree_frame = ttk.LabelFrame(self.frame, text="115目录树文件", padding=(5, 5, 5, 5))
-        tree_frame.pack(fill='x', padx=5, pady=5)
+        # 目录树文件选择（带历史记录）
+        self.tree_file_entry = HistoryEntry(
+            self.frame, 
+            self.config, 
+            'mirror_115_tree', 
+            'tree_file',
+            label_text="115目录树文件",
+            is_file=True,
+            file_types=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+        )
+        self.tree_file_entry.pack(fill='x', padx=5, pady=5)
+        self.tree_file_entry.on_change = lambda path: self.save_config()
         
-        self.tree_file_entry = ttk.Entry(tree_frame)
-        self.tree_file_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
-        
-        # 启用拖放功能
-        self.tree_file_entry.drop_target_register(DND_FILES)
-        self.tree_file_entry.dnd_bind('<<Drop>>', lambda e: self.on_tree_file_drop(e))
-        
-        def browse_tree_file():
-            file_path = filedialog.askopenfilename(
-                title="选择115目录树文件",
-                filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
-            )
-            if file_path:
-                if not file_path and file_path != '':
-                    file_path = os.path.normpath(file_path)
-                self.tree_file_entry.delete(0, tk.END)
-                self.tree_file_entry.insert(0, file_path)
-                self.logger.info(f"已选择115目录树文件: {file_path}")
-                self.save_config()
-        
-        tree_browse = ttk.Button(tree_frame, text="浏览", command=browse_tree_file)
-        tree_browse.pack(side='right', padx=5)
-        
-        # 导出镜像文件夹选择
-        export_frame = ttk.LabelFrame(self.frame, text="导出镜像文件夹", padding=(5, 5, 5, 5))
-        export_frame.pack(fill='x', padx=5, pady=5)
-        
-        self.export_folder_entry = ttk.Entry(export_frame)
-        self.export_folder_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
-        
-        # 启用拖放功能
-        self.export_folder_entry.drop_target_register(DND_FILES)
-        self.export_folder_entry.dnd_bind('<<Drop>>', lambda e: self.on_export_folder_drop(e))
-        
-        def browse_export():
-            folder = filedialog.askdirectory(title="选择导出镜像文件夹")
-            if folder:
-                self.export_folder_entry.delete(0, tk.END)
-                self.export_folder_entry.insert(0, folder)
-                self.logger.info(f"已选择导出镜像文件夹: {folder}")
-                self.save_config()
-        
-        export_browse = ttk.Button(export_frame, text="浏览", command=browse_export)
-        export_browse.pack(side='right', padx=5)
+        # 导出镜像文件夹选择（带历史记录）
+        self.export_folder_entry = HistoryEntry(
+            self.frame, 
+            self.config, 
+            'mirror_115_tree', 
+            'export_folder',
+            label_text="导出镜像文件夹"
+        )
+        self.export_folder_entry.pack(fill='x', padx=5, pady=5)
+        self.export_folder_entry.on_change = lambda path: self.save_config()
 
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
@@ -173,40 +149,16 @@ class Mirror115TreeTab(BaseTab):
         self.logger = setup_logger('mirror_115_tree', self.log_text, log_file)
         
     def on_tree_file_drop(self, event):
-        """处理目录树文件拖放事件"""
-        data = event.data
-        if data:
-            paths = self.scan_string(data)
-            if paths:
-                path = paths[0].strip()  # 只取第一个路径
-                if os.path.exists(path) and os.path.isfile(path):
-                    self.tree_file_entry.delete(0, tk.END)
-                    self.tree_file_entry.insert(0, path)
-                    self.logger.info(f"已设置115目录树文件: {path}")
-                    self.save_config()
-                else:
-                    self.logger.warning("无效的文件路径")
+        """处理目录树文件拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
 
     def on_export_folder_drop(self, event):
-        """处理导出文件夹拖放事件"""
-        data = event.data
-        if data:
-            paths = self.scan_string(data)
-            if paths:
-                path = paths[0].strip()  # 只取第一个路径
-                if os.path.exists(path) and os.path.isdir(path):
-                    self.export_folder_entry.delete(0, tk.END)
-                    self.export_folder_entry.insert(0, path)
-                    self.logger.info(f"已设置导出镜像文件夹: {path}")
-                    self.save_config()
-                else:
-                    self.logger.warning("无效的文件夹路径")
+        """处理导出文件夹拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
 
     def validate_and_save_target(self):
-        """验证并保存目标文件路径"""
-        path = self.target_entry.get().strip()
-        if self.validate_target_folder(path):
-            self.save_config()
+        """验证并保存目标文件路径（HistoryEntry自动保存）"""
+        pass
 
     def on_fix_garbled_change(self):
         """处理修复乱码设置变化"""
