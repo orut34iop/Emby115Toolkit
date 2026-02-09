@@ -8,6 +8,8 @@ watchdog>=2.1.9   # 文件系统事件监控
 
 # 工具库
 tqdm>=4.65.0      # 进度条
+pyyaml>=6.0       # YAML配置文件解析
+requests>=2.32.0  # HTTP请求
 
-# 新增依赖
+# 打包依赖
 pyinstaller
