@@ -71,22 +71,27 @@ class MergeFilesTab(BaseTab):
     def save_config(self):
         # 更新配置
         scrap_folder = self.scrap_entry.get().strip()
-        scrap_folder = os.path.normpath(scrap_folder) # 规范化路径
+        if scrap_folder and scrap_folder != '':
+            scrap_folder = os.path.normpath(scrap_folder) # 规范化路径
         self.config.set('merge_file', 'scrap_folder', scrap_folder)
         # 更新配置
         target_folder = self.target_entry.get().strip()
-        target_folder = os.path.normpath(target_folder) # 规范化路径
+        if target_folder and target_folder != '':
+            target_folder = os.path.normpath(target_folder) # 规范化路径
         self.config.set('merge_file', 'target_folder', target_folder)
         self.config.save()
     
     def load_config(self):
         scrap_folder = self.config.get('merge_file', 'scrap_folder', default='')
-        if not scrap_folder and scrap_folder != '':
+        if scrap_folder and scrap_folder != '':
             scrap_folder = os.path.normpath(scrap_folder)
         target_folder = self.config.get('merge_file', 'target_folder', default='')
-        if not target_folder and target_folder != '':
+        if target_folder and target_folder != '':
             target_folder = os.path.normpath(target_folder)
+        # 先清空再设置值，避免插入到现有内容前面
+        self.scrap_entry.delete(0, tk.END)
         self.scrap_entry.insert(0, scrap_folder)
+        self.target_entry.delete(0, tk.END)
         self.target_entry.insert(0, target_folder)
     
     def merge_file(self):

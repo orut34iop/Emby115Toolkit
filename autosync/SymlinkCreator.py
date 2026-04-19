@@ -43,8 +43,9 @@ class SymlinkCreator:
         self.file_queue = queue.Queue()
         self.enable_replace_path = enable_replace_path
         self.original_path = original_path
-        self.replace_path = replace_path       
+        self.replace_path = replace_path
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
+        self._counter_lock = threading.Lock()  # 线程锁保护计数器
 
     def create_symlink(self, src, dst, thread_name):
         if self.enable_replace_path:
@@ -59,12 +60,14 @@ class SymlinkCreator:
                      
         try:
             if os.path.exists(dst):
-                self.existing_links += 1
+                with self._counter_lock:
+                    self.existing_links += 1
                 self.logger.info(f"线程 {thread_name}: {self.symlink_name}已存在，跳过:{dst}")
                 return
             os.symlink(src, dst)
 
-            self.created_links += 1
+            with self._counter_lock:
+                self.created_links += 1
             self.logger.info(f"线程 {thread_name}: 创建软链接文件 {dst} --指向--> {src}")
         except Exception as e:
             self.logger.error(f"{self.symlink_name}创建出错:{e}")
@@ -107,7 +110,8 @@ class SymlinkCreator:
             )
             if os.path.exists(strm_path):
                 if self.check_strm(strm_path):
-                    self.existing_links += 1
+                    with self._counter_lock:
+                        self.existing_links += 1
                     return
                 else:
                     os.remove(strm_path)
@@ -132,7 +136,8 @@ class SymlinkCreator:
             # 写入.strm文件
             with open(strm_path, "w") as f:
                 f.write(target_file)
-            self.created_links += 1
+            with self._counter_lock:
+                self.created_links += 1
             self.logger.info(f"线程 {thread_name}::: {source_file} => {strm_path}")
         except Exception as e:
             self.logger.error(f"创建strm文件失败:{source_file}")

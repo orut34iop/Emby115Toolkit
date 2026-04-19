@@ -19,10 +19,9 @@ class TextHandler(logging.Handler):
         self.text_widget.tag_config('CRITICAL', foreground='red', underline=1)
 
         self.max_batch_size = max_batch_size
-        
+
         # 使用队列来确保线程安全
         self.queue = queue.Queue()
-        self.max_batch_size = max_batch_size
         
         # 定期检查队列并批量更新GUI
         self.text_widget.after(100, self._poll_queue)

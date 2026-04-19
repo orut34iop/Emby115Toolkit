@@ -23,7 +23,7 @@ class CheckDuplicateTab(BaseTab):
             # 加载目标文件夹
             if 'target_folder' in config:
                 target_folder = config['target_folder']
-                if not target_folder and target_folder != '':
+                if target_folder and target_folder != '':
                     target_folder = os.path.normpath(target_folder)
                 self.target_entry.delete(0, tk.END)
                 self.target_entry.insert(0, target_folder)
@@ -54,7 +54,7 @@ class CheckDuplicateTab(BaseTab):
         """保存当前设置到配置文件"""
         # 更新配置
         target_folder = self.target_entry.get().strip()
-        if not target_folder and target_folder != '':
+        if target_folder and target_folder != '':
             target_folder = os.path.normpath(target_folder) # 规范化路径
         self.config.set('check_duplicate', 'target_folder', target_folder)
         self.config.set('check_duplicate', 'emby_url', self.emby_url_entry.get().strip())

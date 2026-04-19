@@ -27,17 +27,20 @@ class MetadataCopyer:
         self.file_queue = queue.Queue()
         self.only_tvshow_nfo = only_tvshow_nfo
         self.logger = logger or logging.getLogger(__name__)
+        self._counter_lock = threading.Lock()  # 线程锁保护计数器
 
     def copy_metadata(self, source, target_file, thread_name):
         try:
             if os.path.exists(target_file):
                 self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
-                self.existing_links += 1
+                with self._counter_lock:
+                    self.existing_links += 1
             else:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
                 self.logger.info(f"线程 {thread_name}: {source} 到 {target_file}")
-                self.copied_metadatas += 1
+                with self._counter_lock:
+                    self.copied_metadatas += 1
         except Exception as e:
             self.logger.error(f"元数据复制出错:{e}")
 
@@ -58,10 +61,19 @@ class MetadataCopyer:
 
     def get_source_files(self):
         """遍历所有源文件夹获取符合条件的文件"""
-        def scan_directory(directory,root_directory=None):
+        visited_dirs = set()  # 用于检测循环符号链接
+
+        def scan_directory(directory, root_directory=None):
             if root_directory is None:
                 self.logger.error("scan_directory root_directory 值未设置")
                 return iter([])
+
+            # 获取目录的绝对路径和真实路径（用于检测符号链接）
+            real_path = os.path.realpath(directory)
+            if real_path in visited_dirs:
+                self.logger.warning(f"检测到循环符号链接或重复目录，跳过: {directory}")
+                return iter([])
+            visited_dirs.add(real_path)
 
             self.logger.info(f"开始扫描文件夹: {directory}")
 
@@ -73,11 +85,11 @@ class MetadataCopyer:
                     for entry in it:
                         if entry.is_file():
                             files.append(entry)
-                        elif entry.is_dir():
+                        elif entry.is_dir(follow_symlinks=False):  # 不跟随符号链接
                             directories.append(entry)
             except OSError as e:
                 self.logger.error(f"访问目录时发生错误: {e}")
-            
+
             # 先处理文件
             for file_entry in files:
                 if self.only_tvshow_nfo and (file_entry.name.lower() == "tvshow.nfo"):
@@ -96,6 +108,7 @@ class MetadataCopyer:
                 continue
 
             self.logger.info(f"扫描源文件夹: {source_folder}")
+            visited_dirs.clear()  # 每个源文件夹清空visited集合
             root_directory = source_folder
             yield from scan_directory(source_folder, root_directory)
 

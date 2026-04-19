@@ -39,7 +39,7 @@ class TreeMirror:
         Raises:
             UnicodeDecodeError: 当所有编码都无法正确读取文件时
         """
-        encodings = ['utf-8', 'gbk', 'ansi', 'mbcs', 'gb2312','utf-16']
+        encodings = ['utf-8', 'gbk', 'cp1252', 'mbcs', 'gb2312', 'utf-16']
         
         for encoding in encodings:
             try:
@@ -122,7 +122,13 @@ class TreeMirror:
             next_item_level = 0
             next_item_name = None
             level, name = item
+            # 清理路径，防止路径遍历攻击
             name = re.sub(r'[\\/*?:"<>|]', "_", name)
+            name = name.strip('.')  # 移除开头的点（防止相对路径攻击）
+            # 防止路径包含..导致遍历
+            if '..' in name:
+                self.logger.warning(f'检测到路径遍历尝试，替换: {name}')
+                name = name.replace('..', '_')
             if outer_index < len(file_items) - 1:
                 next_item = file_items[outer_index + 1]
                 next_item_level, next_item_name = next_item
@@ -297,7 +303,8 @@ class TreeMirror:
                         try:
                             if self.fix_garbled:
                                 empty_file_path = self.replace_special_chars(empty_file_path)
-                            open(empty_file_path, 'a').close()
+                            with open(empty_file_path, 'a'):
+                                pass
                             pre_level = level
                             pre_item_type = 'file'
                             self.logger.info(f'{pre_level} -- {level} file :  {empty_file_path}')

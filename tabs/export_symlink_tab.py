@@ -34,7 +34,7 @@ class ExportSymlinkTab(BaseTab):
             # 加载目标文件夹
             if 'target_folder' in config:
                 target_folder = config['target_folder']
-                if not target_folder and target_folder != '':  # 空字符串也是有效路径
+                if target_folder and target_folder != '':  # 空字符串也是有效路径
                     target_folder = os.path.normpath(target_folder)
 
                 self.target_entry.delete(0, tk.END)
@@ -86,22 +86,31 @@ class ExportSymlinkTab(BaseTab):
         # 获取链接文件夹列表
         link_folders = [
             os.path.normpath(source_path.strip()) # 规范化路径
-            for source_path in self.link_text.get('1.0', tk.END).strip().split('\n') 
+            for source_path in self.link_text.get('1.0', tk.END).strip().split('\n')
             if source_path.strip()
         ]
-        
+
         # 获取后缀列表
         link_suffixes = [suffix.strip() for suffix in self.link_suffix_entry.get().split(';') if suffix.strip()]
         meta_suffixes = [suffix.strip() for suffix in self.meta_suffix_entry.get().split(';') if suffix.strip()]
-        
+
         # 更新配置
         self.config.set('export_symlink', 'link_folders', link_folders)
         target_folder = self.target_entry.get().strip()
-        if not target_folder and target_folder != '':
+        if target_folder and target_folder != '':
             target_folder = os.path.normpath(target_folder) # 规范化路径
 
         self.config.set('export_symlink', 'target_folder', target_folder)
-        self.config.set('export_symlink', 'thread_count', int(self.thread_spinbox.get()))
+        try:
+            thread_count = int(self.thread_spinbox.get())
+            if thread_count < 1:
+                thread_count = 1
+            elif thread_count > 16:
+                thread_count = 16
+        except ValueError:
+            thread_count = 4
+            self.logger.warning("线程数输入无效，使用默认值4")
+        self.config.set('export_symlink', 'thread_count', thread_count)
         self.config.set('export_symlink', 'link_suffixes', link_suffixes)
         self.config.set('export_symlink', 'meta_suffixes', meta_suffixes)
         self.config.set('export_symlink', 'only_tvshow_nfo', bool(self.only_tvshow_nfo_var.get()))

@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-from ttkthemes import ThemedTk
 from tkinterdnd2 import TkinterDnD
 import os
 import sys
