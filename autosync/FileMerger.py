@@ -1,4 +1,5 @@
 import os
+import os
 import time
 import threading
 import logging
@@ -7,161 +8,198 @@ from utils.logger import setup_logger
 from utils.listdir import list_files
 
 class FileMerger:
-    def __init__(self, metadata_folder_path: str, video_folder_path: str, logger=None):
+    """
+    文件合并器 - 将刮削文件夹中的元数据文件合并到视频文件夹中
+    """
+    def __init__(self, scrap_folder: str, target_folder: str, thread_count=4, logger=None):
         """
         初始化FileMerger类
-        :param metadata_folder_path: 包含nfo文件夹路径
-        :param video_folder_path: 包含视频文件夹路径
+        :param scrap_folder: 刮削文件夹路径（包含nfo等元数据文件）
+        :param target_folder: 视频文件夹路径
+        :param thread_count: 线程数（默认4）
+        :param logger: 日志记录器
         """
-        self.metadata_folder_path = metadata_folder_path
-        self.video_folder_path = video_folder_path
-        self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
+        self.scrap_folder = scrap_folder
+        self.target_folder = target_folder
+        self.thread_count = thread_count
+        self.logger = logger or logging.getLogger(__name__)
         
-        # 验证文件存在
-        if not os.path.exists(metadata_folder_path):
-            raise FileNotFoundError(f"文件不存在: {metadata_folder_path}")
-        if not os.path.exists(video_folder_path):
-            raise FileNotFoundError(f"文件不存在: {video_folder_path}")
+        # 计数器
+        self.total_files = 0
+        self.processed_files = 0
+        self.success_count = 0
+        self.error_count = 0
+        
+        # 停止标志
+        self.stop_flag = threading.Event()
+        
+        # 验证文件夹存在
+        if not os.path.exists(scrap_folder):
+            raise FileNotFoundError(f"文件夹不存在: {scrap_folder}")
+        if not os.path.exists(target_folder):
+            raise FileNotFoundError(f"文件夹不存在: {target_folder}")
 
-    
+    def scan(self, folder_path: str) -> list:
+        """
+        扫描文件夹，返回文件列表
+        :param folder_path: 要扫描的文件夹路径
+        :return: 文件列表，每个元素是包含 name 和 path 的字典
+        """
+        result = []
+        if not os.path.exists(folder_path):
+            return result
+            
+        for root, dirs, files in os.walk(folder_path):
+            for filename in files:
+                file_path = os.path.join(root, filename)
+                rel_path = os.path.relpath(file_path, folder_path)
+                result.append({
+                    'name': filename,
+                    'path': file_path,
+                    'rel_path': rel_path,
+                    'stem': os.path.splitext(filename)[0]
+                })
+        return result
+
+    def match(self, scrap_files: list, target_files: list) -> list:
+        """
+        匹配刮削文件和目标视频文件
+        :param scrap_files: 刮削文件夹中的文件列表
+        :param target_files: 目标文件夹中的文件列表
+        :return: 匹配结果列表，每个元素是 (scrap_file, target_file) 元组
+        """
+        matches = []
+        
+        # 获取目标文件夹中的视频文件stem集合
+        video_stems = set()
+        for target_file in target_files:
+            ext = os.path.splitext(target_file['name'])[1].lower()
+            if ext in ['.mp4', '.mkv', '.avi', '.ts', '.iso', '.rmvb', '.wmv', 
+                       '.m2ts', '.mpg', '.flv', '.mov', '.vob', '.webm', 
+                       '.divx', '.3gp', '.rm', '.m4v']:
+                video_stems.add(target_file['stem'])
+        
+        # 为每个刮削文件查找匹配的视频文件
+        for scrap_file in scrap_files:
+            scrap_stem = scrap_file['stem']
+            if scrap_stem in video_stems:
+                # 找到匹配的视频文件
+                for target_file in target_files:
+                    if target_file['stem'] == scrap_stem:
+                        matches.append((scrap_file, target_file))
+                        break
+        
+        return matches
+
+    def merge(self, matches: list) -> None:
+        """
+        执行文件合并（移动刮削文件到目标文件夹）
+        :param matches: 匹配结果列表
+        """
+        for scrap_file, target_file in matches:
+            if self.stop_flag.is_set():
+                self.logger.info("合并操作已停止")
+                return
+            
+            # 计算目标路径（保持相对目录结构）
+            target_dir = os.path.dirname(target_file['path'])
+            dest_path = os.path.join(target_dir, scrap_file['name'])
+            
+            # 如果目标文件已存在，跳过
+            if os.path.exists(dest_path):
+                self.logger.warning(f"目标文件已存在，跳过: {dest_path}")
+                self.processed_files += 1
+                continue
+            
+            try:
+                # 移动文件
+                shutil.move(scrap_file['path'], dest_path)
+                self.logger.info(f"已移动: {scrap_file['path']} -> {dest_path}")
+                self.success_count += 1
+                self.processed_files += 1
+            except Exception as e:
+                self.logger.error(f"移动文件失败: {str(e)}")
+                self.error_count += 1
+                self.processed_files += 1
+
+    def run(self, callback=None):
+        """
+        运行完整的合并流程
+        :param callback: 回调函数，接收消息字符串
+        """
+        def send_message(msg):
+            self.logger.info(msg)
+            if callback:
+                callback(msg)
+        
+        if self.stop_flag.is_set():
+            send_message("操作已停止")
+            return
+        
+        send_message(f"开始扫描刮削文件夹: {self.scrap_folder}")
+        scrap_files = self.scan(self.scrap_folder)
+        
+        send_message(f"开始扫描目标文件夹: {self.target_folder}")
+        target_files = self.scan(self.target_folder)
+        
+        self.total_files = len(scrap_files)
+        send_message(f"发现 {len(scrap_files)} 个刮削文件, {len(target_files)} 个目标文件")
+        
+        if self.stop_flag.is_set():
+            send_message("操作已停止")
+            return
+        
+        send_message("开始匹配文件...")
+        matches = self.match(scrap_files, target_files)
+        send_message(f"找到 {len(matches)} 个匹配")
+        
+        if self.stop_flag.is_set():
+            send_message("操作已停止")
+            return
+        
+        send_message("开始合并文件...")
+        self.merge(matches)
+        
+        send_message(f"合并完成: 成功 {self.success_count}, 失败 {self.error_count}, 总计 {self.processed_files}")
+
+    # 兼容旧接口
     def find_matching_video(self, nfo_path: str) -> str:
         """
-        查找与nfo文件匹配的视频文件
-        :param nfo_path: nfo文件的绝对路径
-        :return: 匹配的视频文件路径，如果没找到返回空字符串
+        查找与nfo文件匹配的视频文件（兼容旧接口）
         """
-        # 获取不带后缀的文件名
         nfo_name = os.path.splitext(os.path.basename(nfo_path))[0]
         
-        # 在视频文件列表中查找匹配的文件
-        for video_path in self.video_files:
-            video_name = os.path.splitext(os.path.basename(video_path))[0]
-            video_ext = os.path.splitext(video_path)[1].lower()
-
-            # 检查文件名是否匹配且扩展名是.mkv或.ts
+        # 扫描目标文件夹获取视频文件
+        target_files = self.scan(self.target_folder)
+        for file_info in target_files:
+            video_name = os.path.splitext(file_info['name'])[0]
+            video_ext = os.path.splitext(file_info['name'])[1].lower()
             if video_name == nfo_name and video_ext in ['.mkv', '.ts', '.iso', '.mp4', '.avi', '.rmvb', '.wmv', '.m2ts', '.mpg', '.flv', '.mov', '.vob', '.webm', '.divx', '.3gp', '.rm', '.m4v']:
-                return video_path
-                
+                return file_info['path']
         return ""
 
     def move_video_file(self, video_path: str, nfo_path: str) -> bool:
         """
-        将视频文件移动到nfo文件所在目录
-        :param video_path: 视频文件路径
-        :param nfo_path: nfo文件路径
-        :return: 是否移动成功
+        将视频文件移动到nfo文件所在目录（兼容旧接口）
         """
         try:
-            # 获取目标目录（nfo文件所在目录）
             target_dir = os.path.dirname(nfo_path)
-            # 构建目标文件路径
             target_path = os.path.join(target_dir, os.path.basename(video_path))
             
-            # 检查源文件是否存在
             if not os.path.exists(video_path):
                 self.logger.error(f"源视频文件不存在: {video_path}")
                 return False
-                
-            # 检查目标目录是否存在
+            
             if not os.path.exists(target_dir):
                 self.logger.error(f"目标目录不存在: {target_dir}")
                 return False
             
-            # 检查目标文件是否已存在
             if os.path.exists(target_path):
                 self.logger.warning(f"目标文件已存在，将被覆盖: {target_path}")
-                
-            # 移动文件
+            
             shutil.move(video_path, target_path)
             self.logger.info(f"已移动视频文件到: {target_path}")
             return True
-            
         except Exception as e:
             self.logger.error(f"移动文件时出错: {str(e)}")
             return False
-    
-    def run(self):
-        """
-        运行同步处理,返回处理时间和消息
-        """
-        result = {'total_time': 0, 'message': ''}
-        
-        def run_in_thread():
-            self.logger.info("开始处理文件匹配...")
-            match_count = 0
-            move_count = 0
-            start_time = time.time()
-
-            try:
-                
-                # 遍历文件夹并保存刮削文件夹里的元文件列表
-                self.logger.info(f"开始扫描{self.metadata_folder_path}文件夹...")
-                file_count, metadata_file_output_path = list_files(self.metadata_folder_path, logger=self.logger)
-                self.logger.info(f"共发现 {file_count} 个文件")
-                if file_count == 0:
-                    message = f"元数据文件夹为空: {self.metadata_folder_path}"
-                    return
-                if metadata_file_output_path:
-                    self.logger.info(f"元文件列表已保存到: {metadata_file_output_path}")
-                
-                # 遍历文件夹并保存文件列表
-                self.logger.info(f"开始扫描{self.video_folder_path}文件夹...")
-                file_count, video_files_output_path = list_files(self.video_folder_path, logger=self.logger)
-                self.logger.info(f"共发现 {file_count} 个文件")
-                if file_count == 0:
-                    message = f"视频文件夹为空: {self.video_folder_path}"
-                    return
-                if video_files_output_path:
-                    self.logger.info(f"视频文件列表已保存到: {video_files_output_path}")
-
-                # 读取视频文件列表
-                with open(video_files_output_path, 'r', encoding='utf-8') as f:
-                    self.video_files = f.readlines()
-                # 去除每行末尾的换行符
-                self.video_files = [line.strip() for line in self.video_files]
-                
-                logging.info(f"已加载视频文件列表，共 {len(self.video_files)} 个文件")
-
-                # 读取元文件列表
-                with open(metadata_file_output_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        file_path = line.strip()
-                        
-                        # 检查是否是nfo文件
-                        if file_path.lower().endswith('.nfo'):
-
-                            if os.path.basename(file_path).lower() == "tvshow.nfo".lower():
-                                continue
-
-                            # 查找匹配的视频文件
-                            matching_video = self.find_matching_video(file_path)
-                            
-                            if matching_video:
-                                match_count += 1
-                                self.logger.info(f"找到匹配:")
-                                self.logger.info(f"  NFO: {file_path}")
-                                self.logger.info(f"  视频: {matching_video}")
-                                
-                                # 移动视频文件
-                                if self.move_video_file(matching_video, file_path):
-                                    move_count += 1
-                                logging.info("-" * 50)
-                                
-                            else:
-                                self.logger.error(f"没有找到匹配的视频文件: {file_path}")
-                
-                message = f"处理完成，共找到 {match_count} 个匹配，成功移动 {move_count} 个文件"
-                
-            except Exception as e:
-                self.logger.error(f"处理过程出错: {str(e)}")
-                message = f"处理过程出错: {str(e)}"
-
-            finally:
-                end_time = time.time()
-                total_time = end_time - start_time
-                self.logger.info(message)
-                self.logger.info('合并文件结束')
-                return
-
-        thread = threading.Thread(target=run_in_thread)
-        thread.start()

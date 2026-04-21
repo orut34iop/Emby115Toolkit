@@ -1,4 +1,5 @@
 import os
+import os
 import threading
 import time
 import queue
@@ -18,10 +19,15 @@ from pathlib import Path
 # 定义视频文件扩展名
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm', '.m4v', '.m2ts', '.webm', '.3gp', '.vob', '.divx', '.f4v', '.ogv', '.mxf', '.asf', '.mts'}
 class EmbyOperator:
-    def __init__(self, server_url=None, api_key=None, user_name=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
-        self.server_url = server_url
-        self.api_key = api_key
-        self.user_name = user_name
+    def __init__(self, server_url=None, api_key=None, user_name=None, emby_url=None, emby_api=None, emby_username=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
+        # 兼容两种参数风格
+        self.server_url = emby_url or server_url
+        self.api_key = emby_api or api_key
+        self.user_name = emby_username or user_name
+        # 为测试兼容性添加别名
+        self.emby_url = self.server_url
+        self.emby_api = self.api_key
+        self.emby_username = self.user_name
         self.user_id = None
         self.delete_nfo = delete_nfo
         self.delete_nfo_folder = delete_nfo_folder
@@ -161,6 +167,8 @@ class EmbyOperator:
                 query_tmdbid = tmdbid_element.text.strip()
                 #self.logger.info(f"在 '{nfo_path}' 中找到 tmdbid: {query_tmdbid}")
                 return query_tmdbid, False
+            else:
+                return None, False
 
         except ET.ParseError as e:
             self.logger.error(f"解析错误: 无法解析文件 '{nfo_path}'，错误信息: {e}")
@@ -2389,13 +2397,13 @@ class EmbyOperator:
             video_files = [f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS]
             
             for video_file in video_files:      
-                if not os.path.isfile(video_file):
+                video_full_path = os.path.join(root, video_file)
+                if not os.path.isfile(video_full_path):
                     continue
                 results['total_videos'] += 1
                 base_name, _ = os.path.splitext(video_file)
                 nfo_file = base_name + '.nfo'
                 
-                video_full_path = os.path.join(root, video_file)
                 nfo_full_path = os.path.join(root, nfo_file)
                 
                 if not os.path.exists(nfo_full_path):

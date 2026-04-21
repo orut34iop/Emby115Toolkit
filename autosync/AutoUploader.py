@@ -2,14 +2,19 @@ import os
 import time
 import yaml
 from utils.shentools import *
-from create_config import create_config
-from metadata_copyer import MetadataCopyer
+from autosync.MetadataCopyer import MetadataCopyer
+
 
 working_directory = os.path.dirname(os.path.abspath(__file__))
 os.chdir(working_directory)
 
-if not os.path.exists('./config/config_done.txt'):
-    create_config()
+try:
+    from create_config import create_config
+    if not os.path.exists('./config/config_done.txt'):
+        create_config()
+except ImportError:
+    pass
+
 
 class AutoUploader:
     def __init__(self, config_path='./config/config.yaml'):
@@ -40,7 +45,7 @@ class AutoUploader:
             print_message(f"Error: {e}")
             return 86400
 
-    def parse_extensions(self,extensions_str):
+    def parse_extensions(self, extensions_str):
         # 去掉前后的空格,并使用分号分隔
         extensions_list = extensions_str.strip().split(';')
         # 去掉空的元素
@@ -52,16 +57,16 @@ class AutoUploader:
         yaml_data = self.read_config()
         if not yaml_data:
             return
-        upload_enabled = yaml_data.get('upload_enabled',True)
+        upload_enabled = yaml_data.get('upload_enabled', True)
         if not upload_enabled:
             print_message('当前并未开启上传状态,如需开启,请至config.yaml中将upload_enabled设为true')
             return
 
-        upload_scheduled = yaml_data.get('upload_scheduled',False)
+        upload_scheduled = yaml_data.get('upload_scheduled', False)
         if upload_scheduled:
             while True:
                 # 等待指定秒数
-                upload_sync_time = self.caculate_time(yaml_data.get('upload_sync_time',False))
+                upload_sync_time = self.caculate_time(yaml_data.get('upload_sync_time', False))
                 self.run_once()
                 time.sleep(upload_sync_time)
         else:
@@ -74,18 +79,19 @@ class AutoUploader:
         yaml_data = self.read_config()
         if not yaml_data:
             return
-        upload_list = yaml_data.get('upload_list',[])
-        num_threads = yaml_data.get('num_threads',8)
-        self.metadata_ext = yaml_data.get('metadata_ext','.nfo;.jpg;.png;.svg;.ass;.srt;.sup')
+        upload_list = yaml_data.get('upload_list', [])
+        num_threads = yaml_data.get('num_threads', 8)
+        self.metadata_ext = yaml_data.get('metadata_ext', '.nfo;.jpg;.png;.svg;.ass;.srt;.sup')
         for dir_dict in upload_list:
             source_dir = dir_dict.get('source_dir')
             target_dir = dir_dict.get('target_dir')
-            upload_enabled = dir_dict.get('upload_enabled',False)
-            metadata_ext = self.parse_extensions(dir_dict.get('metadata_ext',self.metadata_ext))
+            upload_enabled = dir_dict.get('upload_enabled', False)
+            metadata_ext = self.parse_extensions(dir_dict.get('metadata_ext', self.metadata_ext))
             if upload_enabled:
-                    metadata_copyer = MetadataCopyer(source_dir, target_dir,metadata_ext, num_threads)
-                    total_time += metadata_copyer.run()
-                    print_message(f'上传完成,共耗时{total_time:.2f}秒.')
+                metadata_copyer = MetadataCopyer(source_dir, target_dir, metadata_ext, num_threads)
+                total_time += metadata_copyer.run()
+                print_message(f'上传完成,共耗时{total_time:.2f}秒.')
+
 
 if __name__ == '__main__':
     auto_uploader = AutoUploader()
