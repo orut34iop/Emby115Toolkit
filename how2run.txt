@@ -1,5 +1,18 @@
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv venv
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install -r requirements.txt
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install PyYAML
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install requests
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv run python .\main.py
+# 使用 uv 虚拟环境运行（推荐）
+
+## 1. 创建虚拟环境（首次）
+uv venv
+
+## 2. 安装依赖
+uv pip install -r requirements.txt
+
+## 3. 运行 tkinter 版本（Windows）
+uv run python main.py
+
+## 4. 或运行 PyQt5 版本（macOS）
+uv run python qt_main.py
+
+# ---
+# 旧方式（pip 全局安装）
+# pip install -r requirements.txt
+# python main.py
