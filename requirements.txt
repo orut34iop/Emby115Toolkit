@@ -13,3 +13,9 @@ requests>=2.32.0  # HTTP请求
 
 # 打包依赖
 pyinstaller
+
+# 测试依赖
+pytest>=8.0.0
+pytest-mock>=3.14.0
+responses>=0.25.0
+freezegun>=1.5.0
