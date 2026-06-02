@@ -8,11 +8,19 @@ from typing import Any
 
 from emby115_v2 import windows_admin
 from emby115_v2.app import run_context
+from emby115_v2.config_store import default_config_path, load_metadata_config, save_metadata_config
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
 
 
 SYMLINK_ACTIONS = {"build_symlink_workspace", "scan_and_link"}
+V2_ACTIONS = [
+    "build_symlink_workspace",
+    "scan_and_link",
+    "test_tmdb_config",
+    "test_llm_config",
+    "scrape_metadata",
+]
 
 
 def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765, exit_after_elevation: bool = True):
@@ -55,7 +63,23 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
 
     @app.get("/v1/actions", dependencies=[Depends(require_token)])
     def actions() -> dict[str, list[str]]:
-        return {"actions": ["build_symlink_workspace", "scan_and_link"]}
+        return {"actions": V2_ACTIONS}
+
+    @app.get("/v1/config/metadata", dependencies=[Depends(require_token)])
+    def get_metadata_config() -> dict[str, Any]:
+        path = default_config_path()
+        return {
+            "path": str(path),
+            "config": load_metadata_config(path),
+        }
+
+    @app.put("/v1/config/metadata", dependencies=[Depends(require_token)])
+    def put_metadata_config(payload: dict[str, Any]) -> dict[str, str]:
+        config = payload.get("config", payload)
+        if not isinstance(config, dict):
+            raise HTTPException(status_code=400, detail="配置必须是 JSON object")
+        path = save_metadata_config(config, default_config_path())
+        return {"status": "saved", "path": str(path)}
 
     @app.get("/v1/admin/status", dependencies=[Depends(require_token)])
     def admin_status() -> dict[str, bool]:

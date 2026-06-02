@@ -102,6 +102,32 @@ p {
   margin-bottom: 14px;
 }
 
+.section-title.compact {
+  margin-bottom: 10px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.subsection {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-band {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  padding: 12px;
+  background: #fbfcfe;
+}
+
 form {
   display: grid;
   gap: 14px;
@@ -123,7 +149,8 @@ label {
   font-size: 13px;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 34px;
   border: 1px solid var(--line);
@@ -132,6 +159,18 @@ input {
   color: var(--text);
   font: inherit;
   background: #ffffff;
+}
+
+fieldset {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+legend {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 button {
@@ -246,6 +285,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.muted-text {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .checkline {

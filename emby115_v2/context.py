@@ -89,6 +89,87 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class TmdbConfig:
+    api_key: str = ""
+    language: str = "zh-CN"
+    fallback_language: str = "en-US"
+    image_language_priority: tuple[str, ...] = ("zh-CN", "en-US", "null")
+    timeout: float = 10.0
+    rate_limit_per_second: float = 4.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "TmdbConfig":
+        if not data:
+            return cls()
+        image_languages = data.get("image_language_priority", ("zh-CN", "en-US", "null"))
+        if isinstance(image_languages, str):
+            image_languages = [item.strip() for item in image_languages.split(",") if item.strip()]
+        return cls(
+            api_key=str(data.get("api_key", "")),
+            language=str(data.get("language") or "zh-CN"),
+            fallback_language=str(data.get("fallback_language") or "en-US"),
+            image_language_priority=tuple(str(item) for item in image_languages),
+            timeout=max(1.0, float(data.get("timeout", 10.0))),
+            rate_limit_per_second=max(0.1, float(data.get("rate_limit_per_second", 4.0))),
+        )
+
+
+@dataclass(frozen=True)
+class LlmConfig:
+    enabled: bool = True
+    provider: str = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    temperature: float = 0.0
+    timeout: float = 30.0
+    max_candidates_per_decision: int = 5
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "LlmConfig":
+        if not data:
+            return cls()
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            provider=str(data.get("provider") or "openai_compatible"),
+            base_url=str(data.get("base_url", "")),
+            api_key=str(data.get("api_key", "")),
+            model=str(data.get("model", "")),
+            temperature=float(data.get("temperature", 0.0)),
+            timeout=max(1.0, float(data.get("timeout", 30.0))),
+            max_candidates_per_decision=max(1, min(int(data.get("max_candidates_per_decision", 5)), 20)),
+        )
+
+
+@dataclass(frozen=True)
+class MetadataOutputConfig:
+    media_type: str = "movies"
+    library_path: Path = Path("")
+    write_nfo: bool = True
+    download_images: bool = True
+    download_episode_thumbs: bool = True
+    download_season_posters: bool = False
+    overwrite_existing: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "MetadataOutputConfig":
+        if not data:
+            return cls()
+        media_type = str(data.get("media_type") or "movies")
+        if media_type not in {"movies", "tvshows"}:
+            media_type = "movies"
+        return cls(
+            media_type=media_type,
+            library_path=Path(str(data.get("library_path", ""))).expanduser(),
+            write_nfo=bool(data.get("write_nfo", True)),
+            download_images=bool(data.get("download_images", True)),
+            download_episode_thumbs=bool(data.get("download_episode_thumbs", True)),
+            download_season_posters=bool(data.get("download_season_posters", False)),
+            overwrite_existing=bool(data.get("overwrite_existing", False)),
+        )
+
+
+@dataclass(frozen=True)
 class AppContext:
     """Unified context object consumed by V2 core services."""
 
@@ -99,6 +180,9 @@ class AppContext:
     non_interactive: bool = False
     path_pairs: tuple[PathPair, ...] = ()
     symlink: SymlinkOptions = field(default_factory=SymlinkOptions)
+    tmdb: TmdbConfig = field(default_factory=TmdbConfig)
+    llm: LlmConfig = field(default_factory=LlmConfig)
+    metadata_output: MetadataOutputConfig = field(default_factory=MetadataOutputConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -114,6 +198,9 @@ class AppContext:
             non_interactive=bool(data.get("non_interactive", False)),
             path_pairs=path_pairs,
             symlink=SymlinkOptions.from_dict(data.get("symlink")),
+            tmdb=TmdbConfig.from_dict(data.get("tmdb")),
+            llm=LlmConfig.from_dict(data.get("llm")),
+            metadata_output=MetadataOutputConfig.from_dict(data.get("metadata_output")),
             report=ReportConfig.from_dict(data.get("report")),
             logging=LoggingConfig.from_dict(data.get("logging")),
             raw=dict(data),
@@ -127,4 +214,5 @@ class AppContext:
         ]
         result["report"]["output_dir"] = str(self.report.output_dir)
         result["logging"]["log_dir"] = str(self.logging.log_dir)
+        result["metadata_output"]["library_path"] = str(self.metadata_output.library_path)
         return result

@@ -15,7 +15,7 @@ from emby115_v2.logging_setup import setup_run_logger
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Emby115Toolkit V2 CLI")
-    parser.add_argument("--action", default="build_symlink_workspace", help="要执行的动作，例如 build_symlink_workspace")
+    parser.add_argument("--action", help="要执行的动作，例如 build_symlink_workspace")
     parser.add_argument("--config", help="JSON 配置文件路径")
     parser.add_argument("--env", help=".env 配置文件路径")
     parser.add_argument("--dry-run", action="store_true", help="只生成计划和报告，不执行写操作")
@@ -40,7 +40,9 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
     data = deep_merge(data, load_env_file(args.env))
     data = deep_merge(data, load_json_config(args.config))
 
-    cli_overrides: dict[str, Any] = {"action": args.action}
+    cli_overrides: dict[str, Any] = {}
+    if args.action:
+        cli_overrides["action"] = args.action
     if args.dry_run:
         cli_overrides["dry_run"] = True
     if args.non_interactive:
@@ -67,6 +69,7 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
         cli_overrides["path_pairs"] = path_pairs
 
     data = deep_merge(data, cli_overrides)
+    data.setdefault("action", "build_symlink_workspace")
     return AppContext.from_dict(data)
 
 
@@ -120,7 +123,7 @@ def run_cli(argv: list[str] | None = None) -> int:
                 json.dumps(
                     {
                         "run_id": context.run_id if context else "",
-                        "action": args.action,
+                        "action": args.action or "",
                         "error": str(exc),
                     },
                     ensure_ascii=False,

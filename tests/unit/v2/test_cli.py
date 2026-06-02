@@ -63,3 +63,31 @@ def test_cli_keeps_scan_and_link_alias(tmp_path, capsys):
     assert code == 0
     assert output["action"] == "scan_and_link"
     assert (report_dir / output["run_id"] / "report.json").exists()
+
+
+def test_cli_runs_scrape_metadata_dry_run_from_config(tmp_path, capsys):
+    library = tmp_path / "movies"
+    report_dir = tmp_path / "reports"
+    library.mkdir()
+    (library / "Movie.Title.2026.mkv").write_text("x", encoding="utf-8")
+    config = tmp_path / "metadata.json"
+    config.write_text(
+        json.dumps(
+            {
+                "action": "scrape_metadata",
+                "dry_run": True,
+                "metadata_output": {"media_type": "movies", "library_path": str(library)},
+                "symlink": {"video_extensions": [".mkv"]},
+                "report": {"output_dir": str(report_dir)},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    code = run_cli(["--config", str(config), "--json"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert output["action"] == "scrape_metadata"
+    assert (report_dir / output["run_id"] / "report.json").exists()

@@ -12,6 +12,9 @@ def test_webui_serves_index():
     assert response.status_code == 200
     assert "Emby115Toolkit V2" in response.text
     assert "媒体类型" in response.text
+    assert "刮削媒体元数据" in response.text
+    assert "测试 TMDB 配置" in response.text
+    assert "测试 LLM 配置" in response.text
     assert "需要管理员权限" in response.text
 
 
@@ -54,6 +57,19 @@ def test_webui_persists_form_without_access_token():
     assert "accessToken" not in saved_config_block
 
 
+def test_webui_includes_metadata_config_controls():
+    client = TestClient(create_app())
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "emby115_v2.webui.metadata.form.v1" in response.text
+    assert "test_tmdb_config" in response.text
+    assert "test_llm_config" in response.text
+    assert "scrape_metadata" in response.text
+    assert "/v1/config/metadata" in response.text
+
+
 def test_actions_require_token_when_configured():
     client = TestClient(create_app(access_token="secret"))
 
@@ -63,6 +79,27 @@ def test_actions_require_token_when_configured():
     assert unauthorized.status_code == 401
     assert authorized.status_code == 200
     assert "build_symlink_workspace" in authorized.json()["actions"]
+    assert "test_tmdb_config" in authorized.json()["actions"]
+    assert "test_llm_config" in authorized.json()["actions"]
+    assert "scrape_metadata" in authorized.json()["actions"]
+
+
+def test_metadata_config_api_loads_and_saves(tmp_path, monkeypatch):
+    config_path = tmp_path / "emby115_v2.config.json"
+    monkeypatch.setattr("emby115_v2.web.api.default_config_path", lambda: config_path)
+    client = TestClient(create_app())
+
+    loaded = client.get("/v1/config/metadata")
+    saved = client.put(
+        "/v1/config/metadata",
+        json={"config": {"tmdb": {"api_key": "abc"}, "metadata_output": {"media_type": "tvshows"}}},
+    )
+
+    assert loaded.status_code == 200
+    assert loaded.json()["config"]["tmdb"]["language"] == "zh-CN"
+    assert saved.status_code == 200
+    assert config_path.exists()
+    assert client.get("/v1/config/metadata").json()["config"]["tmdb"]["api_key"] == "abc"
 
 
 def test_run_returns_report_links_and_serves_report(tmp_path):

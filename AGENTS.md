@@ -24,6 +24,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Current state: minimal browser UI exists for `build_symlink_workspace`.
   - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
+  - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
   - Non-dry-run symlink creation on Windows must check Administrator status and route through the user-confirmed UAC restart flow when needed.
   - When WebUI triggers UAC elevation, it must preserve the pending run in browser sessionStorage, wait for the elevated WebUI to become ready, reload, and resume that same run automatically. Access tokens must not be persisted.
   - Non-localhost listening requires `--access-token`.
@@ -67,6 +68,7 @@ V2 uses a strict facade architecture:
 - `emby115_v2/workflow/` — Workflow runner and service dispatch.
 - `emby115_v2/services/` — Core services shared by WebUI and CLI.
 - `emby115_v2/reports/` — HTML/JSON report generation.
+- `emby115_v2/config_store.py` — V2-only JSON config store. The default file is `emby115_v2.config.json` in the project root during development or next to the EXE when packaged.
 
 Core services must only accept Context Objects and must not care whether the request came from WebUI, CLI, SSH, or a scheduled task.
 
@@ -77,6 +79,14 @@ Current V2 action names:
   - TV second-level folder priority is an existing source folder that contains a season marker, then a release folder derived from the episode filename, then `Season NN`.
   - It must preserve original video filenames and mark uncertain items for manual review instead of inventing missing metadata.
 - `scan_and_link` — Backward-compatible alias for `build_symlink_workspace`.
+- `test_tmdb_config` — Test TMDB connectivity and configuration through the shared service layer.
+- `test_llm_config` — Test the configured LLM provider through the shared service layer.
+- `scrape_metadata` — Metadata scraping workflow for the standardized symlink media library.
+  - First phase uses TMDB as the primary metadata provider and reserves provider abstraction for future sources.
+  - Default TMDB language is `zh-CN`; fallback language is `en-US`.
+  - Matching strategy is rules first, TMDB search second, and LLM-assisted decision only for ambiguous candidates.
+  - Dry-run may call providers and generate a full report but must not write NFO files or download images.
+  - Current implementation is a foundation skeleton: Context Object contract, WebUI/CLI action routing, config APIs, provider test skeletons, and media-library scan planning. Real TMDB matching, NFO writing, and image downloading are next-stage work.
 
 ### Legacy Dual GUI Frontends
 
@@ -121,6 +131,8 @@ Runtime configuration is stored in YAML at the project root (or next to the EXE 
 - `last_tab_index` — remembers the active tab across restarts.
 
 **Do not commit `config.yaml`** — it is gitignored because it contains user-specific paths and API keys.
+
+V2 runtime configuration uses `emby115_v2.config.json`, not `config.yaml`. It is also gitignored and may contain TMDB/LLM API keys.
 
 ### Rust Component
 

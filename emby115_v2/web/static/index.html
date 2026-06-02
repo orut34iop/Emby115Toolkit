@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260602-elevation-resume">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-metadata-foundation">
 </head>
 <body>
   <header class="topbar">
@@ -71,6 +71,137 @@
           <button type="submit" id="runButton">执行</button>
         </div>
       </form>
+
+      <div class="subsection">
+        <div class="section-title">
+          <h2>刮削媒体元数据</h2>
+          <div class="button-row">
+            <button type="button" class="secondary" id="loadMetadataConfigButton">从本地配置加载</button>
+            <button type="button" class="secondary" id="saveMetadataConfigButton">保存到本地配置</button>
+          </div>
+        </div>
+
+        <form id="metadataForm">
+          <div class="grid two">
+            <fieldset class="fieldbox">
+              <legend>媒体类型</legend>
+              <div class="media-type-group" role="radiogroup" aria-label="元数据媒体类型">
+                <label class="radio-pill">
+                  <input type="radio" name="metadataMediaType" value="movies" checked>
+                  电影
+                </label>
+                <label class="radio-pill">
+                  <input type="radio" name="metadataMediaType" value="tvshows">
+                  电视剧
+                </label>
+              </div>
+            </fieldset>
+            <label>
+              标准化媒体库目录
+              <input id="metadataLibraryPath" placeholder="C:\working-emby\movies">
+            </label>
+          </div>
+
+          <div class="grid two">
+            <section class="settings-band">
+              <div class="section-title compact">
+                <h2>TMDB</h2>
+                <button type="button" class="secondary" id="testTmdbButton">测试 TMDB 配置</button>
+              </div>
+              <label>
+                API Key
+                <input id="tmdbApiKey" type="password" autocomplete="off">
+              </label>
+              <div class="grid two">
+                <label>
+                  默认语言
+                  <input id="tmdbLanguage" value="zh-CN">
+                </label>
+                <label>
+                  备用语言
+                  <input id="tmdbFallbackLanguage" value="en-US">
+                </label>
+              </div>
+              <label>
+                图片语言优先级
+                <input id="tmdbImageLanguages" value="zh-CN,en-US,null">
+              </label>
+              <label>
+                超时秒数
+                <input id="tmdbTimeout" type="number" min="1" value="10">
+              </label>
+            </section>
+
+            <section class="settings-band">
+              <div class="section-title compact">
+                <h2>LLM</h2>
+                <button type="button" class="secondary" id="testLlmButton">测试 LLM 配置</button>
+              </div>
+              <label class="checkline">
+                <input id="llmEnabled" type="checkbox" checked>
+                启用 LLM 辅助判定
+              </label>
+              <label>
+                Provider
+                <select id="llmProvider">
+                  <option value="openai_compatible">OpenAI-compatible</option>
+                  <option value="local">本地模型</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="qwen">通义千问/Qwen</option>
+                </select>
+              </label>
+              <label>
+                Base URL
+                <input id="llmBaseUrl" placeholder="http://127.0.0.1:11434/v1">
+              </label>
+              <div class="grid two">
+                <label>
+                  API Key
+                  <input id="llmApiKey" type="password" autocomplete="off">
+                </label>
+                <label>
+                  Model
+                  <input id="llmModel" placeholder="qwen-plus">
+                </label>
+              </div>
+              <div class="grid two">
+                <label>
+                  Temperature
+                  <input id="llmTemperature" type="number" min="0" max="2" step="0.1" value="0">
+                </label>
+                <label>
+                  超时秒数
+                  <input id="llmTimeout" type="number" min="1" value="30">
+                </label>
+              </div>
+            </section>
+          </div>
+
+          <div class="grid two">
+            <label class="checkline">
+              <input id="metadataDryRun" type="checkbox" checked>
+              dry-run 调用 TMDB/LLM 生成计划，不写入 NFO 或图片
+            </label>
+            <label class="checkline">
+              <input id="metadataOverwrite" type="checkbox">
+              覆盖已有 NFO/图片
+            </label>
+            <label class="checkline">
+              <input id="metadataDownloadImages" type="checkbox" checked>
+              下载 poster/fanart
+            </label>
+            <label class="checkline">
+              <input id="metadataDownloadEpisodeThumbs" type="checkbox" checked>
+              下载单集缩略图
+            </label>
+          </div>
+
+          <div class="actions">
+            <span class="muted-text">第一轮先提供配置测试和刮削计划骨架</span>
+            <button type="submit" id="metadataRunButton">执行元数据刮削</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <aside class="run-panel">
@@ -102,6 +233,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260602-elevation-resume"></script>
+  <script src="/static/app.js?v=20260603-metadata-foundation"></script>
 </body>
 </html>

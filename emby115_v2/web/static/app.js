@@ -4,7 +4,9 @@ const DEFAULT_PAIR = {
   target: "C:\\working-emby\\movies",
 };
 const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
+const METADATA_FORM_STORAGE_KEY = "emby115_v2.webui.metadata.form.v1";
 const PENDING_ELEVATED_RUN_KEY = "emby115_v2.webui.pending_elevated_run.v1";
+const SYMLINK_ACTIONS = new Set(["build_symlink_workspace", "scan_and_link"]);
 
 const state = {
   busy: false,
@@ -14,6 +16,7 @@ const state = {
 const pathPairs = document.querySelector("#pathPairs");
 const outputLog = document.querySelector("#outputLog");
 const runButton = document.querySelector("#runButton");
+const metadataRunButton = document.querySelector("#metadataRunButton");
 const reportLinks = document.querySelector("#reportLinks");
 const elevationModal = document.querySelector("#elevationModal");
 const restartElevatedButton = document.querySelector("#restartElevatedButton");
@@ -40,7 +43,9 @@ function appendLog(message) {
 function setBusy(busy) {
   state.busy = busy;
   runButton.disabled = busy;
+  metadataRunButton.disabled = busy;
   runButton.textContent = busy ? "执行中" : "执行";
+  metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
 }
 
 function escapeAttribute(value) {
@@ -92,8 +97,92 @@ function saveFormConfig() {
   localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(currentFormConfig()));
 }
 
+function readSavedMetadataForm() {
+  try {
+    const raw = localStorage.getItem(METADATA_FORM_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function metadataConfigFromForm() {
+  return {
+    dry_run: document.querySelector("#metadataDryRun").checked,
+    tmdb: {
+      api_key: document.querySelector("#tmdbApiKey").value,
+      language: document.querySelector("#tmdbLanguage").value.trim() || "zh-CN",
+      fallback_language: document.querySelector("#tmdbFallbackLanguage").value.trim() || "en-US",
+      image_language_priority: document
+        .querySelector("#tmdbImageLanguages")
+        .value.split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      timeout: Number(document.querySelector("#tmdbTimeout").value || 10),
+      rate_limit_per_second: 4,
+    },
+    llm: {
+      enabled: document.querySelector("#llmEnabled").checked,
+      provider: document.querySelector("#llmProvider").value,
+      base_url: document.querySelector("#llmBaseUrl").value.trim(),
+      api_key: document.querySelector("#llmApiKey").value,
+      model: document.querySelector("#llmModel").value.trim(),
+      temperature: Number(document.querySelector("#llmTemperature").value || 0),
+      timeout: Number(document.querySelector("#llmTimeout").value || 30),
+      max_candidates_per_decision: 5,
+    },
+    metadata_output: {
+      media_type: document.querySelector("input[name='metadataMediaType']:checked")?.value || "movies",
+      library_path: document.querySelector("#metadataLibraryPath").value.trim(),
+      write_nfo: true,
+      download_images: document.querySelector("#metadataDownloadImages").checked,
+      download_episode_thumbs: document.querySelector("#metadataDownloadEpisodeThumbs").checked,
+      download_season_posters: false,
+      overwrite_existing: document.querySelector("#metadataOverwrite").checked,
+    },
+    report: {
+      output_dir: document.querySelector("#reportDir").value.trim() || "reports",
+    },
+    logging: {
+      log_dir: document.querySelector("#logDir").value.trim() || "logs",
+      log_level: "INFO",
+    },
+  };
+}
+
+function saveMetadataFormConfig() {
+  if (state.restoring) return;
+  localStorage.setItem(METADATA_FORM_STORAGE_KEY, JSON.stringify(metadataConfigFromForm()));
+}
+
+function applyMetadataConfig(config = {}) {
+  const tmdb = config.tmdb || {};
+  const llm = config.llm || {};
+  const output = config.metadata_output || {};
+  document.querySelector("#tmdbApiKey").value = tmdb.api_key ?? "";
+  document.querySelector("#tmdbLanguage").value = tmdb.language || "zh-CN";
+  document.querySelector("#tmdbFallbackLanguage").value = tmdb.fallback_language || "en-US";
+  document.querySelector("#tmdbImageLanguages").value = Array.isArray(tmdb.image_language_priority)
+    ? tmdb.image_language_priority.join(",")
+    : tmdb.image_language_priority || "zh-CN,en-US,null";
+  document.querySelector("#tmdbTimeout").value = tmdb.timeout || 10;
+  document.querySelector("#llmEnabled").checked = llm.enabled ?? true;
+  document.querySelector("#llmProvider").value = llm.provider || "openai_compatible";
+  document.querySelector("#llmBaseUrl").value = llm.base_url || "";
+  document.querySelector("#llmApiKey").value = llm.api_key || "";
+  document.querySelector("#llmModel").value = llm.model || "";
+  document.querySelector("#llmTemperature").value = llm.temperature ?? 0;
+  document.querySelector("#llmTimeout").value = llm.timeout || 30;
+  document.querySelector("#metadataLibraryPath").value = output.library_path || "";
+  document.querySelector(`input[name='metadataMediaType'][value='${output.media_type === "tvshows" ? "tvshows" : "movies"}']`).checked = true;
+  document.querySelector("#metadataDownloadImages").checked = output.download_images ?? true;
+  document.querySelector("#metadataDownloadEpisodeThumbs").checked = output.download_episode_thumbs ?? true;
+  document.querySelector("#metadataOverwrite").checked = output.overwrite_existing ?? false;
+}
+
 function restoreFormConfig() {
   const saved = readSavedForm();
+  const savedMetadata = readSavedMetadataForm();
   const pairs = saved?.path_pairs?.length ? saved.path_pairs : [DEFAULT_PAIR];
   state.restoring = true;
   try {
@@ -106,10 +195,13 @@ function restoreFormConfig() {
     }
     document.querySelector("#dryRun").checked = saved?.dry_run ?? true;
     pairs.forEach((pair) => addPair(pair));
+    applyMetadataConfig(savedMetadata || {});
+    document.querySelector("#metadataDryRun").checked = savedMetadata?.dry_run ?? true;
   } finally {
     state.restoring = false;
   }
   saveFormConfig();
+  saveMetadataFormConfig();
 }
 
 function addPair(pair = {}) {
@@ -251,6 +343,7 @@ function readPendingElevatedRun() {
 }
 
 async function needsElevation(payload) {
+  if (!SYMLINK_ACTIONS.has(payload.action)) return false;
   if (payload.dry_run) return false;
   const response = await fetch("/v1/admin/status", {
     headers: tokenHeaders(),
@@ -299,7 +392,7 @@ async function restartElevated() {
 async function executePayload(payload) {
   if (state.busy) return;
 
-  if (!payload.path_pairs.length) {
+  if (SYMLINK_ACTIONS.has(payload.action) && !payload.path_pairs.length) {
     appendLog("请至少填写一个有效的源目录和目标目录。");
     return;
   }
@@ -363,6 +456,68 @@ async function runWorkflow(event) {
   await executePayload(buildPayload());
 }
 
+function buildMetadataPayload(action = "scrape_metadata") {
+  return {
+    action,
+    dry_run: document.querySelector("#metadataDryRun").checked,
+    symlink: {
+      video_extensions: document
+        .querySelector("#extensions")
+        .value.split(";")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    },
+    ...metadataConfigFromForm(),
+  };
+}
+
+async function runMetadataWorkflow(event) {
+  event.preventDefault();
+  await executePayload(buildMetadataPayload("scrape_metadata"));
+}
+
+async function testMetadataProvider(action) {
+  await executePayload(buildMetadataPayload(action));
+}
+
+async function loadMetadataConfigFromServer() {
+  try {
+    const response = await fetch("/v1/config/metadata", { headers: tokenHeaders() });
+    const data = await parseJson(response);
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    state.restoring = true;
+    try {
+      applyMetadataConfig(data.config);
+      document.querySelector("#metadataDryRun").checked = true;
+    } finally {
+      state.restoring = false;
+    }
+    saveMetadataFormConfig();
+    appendLog(`已从本地配置加载: ${data.path}`);
+  } catch (error) {
+    appendLog(`加载本地配置失败: ${error.message}`);
+  }
+}
+
+async function saveMetadataConfigToServer() {
+  try {
+    const response = await fetch("/v1/config/metadata", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...tokenHeaders(),
+      },
+      body: JSON.stringify({ config: metadataConfigFromForm() }),
+    });
+    const data = await parseJson(response);
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    saveMetadataFormConfig();
+    appendLog(`已保存到本地配置: ${data.path}`);
+  } catch (error) {
+    appendLog(`保存本地配置失败: ${error.message}`);
+  }
+}
+
 async function resumePendingElevatedRun() {
   const payload = readPendingElevatedRun();
   if (!payload) return;
@@ -385,6 +540,8 @@ document.querySelector("#addPairButton").addEventListener("click", () => addPair
 
 document.querySelector("#runForm").addEventListener("input", saveFormConfig);
 document.querySelector("#runForm").addEventListener("change", saveFormConfig);
+document.querySelector("#metadataForm").addEventListener("input", saveMetadataFormConfig);
+document.querySelector("#metadataForm").addEventListener("change", saveMetadataFormConfig);
 
 document.querySelector("#clearButton").addEventListener("click", () => {
   outputLog.textContent = "";
@@ -395,6 +552,11 @@ document.querySelector("#clearButton").addEventListener("click", () => {
 });
 
 document.querySelector("#runForm").addEventListener("submit", runWorkflow);
+document.querySelector("#metadataForm").addEventListener("submit", runMetadataWorkflow);
+document.querySelector("#testTmdbButton").addEventListener("click", () => testMetadataProvider("test_tmdb_config"));
+document.querySelector("#testLlmButton").addEventListener("click", () => testMetadataProvider("test_llm_config"));
+document.querySelector("#loadMetadataConfigButton").addEventListener("click", loadMetadataConfigFromServer);
+document.querySelector("#saveMetadataConfigButton").addEventListener("click", saveMetadataConfigToServer);
 restartElevatedButton.addEventListener("click", restartElevated);
 cancelElevationButton.addEventListener("click", hideElevationPrompt);
 
