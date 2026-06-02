@@ -3,6 +3,57 @@ from emby115_v2.logging_setup import setup_run_logger
 from emby115_v2.services.metadata_service import LlmConfigTestService, MetadataScraperService, TmdbConfigTestService
 
 
+class FakeTmdbClient:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+        self.download_calls = []
+
+    def search_movie(self, query, language):
+        self.search_calls.append((query, language))
+        if language == "zh-CN":
+            return [
+                {
+                    "id": 42,
+                    "title": "一见钟情",
+                    "original_title": "Sausalito",
+                    "release_date": "2000-04-20",
+                }
+            ]
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        if language == "zh-CN":
+            return {
+                "id": tmdb_id,
+                "title": "一见钟情",
+                "original_title": "Sausalito",
+                "release_date": "2000-04-20",
+                "overview": "",
+                "runtime": 98,
+                "genres": [{"name": "爱情"}],
+                "poster_path": "/poster.jpg",
+                "backdrop_path": "/fanart.jpg",
+            }
+        return {
+            "id": tmdb_id,
+            "title": "Sausalito",
+            "original_title": "Sausalito",
+            "release_date": "2000-04-20",
+            "overview": "Fallback overview",
+            "runtime": 98,
+            "genres": [{"name": "Romance"}],
+            "poster_path": "/poster.jpg",
+            "backdrop_path": "/fanart.jpg",
+        }
+
+    def download_image(self, image_path, target_path, overwrite):
+        self.download_calls.append((image_path, target_path, overwrite))
+        target_path.write_text("image", encoding="utf-8")
+        return "downloaded"
+
+
 def test_tmdb_config_test_reports_missing_api_key(tmp_path):
     context = AppContext.from_dict(
         {
@@ -48,6 +99,7 @@ def test_metadata_scraper_dry_run_scans_library_without_writing(tmp_path):
             "action": "scrape_metadata",
             "dry_run": True,
             "metadata_output": {"media_type": "movies", "library_path": str(library)},
+            "tmdb": {"api_key": "key"},
             "symlink": {"video_extensions": [".mkv"]},
             "report": {"output_dir": str(tmp_path / "reports")},
             "logging": {"log_dir": str(tmp_path / "logs")},
@@ -55,9 +107,49 @@ def test_metadata_scraper_dry_run_scans_library_without_writing(tmp_path):
     )
     logger = setup_run_logger("test_metadata_scraper", context.logging.log_dir, context.run_id)
 
-    result = MetadataScraperService().run(context, logger)
+    fake_tmdb = FakeTmdbClient()
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
 
-    assert result.status == "planned"
-    assert result.summary["planned"] == 1
+    assert result.status == "success"
+    assert result.summary["matched"] == 1
     assert result.records[0].source_path.endswith("Movie.Title.2026.mkv")
     assert result.records[0].target_path.endswith("Movie.Title.2026.nfo")
+    assert result.records[0].status == "planned"
+    assert not (library / "Movie.Title.2026.nfo").exists()
+
+
+def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "一见钟情 (2000)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "一见钟情.Sausalito.2000.BD1080P.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_metadata_writer", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    nfo = movie_dir / "一见钟情.Sausalito.2000.BD1080P.nfo"
+    assert result.status == "success"
+    assert result.records[0].status == "written"
+    assert result.records[0].extra["tmdb_id"] == 42
+    assert result.records[0].extra["fallback_used"] is True
+    assert nfo.exists()
+    assert "<title>一见钟情</title>" in nfo.read_text(encoding="utf-8")
+    assert "<plot>Fallback overview</plot>" in nfo.read_text(encoding="utf-8")
+    assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-poster.jpg").exists()

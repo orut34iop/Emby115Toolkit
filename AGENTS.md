@@ -86,7 +86,8 @@ Current V2 action names:
   - Default TMDB language is `zh-CN`; fallback language is `en-US`.
   - Matching strategy is rules first, TMDB search second, and LLM-assisted decision only for ambiguous candidates.
   - Dry-run may call providers and generate a full report but must not write NFO files or download images.
-  - Current implementation is a foundation skeleton: Context Object contract, WebUI/CLI action routing, config APIs, provider test skeletons, and media-library scan planning. Real TMDB matching, NFO writing, and image downloading are next-stage work.
+  - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, video-stem NFO writing, and poster/fanart downloading.
+  - TV scraping is still a scan skeleton. TV TMDB matching, `tvshow.nfo`, episode NFO, episode thumbnails, LLM candidate arbitration, and richer scoring are next-stage work.
 
 ### Legacy Dual GUI Frontends
 

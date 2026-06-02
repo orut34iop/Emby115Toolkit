@@ -64,11 +64,13 @@ python main.py --action scrape_metadata --config emby115_v2.config.json --dry-ru
 - first phase uses TMDB as the primary metadata provider, with provider abstraction reserved for future sources;
 - default TMDB metadata language is `zh-CN`, with `en-US` fallback for failed searches or missing fields;
 - matching strategy is rules first, then TMDB search, then LLM-assisted decision only when candidates are ambiguous;
-- movie NFO and image filenames follow each video file stem, not the first-level folder name;
+- movie TMDB search/details are implemented; movie NFO and image filenames follow each video file stem, not the first-level folder name;
+- movie details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;
+- non-dry-run movie scraping writes Emby-compatible movie NFO and downloads poster/fanart when TMDB image paths are available;
 - TV output uses `tvshow.nfo`, show poster/fanart, and per-episode NFO/thumb filenames following each episode video stem;
 - dry-run scans, parses, calls providers when implemented, and reports the plan without writing NFO or downloading images;
 - default `overwrite_existing=false`; existing NFO/images are skipped unless overwrite is enabled;
-- first implementation currently provides the Context Object contract, WebUI/CLI actions, config testing skeletons, config persistence APIs, and media-library scan report skeleton. Real TMDB matching, NFO writing, and image downloading are next-stage work.
+- current implementation provides the Context Object contract, WebUI/CLI actions, config testing, config persistence APIs, movie TMDB matching, movie NFO writing, poster/fanart downloading, and TV media-library scan skeleton. TV TMDB matching, `tvshow.nfo`, episode NFO, episode thumbnails, LLM candidate arbitration, and richer scoring are next-stage work.
 
 ## Current WebUI Status
 
