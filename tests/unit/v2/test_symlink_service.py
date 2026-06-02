@@ -14,7 +14,7 @@ def _context(tmp_path, dry_run=False):
     (source / "Movie" / "ignore.txt").write_text("x", encoding="utf-8")
     return AppContext.from_dict(
         {
-            "action": "scan_and_link",
+            "action": "build_symlink_workspace",
             "dry_run": dry_run,
             "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
             "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
@@ -58,4 +58,3 @@ def test_existing_target_is_skipped(tmp_path, mock_logger):
     assert result.status == "success"
     assert result.summary["skipped_existing"] == 1
     assert result.summary["created"] == 0
-

@@ -20,11 +20,11 @@ class LinkPlan:
 class ScanAndLinkService:
     """Build the local symlink workspace from mounted CD2 source folders."""
 
-    step_id = "scan_and_link"
+    step_id = "build_symlink_workspace"
 
     def run(self, context: AppContext, logger: logging.Logger) -> StepResult:
         if not context.path_pairs:
-            raise ValueError("scan_and_link 需要至少一个 path_pairs 配置")
+            raise ValueError("build_symlink_workspace 需要至少一个 path_pairs 配置")
 
         records: list[OperationRecord] = []
         summary = {
@@ -148,4 +148,3 @@ class ScanAndLinkService:
                 if path.is_symlink() and not path.exists():
                     broken.append(path)
         return broken
-

@@ -107,7 +107,7 @@ class AppContext:
     def from_dict(cls, data: dict[str, Any]) -> "AppContext":
         path_pairs = tuple(PathPair.from_dict(item) for item in data.get("path_pairs", []))
         return cls(
-            action=str(data.get("action") or "scan_and_link"),
+            action=str(data.get("action") or "build_symlink_workspace"),
             run_id=str(data.get("run_id") or uuid4().hex),
             workflow_id=str(data.get("workflow_id") or "manual"),
             dry_run=bool(data.get("dry_run", False)),
@@ -128,4 +128,3 @@ class AppContext:
         result["report"]["output_dir"] = str(self.report.output_dir)
         result["logging"]["log_dir"] = str(self.logging.log_dir)
         return result
-

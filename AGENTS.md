@@ -4,26 +4,41 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Emby115Toolkit is a Python GUI utility for the 115 cloud disk + CloudDrive2 + Emby media server workflow. It creates symlinks, mirrors directory trees, manages Emby libraries, and merges scraped metadata with video files.
+Emby115Toolkit is a Windows-first utility for the 115 cloud disk + CloudDrive2 + Emby media server workflow. Version 1.x is a Python desktop GUI utility. Version 2.0 is being developed as a WebUI + CLI automation system with a shared core service layer, Context Object contracts, reports, LLM-assisted library normalization, and TMDB metadata acquisition.
+
+## Development Discipline
+
+- Every code change must include matching documentation updates when behavior, commands, architecture, configuration, workflow names, or user-visible output changes.
+- Commit and push promptly after verified work. Keep commits scoped and intentional.
+- Do not silently stage unrelated files. Confirm scope with `git status -sb` before committing.
+- Run focused tests for changed areas and the full test suite when practical before pushing.
 
 ## Running the Application
 
-Two entry points exist; choose based on the target platform:
+Version 2.0 is Windows-only in the first phase and has two official facades:
 
-- **Windows (tkinter):** `python main.py`
+- **CLI:** `python main.py --action build_symlink_workspace ...`
+  - Supports local Windows Terminal, PowerShell/CMD, Windows OpenSSH remote sessions, and non-interactive scheduled execution.
+  - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
+- **WebUI backend:** `python main.py --serve-web`
+  - Current state: FastAPI backend skeleton exists. A browser UI is not implemented yet.
+
+Version 1.x legacy desktop entry points still exist:
+
+- **Windows (tkinter legacy):** `python main.py`
   - Uses `tkinterdnd2` for drag-and-drop.
   - Creating symlinks requires Administrator privileges on Windows.
-- **macOS (PyQt5):** `python qt_main.py`
+- **macOS (PyQt5 legacy/incomplete):** `python qt_main.py`
   - Uses native PyQt5 drag-and-drop.
   - No Administrator privileges needed for symlinks.
 
-Both entry points share the same `config.yaml` and backend logic in `autosync/` and `emby/`.
+V2 explicit CLI/WebUI flags are routed before tkinter imports, so headless CLI usage remains independent of the legacy GUI dependencies.
 
 ## Installing Dependencies
 
 ```bash
 pip install -r requirements.txt
-# For macOS/PyQt5 version also install:
+# For legacy macOS/PyQt5 version also install:
 pip install PyQt5
 ```
 
@@ -37,26 +52,44 @@ This runs `pyinstaller --clean build.spec` to produce `dist/Emby115Toolkit.exe`.
 
 ## Project Architecture
 
-### Dual GUI Frontends
+### V2 Architecture
 
-The project maintains **two completely separate GUI layers** that do not import from each other:
+V2 uses a strict facade architecture:
+
+- `emby115_v2/context.py` — Standard Context Object data contracts. WebUI JSON and CLI args must be deserialized into these objects before entering core services.
+- `emby115_v2/cli.py` — CLI facade.
+- `emby115_v2/web/` — WebUI backend facade.
+- `emby115_v2/workflow/` — Workflow runner and service dispatch.
+- `emby115_v2/services/` — Core services shared by WebUI and CLI.
+- `emby115_v2/reports/` — HTML/JSON report generation.
+
+Core services must only accept Context Objects and must not care whether the request came from WebUI, CLI, SSH, or a scheduled task.
+
+Current V2 action names:
+
+- `build_symlink_workspace` — Build the local symlink workspace from mounted CloudDrive2 source folders.
+- `scan_and_link` — Backward-compatible alias for `build_symlink_workspace`.
+
+### Legacy Dual GUI Frontends
+
+Version 1.x maintains two GUI layers:
 
 - `tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
 - `qt_gui/` — PyQt5 tab implementations used by `qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
 
-When adding a new feature or fixing a UI bug, **check both `tabs/` and `qt_gui/`** for the corresponding implementation. They are kept in sync manually.
+Do not add V2 features to `tabs/` or `qt_gui/`. They are legacy references only unless the user explicitly asks to fix 1.x behavior.
 
-### Backend Modules (`autosync/`)
+### Legacy Backend Modules (`autosync/`)
 
-Core business logic lives in `autosync/` and is shared by both GUIs:
+Version 1.x business logic lives in `autosync/` and is shared by legacy GUIs:
 
 - `SymlinkCreator.py` — Multi-threaded symlink/strm creation with optional path replacement.
 - `MetadataCopyer.py` — Copies metadata files (nfo, posters, subtitles) alongside symlinks.
 - `TreeMirror.py` — Parses a 115-exported directory tree text file and recreates an empty file tree locally.
 - `FileMerger.py` — Moves video files into folders that contain matching nfo files.
-- `SymlinkDeleter.py`, `SymlinkChecker.py`, `SymlinkDirChecker.py` — Folder cleanup utilities.
-- `AutoUploader.py` — Automation orchestrator.
-- `MedadataChecker.py` — Integrity checker for scraped metadata.
+- `SymlinkDeleter.py` — Folder cleanup utility.
+
+Some older documentation may mention modules such as `SymlinkChecker.py`, `SymlinkDirChecker.py`, `AutoUploader.py`, or `MedadataChecker.py`; these files are not present in the current workspace.
 
 ### Emby Integration (`emby/`)
 

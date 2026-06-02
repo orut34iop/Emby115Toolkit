@@ -6,7 +6,7 @@ from emby115_v2.context import AppContext
 def test_context_from_dict_builds_typed_objects(tmp_path):
     context = AppContext.from_dict(
         {
-            "action": "scan_and_link",
+            "action": "build_symlink_workspace",
             "dry_run": True,
             "path_pairs": [
                 {
@@ -21,7 +21,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
         }
     )
 
-    assert context.action == "scan_and_link"
+    assert context.action == "build_symlink_workspace"
     assert context.dry_run is True
     assert context.path_pairs[0].name == "movies"
     assert context.path_pairs[0].source == tmp_path / "source"
@@ -34,7 +34,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
 def test_context_to_dict_serializes_paths(tmp_path):
     context = AppContext.from_dict(
         {
-            "action": "scan_and_link",
+            "action": "build_symlink_workspace",
             "path_pairs": [
                 {"name": "tv", "source": str(tmp_path / "s"), "target": str(tmp_path / "t")}
             ],
@@ -45,4 +45,3 @@ def test_context_to_dict_serializes_paths(tmp_path):
 
     assert data["path_pairs"][0]["source"] == str(Path(tmp_path / "s"))
     assert data["path_pairs"][0]["target"] == str(Path(tmp_path / "t"))
-

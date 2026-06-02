@@ -11,6 +11,7 @@ from emby115_v2.workflow.runner import WorkflowRunner
 def build_runner() -> WorkflowRunner:
     return WorkflowRunner(
         services={
+            "build_symlink_workspace": ScanAndLinkService(),
             "scan_and_link": ScanAndLinkService(),
         }
     )
@@ -19,4 +20,3 @@ def build_runner() -> WorkflowRunner:
 def run_context(context: AppContext, logger: logging.Logger) -> RunReport:
     runner = build_runner()
     return runner.run(context, logger)
-

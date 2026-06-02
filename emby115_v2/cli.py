@@ -15,7 +15,7 @@ from emby115_v2.logging_setup import setup_run_logger
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Emby115Toolkit V2 CLI")
-    parser.add_argument("--action", default="scan_and_link", help="要执行的动作，例如 scan_and_link")
+    parser.add_argument("--action", default="build_symlink_workspace", help="要执行的动作，例如 build_symlink_workspace")
     parser.add_argument("--config", help="JSON 配置文件路径")
     parser.add_argument("--env", help=".env 配置文件路径")
     parser.add_argument("--dry-run", action="store_true", help="只生成计划和报告，不执行写操作")
@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report-dir", help="报告输出目录")
     parser.add_argument("--log-dir", help="日志输出目录")
     parser.add_argument("--log-level", help="日志级别")
-    parser.add_argument("--thread-count", type=int, help="scan_and_link 线程数")
+    parser.add_argument("--thread-count", type=int, help="构建 symlink 工作区线程数")
     parser.add_argument("--pair-name", action="append", help="路径对名称，可与 --source/--target 一起重复使用")
     parser.add_argument("--source", action="append", help="源目录，可重复")
     parser.add_argument("--target", action="append", help="目标工作区目录，可重复")
@@ -148,4 +148,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

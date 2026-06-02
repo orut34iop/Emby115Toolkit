@@ -19,7 +19,7 @@ def create_app():
 
     @app.get("/v1/actions")
     def actions() -> dict[str, list[str]]:
-        return {"actions": ["scan_and_link"]}
+        return {"actions": ["build_symlink_workspace", "scan_and_link"]}
 
     @app.post("/v1/run")
     def run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -39,4 +39,3 @@ def create_app():
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app
-
