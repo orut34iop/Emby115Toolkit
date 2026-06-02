@@ -50,6 +50,8 @@ CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_pat
 `build_symlink_workspace` maps to the confirmed workflow step "构建本地软链接工作区":
 
 - scan mounted CloudDrive2 source folders;
+- WebUI presents a fixed checked list for movies and TV shows; checked rows with non-empty source/target paths are submitted together as one `build_symlink_workspace` request;
+- CLI and the core Context Object continue to accept a `path_pairs` array, including multiple pairs when supplied outside the WebUI;
 - filter video files;
 - build standardized local library paths instead of blindly mirroring the source tree;
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;
@@ -84,7 +86,7 @@ Implemented:
 
 - FastAPI app factory;
 - minimal browser UI at `/`;
-- path pair media type uses fixed radio options: `movies` / `tvshows`;
+- symlink workspace media libraries use a fixed checked list for `movies` / `tvshows`;
 - WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
 - metadata provider settings are persisted in browser localStorage, including TMDB/LLM API keys by user request;
 - metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links;

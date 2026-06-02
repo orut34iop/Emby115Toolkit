@@ -1,8 +1,17 @@
-const DEFAULT_PAIR = {
-  name: "movies",
-  source: "D:\\115open\\tmp\\origin\\movies",
-  target: "C:\\working-emby\\movies",
-};
+const DEFAULT_PATH_PAIRS = [
+  {
+    enabled: true,
+    name: "movies",
+    source: "D:\\115open\\tmp\\origin\\movies",
+    target: "C:\\working-emby\\movies",
+  },
+  {
+    enabled: true,
+    name: "tvshows",
+    source: "D:\\115open\\tmp\\origin\\tvshows",
+    target: "C:\\working-emby\\tvshows",
+  },
+];
 const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
 const METADATA_FORM_STORAGE_KEY = "emby115_v2.webui.metadata.form.v1";
 const PENDING_ELEVATED_RUN_KEY = "emby115_v2.webui.pending_elevated_run.v1";
@@ -56,14 +65,6 @@ function setBusy(busy) {
   metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
 }
 
-function escapeAttribute(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
 async function parseJson(response) {
   try {
     return await response.json();
@@ -92,7 +93,7 @@ function readSavedForm() {
 function currentFormConfig() {
   return {
     thread_count: Number(document.querySelector("#threadCount").value || 4),
-    path_pairs: collectPairs(),
+    path_pairs: collectPathPairRows(),
     report_dir: document.querySelector("#reportDir").value.trim() || "reports",
     log_dir: document.querySelector("#logDir").value.trim() || "logs",
     extensions: document.querySelector("#extensions").value,
@@ -103,6 +104,46 @@ function currentFormConfig() {
 function saveFormConfig() {
   if (state.restoring) return;
   localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(currentFormConfig()));
+}
+
+function mediaTypeFromPairName(name) {
+  const value = String(name || "").toLowerCase();
+  return value === "tv" || value === "tvshow" || value === "tvshows" || value === "series" ? "tvshows" : "movies";
+}
+
+function collectPathPairRows() {
+  return [...pathPairs.querySelectorAll(".path-row")].map((row) => ({
+    enabled: row.querySelector(".pair-enabled").checked,
+    name: row.dataset.mediaType,
+    source: row.querySelector(".pair-source").value.trim(),
+    target: row.querySelector(".pair-target").value.trim(),
+  }));
+}
+
+function normalizePathPairs(config = {}) {
+  const pairs = DEFAULT_PATH_PAIRS.map((pair) => ({ ...pair }));
+  const seen = new Set();
+  for (const item of config.path_pairs || []) {
+    const mediaType = mediaTypeFromPairName(item?.name);
+    if (seen.has(mediaType)) continue;
+    const pair = pairs.find((entry) => entry.name === mediaType);
+    if (!pair) continue;
+    seen.add(mediaType);
+    pair.enabled = item.enabled ?? true;
+    pair.source = typeof item.source === "string" ? item.source : pair.source;
+    pair.target = typeof item.target === "string" ? item.target : pair.target;
+  }
+  return pairs;
+}
+
+function applyPathPairs(config = {}) {
+  for (const pair of normalizePathPairs(config)) {
+    const row = document.querySelector(`.path-row[data-media-type="${pair.name}"]`);
+    if (!row) continue;
+    row.querySelector(".pair-enabled").checked = pair.enabled ?? true;
+    row.querySelector(".pair-source").value = pair.source || "";
+    row.querySelector(".pair-target").value = pair.target || "";
+  }
 }
 
 function readSavedMetadataForm() {
@@ -239,10 +280,8 @@ function applyMetadataConfig(config = {}) {
 function restoreFormConfig() {
   const saved = readSavedForm();
   const savedMetadata = readSavedMetadataForm();
-  const pairs = saved?.path_pairs?.length ? saved.path_pairs : [DEFAULT_PAIR];
   state.restoring = true;
   try {
-    pathPairs.innerHTML = "";
     document.querySelector("#threadCount").value = saved?.thread_count || 4;
     document.querySelector("#reportDir").value = saved?.report_dir || "reports";
     document.querySelector("#logDir").value = saved?.log_dir || "logs";
@@ -250,7 +289,7 @@ function restoreFormConfig() {
       document.querySelector("#extensions").value = saved.extensions;
     }
     document.querySelector("#dryRun").checked = saved?.dry_run ?? true;
-    pairs.forEach((pair) => addPair(pair));
+    applyPathPairs(saved || {});
     applyMetadataConfig(savedMetadata || {});
     document.querySelector("#metadataDryRun").checked = savedMetadata?.dry_run ?? true;
   } finally {
@@ -260,42 +299,13 @@ function restoreFormConfig() {
   saveMetadataFormConfig();
 }
 
-function addPair(pair = {}) {
-  const row = document.createElement("div");
-  const groupName = `media-type-${Date.now()}-${pathPairs.children.length}`;
-  const mediaType = pair.name === "tvshows" ? "tvshows" : "movies";
-  row.className = "path-row";
-  row.innerHTML = `
-    <div class="media-type-group" role="radiogroup" aria-label="媒体类型">
-      <label class="radio-pill">
-        <input class="pair-media-type" type="radio" name="${groupName}" value="movies" ${mediaType === "movies" ? "checked" : ""}>
-        电影
-      </label>
-      <label class="radio-pill">
-        <input class="pair-media-type" type="radio" name="${groupName}" value="tvshows" ${mediaType === "tvshows" ? "checked" : ""}>
-        电视剧
-      </label>
-    </div>
-    <input class="pair-source" value="${escapeAttribute(pair.source)}" placeholder="D:\\115open\\tmp\\origin\\movies">
-    <input class="pair-target" value="${escapeAttribute(pair.target)}" placeholder="C:\\working-emby\\movies">
-    <button type="button" class="remove-button">移除</button>
-  `;
-  row.querySelector(".remove-button").addEventListener("click", () => {
-    if (pathPairs.children.length > 1) {
-      row.remove();
-      saveFormConfig();
-    }
-  });
-  pathPairs.appendChild(row);
-  saveFormConfig();
-}
-
 function collectPairs() {
-  return [...pathPairs.querySelectorAll(".path-row")]
-    .map((row, index) => ({
-      name: row.querySelector(".pair-media-type:checked")?.value || `pair_${index + 1}`,
-      source: row.querySelector(".pair-source").value.trim(),
-      target: row.querySelector(".pair-target").value.trim(),
+  return collectPathPairRows()
+    .filter((pair) => pair.enabled)
+    .map((pair) => ({
+      name: pair.name,
+      source: pair.source,
+      target: pair.target,
     }))
     .filter((pair) => pair.source && pair.target);
 }
@@ -451,8 +461,8 @@ async function executePayload(payload, options = {}) {
   if (state.busy) return { ok: false, error: "已有任务正在执行" };
 
   if (SYMLINK_ACTIONS.has(payload.action) && !payload.path_pairs.length) {
-    appendLog("请至少填写一个有效的源目录和目标目录。");
-    return { ok: false, error: "请至少填写一个有效的源目录和目标目录。" };
+    appendLog("请至少勾选一个源目录和目标目录都有效的媒体库。");
+    return { ok: false, error: "请至少勾选一个源目录和目标目录都有效的媒体库。" };
   }
 
   try {
@@ -629,12 +639,6 @@ async function resumePendingElevatedRun() {
   appendLog("检测到管理员重启前的待执行任务，正在继续执行。");
   await executePayload(payload);
 }
-
-document.querySelector("#addPairButton").addEventListener("click", () => addPair({
-  name: "tvshows",
-  source: "D:\\115open\\tmp\\origin\\tvshows",
-  target: "C:\\working-emby\\tvshows",
-}));
 
 document.querySelector("#runForm").addEventListener("input", saveFormConfig);
 document.querySelector("#runForm").addEventListener("change", saveFormConfig);

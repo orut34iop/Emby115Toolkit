@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-metadata-libraries">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-symlink-libraries">
 </head>
 <body>
   <header class="topbar">
@@ -22,7 +22,6 @@
     <section class="workspace">
       <div class="section-title">
         <h2>构建本地软链接工作区</h2>
-        <button type="button" id="addPairButton">添加路径对</button>
       </div>
 
       <form id="runForm">
@@ -39,12 +38,31 @@
 
         <div class="path-table" aria-label="path pairs">
           <div class="path-head">
+            <span>启用</span>
             <span>媒体类型</span>
             <span>CD2 源目录</span>
             <span>本地 symlink 工作区</span>
-            <span></span>
           </div>
-          <div id="pathPairs"></div>
+          <div id="pathPairs">
+            <div class="path-row" data-media-type="movies">
+              <label class="checkline compact-check">
+                <input id="symlinkMoviesEnabled" class="pair-enabled" type="checkbox" checked>
+                构建
+              </label>
+              <span class="media-label">电影</span>
+              <input id="symlinkMoviesSource" class="pair-source" value="D:\115open\tmp\origin\movies" placeholder="D:\115open\tmp\origin\movies">
+              <input id="symlinkMoviesTarget" class="pair-target" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+            </div>
+            <div class="path-row" data-media-type="tvshows">
+              <label class="checkline compact-check">
+                <input id="symlinkTvshowsEnabled" class="pair-enabled" type="checkbox" checked>
+                构建
+              </label>
+              <span class="media-label">电视剧</span>
+              <input id="symlinkTvshowsSource" class="pair-source" value="D:\115open\tmp\origin\tvshows" placeholder="D:\115open\tmp\origin\tvshows">
+              <input id="symlinkTvshowsTarget" class="pair-target" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+            </div>
+          </div>
         </div>
 
         <div class="grid two">
@@ -241,6 +259,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260603-metadata-libraries"></script>
+  <script src="/static/app.js?v=20260603-symlink-libraries"></script>
 </body>
 </html>

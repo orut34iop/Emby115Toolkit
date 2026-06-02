@@ -22,7 +22,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
 - **WebUI backend:** `python main.py --serve-web`
   - Current state: minimal browser UI exists for `build_symlink_workspace`.
-  - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
+  - The WebUI symlink workspace card shows a fixed checked list for `movies` and `tvshows`; checked rows with non-empty source and target are submitted in one `build_symlink_workspace` request.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
   - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports.
@@ -79,6 +79,7 @@ Current V2 action names:
   - This action must standardize symlink target paths by media type. Movies go under a movie title folder; TV shows go under a show title folder plus a season/version second-level folder.
   - TV second-level folder priority is an existing source folder that contains a season marker, then a release folder derived from the episode filename, then `Season NN`.
   - It must preserve original video filenames and mark uncertain items for manual review instead of inventing missing metadata.
+  - WebUI is fixed to one movies row and one tvshows row in the first phase; CLI and core Context still accept multiple `path_pairs`.
 - `scan_and_link` — Backward-compatible alias for `build_symlink_workspace`.
 - `test_tmdb_config` — Test TMDB connectivity and configuration through the shared service layer.
 - `test_llm_config` — Test the configured LLM provider through the shared service layer.

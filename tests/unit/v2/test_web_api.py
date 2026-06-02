@@ -20,19 +20,31 @@ def test_webui_serves_index():
     assert "metadataTvshowsEnabled" in response.text
     assert "metadataMoviesPath" in response.text
     assert "metadataTvshowsPath" in response.text
+    assert "symlinkMoviesEnabled" in response.text
+    assert "symlinkTvshowsEnabled" in response.text
+    assert "symlinkMoviesSource" in response.text
+    assert "symlinkTvshowsTarget" in response.text
     assert "需要管理员权限" in response.text
 
 
-def test_webui_symlink_media_type_uses_radio_controls():
+def test_webui_symlink_uses_fixed_library_checklist():
     client = TestClient(create_app())
 
-    response = client.get("/static/app.js")
+    html = client.get("/").text
+    script = client.get("/static/app.js").text
 
-    assert response.status_code == 200
-    assert 'type="radio"' in response.text
-    assert 'value="movies"' in response.text
-    assert 'value="tvshows"' in response.text
-    assert "pair-name" not in response.text
+    assert "symlinkMoviesEnabled" in html
+    assert "symlinkTvshowsEnabled" in html
+    assert "symlinkMoviesSource" in html
+    assert "symlinkTvshowsTarget" in html
+    assert "添加路径对" not in html
+    assert "移除" not in html
+    assert "pair-media-type" not in script
+    assert "collectPathPairRows()" in script
+    assert "normalizePathPairs" in script
+    assert "pair.enabled" in script
+    assert "请至少勾选一个源目录和目标目录都有效的媒体库" in script
+    assert "addPair(" not in script
 
 
 def test_webui_metadata_uses_fixed_library_checklist():

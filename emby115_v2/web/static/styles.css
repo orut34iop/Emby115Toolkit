@@ -185,8 +185,7 @@ button {
 }
 
 button.secondary,
-#clearButton,
-.remove-button {
+#clearButton {
   border-color: var(--line);
   background: #ffffff;
   color: var(--text);
@@ -243,7 +242,7 @@ button:disabled {
 .path-head,
 .path-row {
   display: grid;
-  grid-template-columns: 180px minmax(220px, 1fr) minmax(220px, 1fr) 78px;
+  grid-template-columns: 92px 120px minmax(220px, 1fr) minmax(220px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
