@@ -1,8 +1,40 @@
+import sys
+
+
+def should_run_v2_cli(argv):
+    """Route explicit V2 CLI/WebUI invocations before GUI imports."""
+    v2_flags = {
+        "--action",
+        "--config",
+        "--env",
+        "--dry-run",
+        "--non-interactive",
+        "--json",
+        "--report-dir",
+        "--log-dir",
+        "--log-level",
+        "--thread-count",
+        "--pair-name",
+        "--source",
+        "--target",
+        "--serve-web",
+        "--host",
+        "--port",
+        "--help",
+        "-h",
+    }
+    return any(arg in v2_flags for arg in argv[1:])
+
+
+if should_run_v2_cli(sys.argv):
+    from emby115_v2.cli import run_cli
+
+    raise SystemExit(run_cli(sys.argv[1:]))
+
 import tkinter as tk
 from tkinter import ttk
 from tkinterdnd2 import TkinterDnD
 import os
-import sys
 import platform  # 添加在文件开头的import部分
 from tabs import (
     ExportSymlinkTab,

@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+
+DEFAULT_VIDEO_EXTENSIONS = (
+    ".mkv",
+    ".iso",
+    ".ts",
+    ".mp4",
+    ".avi",
+    ".rmvb",
+    ".wmv",
+    ".m2ts",
+    ".mpg",
+    ".flv",
+    ".rm",
+    ".m4v",
+    ".mov",
+    ".vob",
+    ".webm",
+    ".divx",
+    ".3gp",
+)
+
+
+@dataclass(frozen=True)
+class PathPair:
+    """A source folder and the local symlink workspace it maps into."""
+
+    name: str
+    source: Path
+    target: Path
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PathPair":
+        return cls(
+            name=str(data.get("name") or "default"),
+            source=Path(str(data["source"])).expanduser(),
+            target=Path(str(data["target"])).expanduser(),
+        )
+
+
+@dataclass(frozen=True)
+class SymlinkOptions:
+    video_extensions: tuple[str, ...] = DEFAULT_VIDEO_EXTENSIONS
+    thread_count: int = 4
+    report_broken_links: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "SymlinkOptions":
+        if not data:
+            return cls()
+        extensions = data.get("video_extensions", DEFAULT_VIDEO_EXTENSIONS)
+        return cls(
+            video_extensions=tuple(str(ext).lower() for ext in extensions),
+            thread_count=max(1, min(int(data.get("thread_count", 4)), 32)),
+            report_broken_links=bool(data.get("report_broken_links", True)),
+        )
+
+
+@dataclass(frozen=True)
+class ReportConfig:
+    output_dir: Path = Path("reports")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "ReportConfig":
+        if not data:
+            return cls()
+        return cls(output_dir=Path(str(data.get("output_dir", "reports"))).expanduser())
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    log_level: str = "INFO"
+    log_dir: Path = Path("logs")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "LoggingConfig":
+        if not data:
+            return cls()
+        return cls(
+            log_level=str(data.get("log_level", "INFO")).upper(),
+            log_dir=Path(str(data.get("log_dir", "logs"))).expanduser(),
+        )
+
+
+@dataclass(frozen=True)
+class AppContext:
+    """Unified context object consumed by V2 core services."""
+
+    action: str
+    run_id: str = field(default_factory=lambda: uuid4().hex)
+    workflow_id: str = "manual"
+    dry_run: bool = False
+    non_interactive: bool = False
+    path_pairs: tuple[PathPair, ...] = ()
+    symlink: SymlinkOptions = field(default_factory=SymlinkOptions)
+    report: ReportConfig = field(default_factory=ReportConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AppContext":
+        path_pairs = tuple(PathPair.from_dict(item) for item in data.get("path_pairs", []))
+        return cls(
+            action=str(data.get("action") or "scan_and_link"),
+            run_id=str(data.get("run_id") or uuid4().hex),
+            workflow_id=str(data.get("workflow_id") or "manual"),
+            dry_run=bool(data.get("dry_run", False)),
+            non_interactive=bool(data.get("non_interactive", False)),
+            path_pairs=path_pairs,
+            symlink=SymlinkOptions.from_dict(data.get("symlink")),
+            report=ReportConfig.from_dict(data.get("report")),
+            logging=LoggingConfig.from_dict(data.get("logging")),
+            raw=dict(data),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        result["path_pairs"] = [
+            {"name": pair.name, "source": str(pair.source), "target": str(pair.target)}
+            for pair in self.path_pairs
+        ]
+        result["report"]["output_dir"] = str(self.report.output_dir)
+        result["logging"]["log_dir"] = str(self.logging.log_dir)
+        return result
+
