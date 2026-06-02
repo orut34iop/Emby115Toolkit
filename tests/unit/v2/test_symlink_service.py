@@ -85,6 +85,29 @@ def test_movie_standardizes_to_title_year_folder(tmp_path, mock_logger):
     assert record.year == "2000"
 
 
+def test_movie_standardization_strips_leading_bracket_before_year(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    video = source / "[恶灵空间2 2007][西班牙限量版蓝光原盘 DIY简中][22.18G].iso"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".iso"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "恶灵空间2 (2007)", video.name))
+    assert record.title == "恶灵空间2"
+    assert record.year == "2007"
+
+
 def test_tvshow_standardizes_under_series_and_season(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"

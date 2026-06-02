@@ -190,6 +190,55 @@ def test_movie_metadata_auto_renames_first_level_folder_from_nfo(tmp_path):
     assert result.records[0].extra["auto_rename"]["target_path"] == str(renamed)
 
 
+def test_movie_auto_rename_merges_when_target_folder_exists(tmp_path):
+    library = tmp_path / "movies"
+    wrong_dir = library / "[恶灵空间2 (2007)"
+    right_dir = library / "恶灵空间2 (2007)"
+    wrong_dir.mkdir(parents=True)
+    right_dir.mkdir(parents=True)
+    (wrong_dir / "[恶灵空间2 2007][22.18G].nfo").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>恶灵空间2</title>
+  <year>2007</year>
+</movie>
+""",
+        encoding="utf-8",
+    )
+    (wrong_dir / "[恶灵空间2 2007][22.18G].iso").write_text("x", encoding="utf-8")
+    (right_dir / "Boogeyman 2.2007.1080p.mkv").write_text("y", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "auto_rename": True,
+            },
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_auto_rename_merge", context.logging.log_dir, context.run_id)
+
+    from emby115_v2.services.metadata_service import auto_rename_folder_from_nfo
+
+    result = auto_rename_folder_from_nfo(
+        wrong_dir,
+        wrong_dir / "[恶灵空间2 2007][22.18G].nfo",
+        "movie",
+        context.dry_run,
+        logger,
+    )
+
+    assert result["status"] == "merged"
+    assert not wrong_dir.exists()
+    assert (right_dir / "[恶灵空间2 2007][22.18G].nfo").exists()
+    assert (right_dir / "[恶灵空间2 2007][22.18G].iso").exists()
+    assert (right_dir / "Boogeyman 2.2007.1080p.mkv").exists()
+
+
 def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):
     library = tmp_path / "tvshows"
     show_dir = library / "Inside.No.9"

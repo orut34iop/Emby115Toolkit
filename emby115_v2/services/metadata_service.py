@@ -550,7 +550,7 @@ def auto_rename_from_movie_records(
     records: list[OperationRecord],
     logger: logging.Logger,
 ) -> dict[str, int]:
-    summary = {"planned": 0, "renamed": 0, "skipped": 0, "failed": 0}
+    summary = {"planned": 0, "renamed": 0, "merged": 0, "skipped": 0, "failed": 0}
     if not context.metadata_output.auto_rename:
         return summary
 
@@ -584,7 +584,7 @@ def auto_rename_tvshow_folders(
     records: list[OperationRecord],
     logger: logging.Logger,
 ) -> dict[str, int]:
-    summary = {"planned": 0, "renamed": 0, "skipped": 0, "failed": 0}
+    summary = {"planned": 0, "renamed": 0, "merged": 0, "skipped": 0, "failed": 0}
     if not context.metadata_output.auto_rename:
         return summary
 
@@ -644,8 +644,12 @@ def auto_rename_folder_from_nfo(
         result["reason"] = "一级目录名称已经符合 title (year)"
         return result
     if target.exists():
-        result["status"] = "skipped"
-        result["reason"] = "目标目录已存在，跳过自动重命名"
+        if dry_run:
+            result["status"] = "planned"
+            result["reason"] = "目标目录已存在，将合并移动当前目录内不冲突的文件"
+            return result
+        merge_result = merge_folder_contents(folder, target, logger)
+        result.update(merge_result)
         return result
     if dry_run:
         return result
@@ -658,6 +662,29 @@ def auto_rename_folder_from_nfo(
         result["status"] = "failed"
         result["reason"] = str(exc)
         return result
+
+
+def merge_folder_contents(source: Path, target: Path, logger: logging.Logger) -> dict[str, str]:
+    try:
+        moved = 0
+        skipped = 0
+        for child in source.iterdir():
+            destination = target / child.name
+            if destination.exists() or destination.is_symlink():
+                skipped += 1
+                continue
+            child.rename(destination)
+            moved += 1
+        try:
+            source.rmdir()
+        except OSError:
+            pass
+        logger.info("自动重命名合并媒体目录 %s -> %s moved=%s skipped=%s", source, target, moved, skipped)
+        status = "merged" if moved else "skipped"
+        reason = f"目标目录已存在，已合并移动 {moved} 个文件，跳过 {skipped} 个冲突项"
+        return {"status": status, "reason": reason}
+    except OSError as exc:
+        return {"status": "failed", "reason": str(exc)}
 
 
 def parse_title_year_from_nfo(nfo_path: Path, expected_root: str) -> tuple[str, str] | None:

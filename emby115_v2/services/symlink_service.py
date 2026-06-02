@@ -284,7 +284,7 @@ class ScanAndLinkService:
         value = value.replace("_", " ").strip()
         value = re.sub(r"[\s.·・_-]+$", "", value)
         value = re.sub(r"[\s(（\[]+$", "", value)
-        value = re.sub(r"^[\s.·・_-]+", "", value)
+        value = re.sub(r"^[\s.·・_\-\[\]【】{}()（）]+", "", value)
         value = re.sub(r"\s+", " ", value)
         value = re.sub(r"(完结|全集)$", "", value).strip()
         return value

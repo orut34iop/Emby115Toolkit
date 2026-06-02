@@ -71,7 +71,7 @@ python main.py --action scrape_metadata --config emby115_v2.config.json --dry-ru
 - dry-run scans, parses, calls providers when implemented, and reports the plan without writing NFO or downloading images;
 - default `overwrite_existing=false`; existing NFO/images are skipped unless overwrite is enabled;
 - default `auto_rename=true`; after successful NFO metadata, movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`, while TV first-level folders are renamed from `tvshow.nfo` `title` and `year`;
-- auto rename uses `title (year)`, skips when the target folder already exists, and records the result in the report;
+- auto rename uses `title (year)`; when the target folder already exists, it merges non-conflicting files into that folder, skips conflicting filenames, removes the emptied source folder, and records the result in the report;
 - current implementation provides the Context Object contract, WebUI/CLI actions, config testing, config persistence APIs, movie TMDB matching, movie NFO writing, poster/fanart downloading, and TV media-library scan skeleton. TV TMDB matching, `tvshow.nfo`, episode NFO, episode thumbnails, LLM candidate arbitration, and richer scoring are next-stage work.
 
 ## Current WebUI Status
