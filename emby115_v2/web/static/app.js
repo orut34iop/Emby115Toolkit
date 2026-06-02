@@ -33,6 +33,7 @@ const state = {
 const pathPairs = document.querySelector("#pathPairs");
 const outputLog = document.querySelector("#outputLog");
 const runButton = document.querySelector("#runButton");
+const fullRunButton = document.querySelector("#fullRunButton");
 const metadataRunButton = document.querySelector("#metadataRunButton");
 const reportLinks = document.querySelector("#reportLinks");
 const elevationModal = document.querySelector("#elevationModal");
@@ -60,8 +61,10 @@ function appendLog(message) {
 function setBusy(busy) {
   state.busy = busy;
   runButton.disabled = busy;
+  fullRunButton.disabled = busy;
   metadataRunButton.disabled = busy;
   runButton.textContent = busy ? "执行中" : "执行";
+  fullRunButton.textContent = busy ? "执行中" : "执行完整流程";
   metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
 }
 
@@ -485,7 +488,7 @@ async function executePayload(payload, options = {}) {
   appendLog(`提交 ${payload.action}${labelText}，dry-run=${payload.dry_run}`);
 
   try {
-    const response = await fetch("/v1/run", {
+    const response = await fetch("/v1/runs", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -507,26 +510,103 @@ async function executePayload(payload, options = {}) {
     document.querySelector("#runId").textContent = data.run_id;
     document.querySelector("#actionName").textContent = data.action;
     document.querySelector("#runMode").textContent = data.dry_run ? "dry-run" : "run";
-    const reportHtml = `
-      ${reportLabel ? `<strong>${reportLabel}</strong>` : ""}
-      <a href="${withToken(data.reports.html_url)}" target="_blank" rel="noreferrer">打开 HTML 报告</a>
-      <a href="${withToken(data.reports.json_url)}" target="_blank" rel="noreferrer">打开 JSON 报告</a>
-      <span>${data.reports.html}</span>
-      <span>${data.reports.json}</span>
-    `;
-    if (clearReports) {
-      reportLinks.innerHTML = reportHtml;
-    } else {
-      reportLinks.insertAdjacentHTML("beforeend", reportHtml);
-    }
-    appendLog(`执行完成${labelText} run_id=${data.run_id}`);
+    const result = await streamRunEvents(data, { clearReports, reportLabel });
+    appendLog(`执行结束${labelText} run_id=${data.run_id} status=${result.status}`);
     clearPendingElevatedRun();
-    return { ok: true, data };
+    return { ok: result.status !== "failed", data: { ...data, ...result } };
   } catch (error) {
     appendLog(`执行失败${labelText}: ${error.message}`);
     return { ok: false, error: error.message };
   } finally {
     setBusy(false);
+  }
+}
+
+function appendReportLinks(reports, reportLabel = "", clearReports = false) {
+  const reportHtml = `
+    <div class="report-link-group">
+      ${reportLabel ? `<strong>${reportLabel}</strong>` : ""}
+      <a href="${withToken(reports.html_url)}" target="_blank" rel="noreferrer">打开 HTML 报告</a>
+      <a href="${withToken(reports.json_url)}" target="_blank" rel="noreferrer">打开 JSON 报告</a>
+      <span>${reports.html}</span>
+      <span>${reports.json}</span>
+    </div>
+  `;
+  if (clearReports) {
+    reportLinks.innerHTML = reportHtml;
+  } else {
+    reportLinks.insertAdjacentHTML("beforeend", reportHtml);
+  }
+}
+
+function parseEventData(event) {
+  try {
+    return JSON.parse(event.data || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function streamRunEvents(run, options = {}) {
+  if (!window.EventSource) {
+    return pollRunStatus(run, options);
+  }
+
+  return new Promise((resolve, reject) => {
+    let finalStatus = run.status || "queued";
+    let reportRendered = false;
+    const source = new EventSource(withToken(run.events_url || `/v1/runs/${run.run_id}/events`));
+    source.addEventListener("status", (event) => {
+      const data = parseEventData(event);
+      finalStatus = data.status || finalStatus;
+      appendLog(`状态更新: ${finalStatus}`);
+    });
+    source.addEventListener("log", (event) => {
+      const data = parseEventData(event);
+      if (data.line) appendLog(data.line);
+    });
+    source.addEventListener("report", (event) => {
+      const data = parseEventData(event);
+      if (data.reports) {
+        appendReportLinks(data.reports, options.reportLabel, options.clearReports && !reportRendered);
+        reportRendered = true;
+      }
+    });
+    source.addEventListener("error", (event) => {
+      const data = parseEventData(event);
+      if (data.error) {
+        appendLog(`后台任务错误: ${data.error}`);
+        return;
+      }
+      if (!reportRendered && finalStatus !== "success" && finalStatus !== "partial" && finalStatus !== "failed") {
+        source.close();
+        reject(new Error("实时日志连接中断"));
+      }
+    });
+    source.addEventListener("done", (event) => {
+      const data = parseEventData(event);
+      finalStatus = data.status || finalStatus;
+      source.close();
+      resolve({ status: finalStatus });
+    });
+  });
+}
+
+async function pollRunStatus(run, options = {}) {
+  while (true) {
+    const response = await fetch(withToken(run.status_url || `/v1/runs/${run.run_id}`), {
+      headers: tokenHeaders(),
+    });
+    const data = await parseJson(response);
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    if (data.status === "success" || data.status === "partial" || data.status === "failed") {
+      if (data.reports?.html_url) {
+        appendReportLinks(data.reports, options.reportLabel, options.clearReports);
+      }
+      if (data.error) appendLog(`后台任务错误: ${data.error}`);
+      return { status: data.status };
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
   }
 }
 
@@ -582,6 +662,51 @@ async function runMetadataWorkflow(event) {
     }
   }
   appendLog(`元数据刮削队列完成：成功 ${successCount}，失败 ${failedCount}`);
+}
+
+async function runFullWorkflow(event) {
+  event.preventDefault();
+  const pairs = collectPairs();
+  if (!pairs.length) {
+    appendLog("请至少勾选一个源目录和目标目录都有效的媒体库。");
+    return;
+  }
+
+  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据。");
+  const symlinkResult = await executePayload(buildPayload(), {
+    clearReports: true,
+    reportLabel: "软链接工作区",
+  });
+  if (symlinkResult.requiresElevation) {
+    appendLog("完整流程已暂停：等待管理员权限后恢复软链接步骤。");
+    return;
+  }
+  if (!symlinkResult.ok) {
+    appendLog("软链接工作区步骤未成功完成，将继续尝试刮削已勾选目标目录。");
+  }
+
+  let successCount = symlinkResult.ok ? 1 : 0;
+  let failedCount = symlinkResult.ok ? 0 : 1;
+  const metadataLibraries = pairs.map((pair) => ({
+    media_type: pair.name,
+    library_path: pair.target,
+  }));
+
+  for (const library of metadataLibraries) {
+    const label = `${MEDIA_TYPE_LABELS[library.media_type] || library.media_type}元数据`;
+    appendLog(`完整流程开始${label}: ${library.library_path}`);
+    const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
+      clearReports: false,
+      reportLabel: label,
+    });
+    if (result.ok) {
+      successCount += 1;
+    } else {
+      failedCount += 1;
+    }
+  }
+
+  appendLog(`完整流程结束：成功 ${successCount}，失败 ${failedCount}`);
 }
 
 async function testMetadataProvider(action) {
@@ -655,6 +780,7 @@ document.querySelector("#clearButton").addEventListener("click", () => {
 
 document.querySelector("#runForm").addEventListener("submit", runWorkflow);
 document.querySelector("#metadataForm").addEventListener("submit", runMetadataWorkflow);
+fullRunButton.addEventListener("click", runFullWorkflow);
 document.querySelector("#testTmdbButton").addEventListener("click", () => testMetadataProvider("test_tmdb_config"));
 document.querySelector("#testLlmButton").addEventListener("click", () => testMetadataProvider("test_llm_config"));
 document.querySelector("#loadMetadataConfigButton").addEventListener("click", loadMetadataConfigFromServer);

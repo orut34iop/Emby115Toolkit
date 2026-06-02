@@ -361,6 +361,13 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.report-link-group {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
 .report-links a {
   color: var(--accent);
   word-break: break-all;

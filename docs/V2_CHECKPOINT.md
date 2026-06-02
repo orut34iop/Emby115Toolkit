@@ -47,6 +47,8 @@ python main.py --action scrape_metadata --config emby115_v2.config.json --dry-ru
 
 CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs.
 
+WebUI also provides a one-click full flow. This is front-end orchestration only, not a new backend workflow action: it runs one `build_symlink_workspace` request first, then derives metadata libraries from the checked symlink target directories and submits one `scrape_metadata` request per media type. CLI does not yet expose a one-click full-flow action.
+
 `build_symlink_workspace` maps to the confirmed workflow step "构建本地软链接工作区":
 
 - scan mounted CloudDrive2 source folders;
@@ -90,6 +92,8 @@ Implemented:
 - WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
 - metadata provider settings are persisted in browser localStorage, including TMDB/LLM API keys by user request;
 - metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links;
+- one-click full flow executes `构建本地软链接工作区 -> 刮削媒体元数据` from WebUI. Metadata paths in this mode come from checked symlink target directories, not from the metadata card's manually entered paths;
+- WebUI single-step and full-flow execution use background run APIs with SSE logs/status while preserving `/v1/run` as a synchronous compatibility endpoint;
 - pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
 - `/health`;
 - `/v1/actions`;
@@ -97,6 +101,9 @@ Implemented:
 - `/v1/admin/restart-elevated`;
 - `/v1/config/metadata`;
 - `/v1/run`;
+- `/v1/runs`;
+- `/v1/runs/{run_id}`;
+- `/v1/runs/{run_id}/events`;
 - `/v1/reports/{run_id}/report.html`;
 - `/v1/reports/{run_id}/report.json`;
 - access token enforcement for `/v1/*` when configured;
@@ -108,9 +115,10 @@ Implemented:
 
 Not yet implemented:
 
-- real-time logs/status;
 - reports center;
 - review center.
+
+Real-time run state is currently in memory only. If the WebUI backend restarts, in-flight status and the in-memory report route index are not restored; the report files remain on disk for a later reports-center feature to rediscover.
 
 Start local WebUI:
 

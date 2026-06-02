@@ -21,8 +21,9 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Supports local Windows Terminal, PowerShell/CMD, Windows OpenSSH remote sessions, and non-interactive scheduled execution.
   - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
 - **WebUI backend:** `python main.py --serve-web`
-  - Current state: minimal browser UI exists for `build_symlink_workspace`.
   - The WebUI symlink workspace card shows a fixed checked list for `movies` and `tvshows`; checked rows with non-empty source and target are submitted in one `build_symlink_workspace` request.
+  - The WebUI has a one-click full-flow button that front-end orchestrates as `build_symlink_workspace` followed by one `scrape_metadata` run per checked symlink target. Do not add a separate CLI/full-flow backend action unless the product contract changes.
+  - WebUI task execution uses `/v1/runs`, `/v1/runs/{run_id}`, and `/v1/runs/{run_id}/events` for background runs plus SSE log/status streaming. `/v1/run` remains the synchronous compatibility API.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
   - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports.
