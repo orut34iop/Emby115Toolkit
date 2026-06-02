@@ -37,6 +37,18 @@ def test_webui_includes_admin_elevation_flow():
     assert "/v1/admin/restart-elevated" in response.text
 
 
+def test_webui_persists_form_without_access_token():
+    client = TestClient(create_app())
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "emby115_v2.webui.form.v1" in response.text
+    assert "localStorage.setItem(FORM_STORAGE_KEY" in response.text
+    saved_config_block = response.text.split("function currentFormConfig()", 1)[1].split("function saveFormConfig()", 1)[0]
+    assert "accessToken" not in saved_config_block
+
+
 def test_actions_require_token_when_configured():
     client = TestClient(create_app(access_token="secret"))
 

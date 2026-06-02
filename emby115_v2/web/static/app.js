@@ -3,9 +3,11 @@ const DEFAULT_PAIR = {
   source: "D:\\115open\\tmp\\origin\\movies",
   target: "C:\\working-emby\\movies",
 };
+const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
 
 const state = {
   busy: false,
+  restoring: false,
 };
 
 const pathPairs = document.querySelector("#pathPairs");
@@ -40,6 +42,14 @@ function setBusy(busy) {
   runButton.textContent = busy ? "执行中" : "执行";
 }
 
+function escapeAttribute(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 async function parseJson(response) {
   try {
     return await response.json();
@@ -54,6 +64,51 @@ function showElevationPrompt() {
 
 function hideElevationPrompt() {
   elevationModal.classList.add("hidden");
+}
+
+function readSavedForm() {
+  try {
+    const raw = localStorage.getItem(FORM_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function currentFormConfig() {
+  return {
+    thread_count: Number(document.querySelector("#threadCount").value || 4),
+    path_pairs: collectPairs(),
+    report_dir: document.querySelector("#reportDir").value.trim() || "reports",
+    log_dir: document.querySelector("#logDir").value.trim() || "logs",
+    extensions: document.querySelector("#extensions").value,
+    dry_run: document.querySelector("#dryRun").checked,
+  };
+}
+
+function saveFormConfig() {
+  if (state.restoring) return;
+  localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(currentFormConfig()));
+}
+
+function restoreFormConfig() {
+  const saved = readSavedForm();
+  const pairs = saved?.path_pairs?.length ? saved.path_pairs : [DEFAULT_PAIR];
+  state.restoring = true;
+  try {
+    pathPairs.innerHTML = "";
+    document.querySelector("#threadCount").value = saved?.thread_count || 4;
+    document.querySelector("#reportDir").value = saved?.report_dir || "reports";
+    document.querySelector("#logDir").value = saved?.log_dir || "logs";
+    if (saved?.extensions) {
+      document.querySelector("#extensions").value = saved.extensions;
+    }
+    document.querySelector("#dryRun").checked = saved?.dry_run ?? true;
+    pairs.forEach((pair) => addPair(pair));
+  } finally {
+    state.restoring = false;
+  }
+  saveFormConfig();
 }
 
 function addPair(pair = {}) {
@@ -72,16 +127,18 @@ function addPair(pair = {}) {
         电视剧
       </label>
     </div>
-    <input class="pair-source" value="${pair.source || ""}" placeholder="D:\\115open\\tmp\\origin\\movies">
-    <input class="pair-target" value="${pair.target || ""}" placeholder="C:\\working-emby\\movies">
+    <input class="pair-source" value="${escapeAttribute(pair.source)}" placeholder="D:\\115open\\tmp\\origin\\movies">
+    <input class="pair-target" value="${escapeAttribute(pair.target)}" placeholder="C:\\working-emby\\movies">
     <button type="button" class="remove-button">移除</button>
   `;
   row.querySelector(".remove-button").addEventListener("click", () => {
     if (pathPairs.children.length > 1) {
       row.remove();
+      saveFormConfig();
     }
   });
   pathPairs.appendChild(row);
+  saveFormConfig();
 }
 
 function collectPairs() {
@@ -241,6 +298,9 @@ document.querySelector("#addPairButton").addEventListener("click", () => addPair
   target: "C:\\working-emby\\tvshows",
 }));
 
+document.querySelector("#runForm").addEventListener("input", saveFormConfig);
+document.querySelector("#runForm").addEventListener("change", saveFormConfig);
+
 document.querySelector("#clearButton").addEventListener("click", () => {
   outputLog.textContent = "";
   reportLinks.innerHTML = "";
@@ -253,5 +313,5 @@ document.querySelector("#runForm").addEventListener("submit", runWorkflow);
 restartElevatedButton.addEventListener("click", restartElevated);
 cancelElevationButton.addEventListener("click", hideElevationPrompt);
 
-addPair(DEFAULT_PAIR);
+restoreFormConfig();
 checkHealth();

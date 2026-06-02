@@ -56,6 +56,7 @@ Implemented:
 - FastAPI app factory;
 - minimal browser UI at `/`;
 - path pair media type uses fixed radio options: `movies` / `tvshows`;
+- WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
 - `/health`;
 - `/v1/actions`;
 - `/v1/admin/status`;
