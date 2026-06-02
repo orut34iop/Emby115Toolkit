@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emby115Toolkit V2</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Emby115Toolkit V2</h1>
+      <p>WebUI facade for workflow execution</p>
+    </div>
+    <div class="status-strip" aria-label="workflow status">
+      <span class="status-dot" id="healthDot"></span>
+      <span id="healthText">checking</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="workspace">
+      <div class="section-title">
+        <h2>构建本地软链接工作区</h2>
+        <button type="button" id="addPairButton">添加路径对</button>
+      </div>
+
+      <form id="runForm">
+        <div class="grid two">
+          <label>
+            Access Token
+            <input id="accessToken" type="password" autocomplete="off" placeholder="仅在服务端启用 token 时填写">
+          </label>
+          <label>
+            线程数
+            <input id="threadCount" type="number" min="1" max="32" value="4">
+          </label>
+        </div>
+
+        <div class="path-table" aria-label="path pairs">
+          <div class="path-head">
+            <span>名称</span>
+            <span>CD2 源目录</span>
+            <span>本地 symlink 工作区</span>
+            <span></span>
+          </div>
+          <div id="pathPairs"></div>
+        </div>
+
+        <div class="grid two">
+          <label>
+            报告目录
+            <input id="reportDir" value="reports">
+          </label>
+          <label>
+            日志目录
+            <input id="logDir" value="logs">
+          </label>
+        </div>
+
+        <label>
+          视频后缀
+          <input id="extensions" value=".mkv;.iso;.ts;.mp4;.avi;.rmvb;.wmv;.m2ts;.mpg;.flv;.rm;.m4v;.mov;.vob;.webm;.divx;.3gp">
+        </label>
+
+        <div class="actions">
+          <label class="checkline">
+            <input id="dryRun" type="checkbox" checked>
+            dry-run 仅生成计划和报告
+          </label>
+          <button type="submit" id="runButton">执行</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="run-panel">
+      <div class="section-title">
+        <h2>执行结果</h2>
+        <button type="button" id="clearButton">清空</button>
+      </div>
+      <dl class="result-list">
+        <dt>Run ID</dt>
+        <dd id="runId">-</dd>
+        <dt>Action</dt>
+        <dd id="actionName">-</dd>
+        <dt>模式</dt>
+        <dd id="runMode">-</dd>
+      </dl>
+      <div class="report-links" id="reportLinks"></div>
+      <pre id="outputLog" class="output" aria-live="polite"></pre>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

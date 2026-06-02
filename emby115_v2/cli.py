@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--serve-web", action="store_true", help="启动 V2 WebUI 后端服务")
     parser.add_argument("--host", default="127.0.0.1", help="Web 服务监听地址")
     parser.add_argument("--port", type=int, default=8765, help="Web 服务端口")
+    parser.add_argument("--access-token", default="", help="WebUI 访问令牌；局域网监听时必须设置")
     return parser
 
 
@@ -74,7 +75,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.serve_web:
-        return serve_web(args.host, args.port)
+        return serve_web(args.host, args.port, args.access_token)
 
     context: AppContext | None = None
     logger = None
@@ -129,7 +130,10 @@ def run_cli(argv: list[str] | None = None) -> int:
         return 1
 
 
-def serve_web(host: str, port: int) -> int:
+def serve_web(host: str, port: int, access_token: str = "") -> int:
+    if host not in {"127.0.0.1", "localhost", "::1"} and not access_token:
+        sys.stderr.write("WebUI 监听非本机地址时必须设置 --access-token。\n")
+        return 1
     try:
         import uvicorn
 
@@ -138,7 +142,7 @@ def serve_web(host: str, port: int) -> int:
         sys.stderr.write(f"启动 WebUI 需要安装 fastapi 和 uvicorn: {exc}\n")
         return 1
 
-    uvicorn.run(create_app(), host=host, port=port)
+    uvicorn.run(create_app(access_token=access_token), host=host, port=port)
     return 0
 
 

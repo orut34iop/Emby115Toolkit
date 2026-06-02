@@ -21,7 +21,8 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Supports local Windows Terminal, PowerShell/CMD, Windows OpenSSH remote sessions, and non-interactive scheduled execution.
   - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
 - **WebUI backend:** `python main.py --serve-web`
-  - Current state: FastAPI backend skeleton exists. A browser UI is not implemented yet.
+  - Current state: minimal browser UI exists for `build_symlink_workspace`.
+  - Non-localhost listening requires `--access-token`.
 
 Version 1.x legacy desktop entry points still exist:
 

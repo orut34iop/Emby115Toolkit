@@ -16,7 +16,7 @@ This document records the current V2 development baseline. Keep it updated whene
 - V2 package: `emby115_v2/`
 - Context contract: `emby115_v2/context.py`
 - CLI facade: `emby115_v2/cli.py`
-- Web backend facade skeleton: `emby115_v2/web/api.py`
+- WebUI backend and minimal browser page: `emby115_v2/web/`
 - Workflow runner: `emby115_v2/workflow/runner.py`
 - Report writer: `emby115_v2/reports/writer.py`
 - First core service: `emby115_v2/services/symlink_service.py`
@@ -49,19 +49,35 @@ python main.py --action scan_and_link
 Implemented:
 
 - FastAPI app factory;
+- minimal browser UI at `/`;
 - `/health`;
 - `/v1/actions`;
 - `/v1/run`;
+- `/v1/reports/{run_id}/report.html`;
+- `/v1/reports/{run_id}/report.json`;
+- access token enforcement for `/v1/*` when configured;
+- single-run execution lock;
 - `python main.py --serve-web` backend startup path.
 
 Not yet implemented:
 
-- browser UI;
-- access token enforcement;
-- single-run execution lock;
 - real-time logs/status;
 - reports center;
 - review center.
+
+Start local WebUI:
+
+```bash
+python main.py --serve-web
+```
+
+Start LAN WebUI with token:
+
+```bash
+python main.py --serve-web --host 0.0.0.0 --access-token YOUR_TOKEN
+```
+
+Listening on a non-localhost address without `--access-token` must fail.
 
 ## Documentation Rule
 
