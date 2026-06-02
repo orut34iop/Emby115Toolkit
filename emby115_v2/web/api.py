@@ -1,23 +1,31 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any
 
+from emby115_v2 import windows_admin
 from emby115_v2.app import run_context
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
 
 
-def create_app(access_token: str = ""):
+SYMLINK_ACTIONS = {"build_symlink_workspace", "scan_and_link"}
+
+
+def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765, exit_after_elevation: bool = True):
     from fastapi import Depends, FastAPI, Header, HTTPException, Query
-    from fastapi.responses import FileResponse, HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
 
     static_dir = Path(__file__).resolve().parent / "static"
     app = FastAPI(title="Emby115Toolkit V2 API")
     app.state.access_token = access_token
+    app.state.host = host
+    app.state.port = port
+    app.state.exit_after_elevation = exit_after_elevation
     app.state.run_lock = threading.Lock()
     app.state.report_dirs = {}
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -49,12 +57,53 @@ def create_app(access_token: str = ""):
     def actions() -> dict[str, list[str]]:
         return {"actions": ["build_symlink_workspace", "scan_and_link"]}
 
+    @app.get("/v1/admin/status", dependencies=[Depends(require_token)])
+    def admin_status() -> dict[str, bool]:
+        return {
+            "is_windows": windows_admin.is_windows(),
+            "is_admin": windows_admin.is_admin(),
+            "requires_admin_for_symlink": windows_admin.requires_admin_for_symlink(),
+        }
+
+    @app.post("/v1/admin/restart-elevated", dependencies=[Depends(require_token)])
+    def restart_elevated() -> dict[str, str | bool]:
+        if windows_admin.is_admin():
+            return {"status": "already_admin", "is_admin": True}
+        try:
+            windows_admin.restart_webui_as_admin(
+                app.state.host,
+                app.state.port,
+                app.state.access_token,
+                Path.cwd(),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if app.state.exit_after_elevation:
+            threading.Timer(2.0, lambda: os._exit(0)).start()
+        return {"status": "elevation_requested", "is_admin": False}
+
     @app.post("/v1/run", dependencies=[Depends(require_token)])
-    def run(payload: dict[str, Any]) -> dict[str, Any]:
+    def run(payload: dict[str, Any]):
+        try:
+            context = AppContext.from_dict(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if (
+            context.action in SYMLINK_ACTIONS
+            and not context.dry_run
+            and windows_admin.requires_admin_for_symlink()
+            and not windows_admin.is_admin()
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "创建 Windows 符号链接需要管理员权限，请以管理员方式重启 WebUI 后再执行。",
+                    "requires_elevation": True,
+                },
+            )
         if not app.state.run_lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="已有工作流正在执行，请等待当前任务完成")
         try:
-            context = AppContext.from_dict(payload)
             logger = setup_run_logger(
                 "emby115_v2_web",
                 context.logging.log_dir,

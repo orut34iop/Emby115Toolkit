@@ -53,11 +53,15 @@ Implemented:
 - path pair media type uses fixed radio options: `movies` / `tvshows`;
 - `/health`;
 - `/v1/actions`;
+- `/v1/admin/status`;
+- `/v1/admin/restart-elevated`;
 - `/v1/run`;
 - `/v1/reports/{run_id}/report.html`;
 - `/v1/reports/{run_id}/report.json`;
 - access token enforcement for `/v1/*` when configured;
 - single-run execution lock;
+- non-dry-run symlink creation is blocked unless the Windows process is running as Administrator;
+- WebUI can request an Administrator restart through Windows UAC after user confirmation;
 - `python main.py --serve-web` backend startup path.
 
 Not yet implemented:

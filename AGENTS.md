@@ -23,6 +23,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
 - **WebUI backend:** `python main.py --serve-web`
   - Current state: minimal browser UI exists for `build_symlink_workspace`.
   - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
+  - Non-dry-run symlink creation on Windows must check Administrator status and route through the user-confirmed UAC restart flow when needed.
   - Non-localhost listening requires `--access-token`.
 
 Version 1.x legacy desktop entry points still exist:

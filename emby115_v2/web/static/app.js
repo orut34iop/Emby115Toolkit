@@ -12,6 +12,9 @@ const pathPairs = document.querySelector("#pathPairs");
 const outputLog = document.querySelector("#outputLog");
 const runButton = document.querySelector("#runButton");
 const reportLinks = document.querySelector("#reportLinks");
+const elevationModal = document.querySelector("#elevationModal");
+const restartElevatedButton = document.querySelector("#restartElevatedButton");
+const cancelElevationButton = document.querySelector("#cancelElevationButton");
 
 function tokenHeaders() {
   const token = document.querySelector("#accessToken").value.trim();
@@ -35,6 +38,22 @@ function setBusy(busy) {
   state.busy = busy;
   runButton.disabled = busy;
   runButton.textContent = busy ? "执行中" : "执行";
+}
+
+async function parseJson(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    return {};
+  }
+}
+
+function showElevationPrompt() {
+  elevationModal.classList.remove("hidden");
+}
+
+function hideElevationPrompt() {
+  elevationModal.classList.add("hidden");
 }
 
 function addPair(pair = {}) {
@@ -115,6 +134,46 @@ async function checkHealth() {
   }
 }
 
+async function needsElevation(payload) {
+  if (payload.dry_run) return false;
+  const response = await fetch("/v1/admin/status", {
+    headers: tokenHeaders(),
+  });
+  const data = await parseJson(response);
+  if (!response.ok) {
+    throw new Error(data.detail || response.statusText);
+  }
+  return data.requires_admin_for_symlink && !data.is_admin;
+}
+
+async function restartElevated() {
+  restartElevatedButton.disabled = true;
+  cancelElevationButton.disabled = true;
+  appendLog("正在请求以管理员方式重启 WebUI，请在 Windows UAC 中选择同意。");
+  try {
+    const response = await fetch("/v1/admin/restart-elevated", {
+      method: "POST",
+      headers: tokenHeaders(),
+    });
+    const data = await parseJson(response);
+    if (!response.ok) {
+      throw new Error(data.detail || response.statusText);
+    }
+    if (data.status === "already_admin") {
+      appendLog("当前 WebUI 已经是管理员权限，可以直接执行。");
+      hideElevationPrompt();
+      return;
+    }
+    appendLog("已发起管理员重启。当前页面会在几秒后刷新。");
+    window.setTimeout(() => window.location.reload(), 5000);
+  } catch (error) {
+    appendLog(`管理员重启失败: ${error.message}`);
+  } finally {
+    restartElevatedButton.disabled = false;
+    cancelElevationButton.disabled = false;
+  }
+}
+
 async function runWorkflow(event) {
   event.preventDefault();
   if (state.busy) return;
@@ -122,6 +181,17 @@ async function runWorkflow(event) {
   const payload = buildPayload();
   if (!payload.path_pairs.length) {
     appendLog("请至少填写一个有效的源目录和目标目录。");
+    return;
+  }
+
+  try {
+    if (await needsElevation(payload)) {
+      appendLog("当前 WebUI 不是管理员权限，真实创建符号链接前需要提权。");
+      showElevationPrompt();
+      return;
+    }
+  } catch (error) {
+    appendLog(`权限状态检查失败: ${error.message}`);
     return;
   }
 
@@ -138,8 +208,13 @@ async function runWorkflow(event) {
       },
       body: JSON.stringify(payload),
     });
-    const data = await response.json();
+    const data = await parseJson(response);
     if (!response.ok) {
+      if (data.requires_elevation) {
+        appendLog(data.detail || "需要管理员权限。");
+        showElevationPrompt();
+        return;
+      }
       throw new Error(data.detail || response.statusText);
     }
 
@@ -175,6 +250,8 @@ document.querySelector("#clearButton").addEventListener("click", () => {
 });
 
 document.querySelector("#runForm").addEventListener("submit", runWorkflow);
+restartElevatedButton.addEventListener("click", restartElevated);
+cancelElevationButton.addEventListener("click", hideElevationPrompt);
 
 addPair(DEFAULT_PAIR);
 checkHealth();

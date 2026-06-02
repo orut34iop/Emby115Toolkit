@@ -142,7 +142,7 @@ def serve_web(host: str, port: int, access_token: str = "") -> int:
         sys.stderr.write(f"启动 WebUI 需要安装 fastapi 和 uvicorn: {exc}\n")
         return 1
 
-    uvicorn.run(create_app(access_token=access_token), host=host, port=port)
+    uvicorn.run(create_app(access_token=access_token, host=host, port=port), host=host, port=port)
     return 0
 
 
