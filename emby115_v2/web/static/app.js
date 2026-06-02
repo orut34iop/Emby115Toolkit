@@ -7,6 +7,14 @@ const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
 const METADATA_FORM_STORAGE_KEY = "emby115_v2.webui.metadata.form.v1";
 const PENDING_ELEVATED_RUN_KEY = "emby115_v2.webui.pending_elevated_run.v1";
 const SYMLINK_ACTIONS = new Set(["build_symlink_workspace", "scan_and_link"]);
+const DEFAULT_METADATA_LIBRARIES = [
+  { enabled: true, media_type: "movies", library_path: "C:\\working-emby\\movies" },
+  { enabled: true, media_type: "tvshows", library_path: "C:\\working-emby\\tvshows" },
+];
+const MEDIA_TYPE_LABELS = {
+  movies: "电影",
+  tvshows: "电视剧",
+};
 
 const state = {
   busy: false,
@@ -106,7 +114,62 @@ function readSavedMetadataForm() {
   }
 }
 
+function collectMetadataLibraries() {
+  return [...document.querySelectorAll(".metadata-library-row")].map((row) => ({
+    enabled: row.querySelector(".metadata-library-enabled").checked,
+    media_type: row.dataset.mediaType,
+    library_path: row.querySelector(".metadata-library-path").value.trim(),
+  }));
+}
+
+function normalizeMetadataLibraries(config = {}) {
+  const output = config.metadata_output || {};
+  const libraries = DEFAULT_METADATA_LIBRARIES.map((library) => ({ ...library }));
+  if (Array.isArray(config.metadata_libraries)) {
+    for (const item of config.metadata_libraries) {
+      const mediaType = item?.media_type === "tvshows" ? "tvshows" : item?.media_type === "movies" ? "movies" : "";
+      const library = libraries.find((entry) => entry.media_type === mediaType);
+      if (!library) continue;
+      library.enabled = item.enabled ?? true;
+      library.library_path = typeof item.library_path === "string" ? item.library_path : library.library_path;
+    }
+    return libraries;
+  }
+
+  const legacyMediaType = output.media_type === "tvshows" ? "tvshows" : "movies";
+  const legacyPath = output.library_path || "";
+  if (legacyPath) {
+    const library = libraries.find((entry) => entry.media_type === legacyMediaType);
+    if (library) library.library_path = legacyPath;
+  }
+  return libraries;
+}
+
+function applyMetadataLibraries(config = {}) {
+  for (const library of normalizeMetadataLibraries(config)) {
+    const row = document.querySelector(`.metadata-library-row[data-media-type="${library.media_type}"]`);
+    if (!row) continue;
+    row.querySelector(".metadata-library-enabled").checked = library.enabled ?? true;
+    row.querySelector(".metadata-library-path").value = library.library_path || "";
+  }
+}
+
+function metadataOutputOptionsFromForm(primaryLibrary) {
+  return {
+    media_type: primaryLibrary?.media_type || "movies",
+    library_path: primaryLibrary?.library_path || "",
+    write_nfo: true,
+    download_images: document.querySelector("#metadataDownloadImages").checked,
+    download_episode_thumbs: document.querySelector("#metadataDownloadEpisodeThumbs").checked,
+    download_season_posters: false,
+    overwrite_existing: document.querySelector("#metadataOverwrite").checked,
+    auto_rename: document.querySelector("#metadataAutoRename").checked,
+  };
+}
+
 function metadataConfigFromForm() {
+  const libraries = collectMetadataLibraries();
+  const primaryLibrary = libraries.find((library) => library.enabled && library.library_path) || libraries[0];
   return {
     dry_run: document.querySelector("#metadataDryRun").checked,
     tmdb: {
@@ -131,16 +194,8 @@ function metadataConfigFromForm() {
       timeout: Number(document.querySelector("#llmTimeout").value || 30),
       max_candidates_per_decision: 5,
     },
-    metadata_output: {
-      media_type: document.querySelector("input[name='metadataMediaType']:checked")?.value || "movies",
-      library_path: document.querySelector("#metadataLibraryPath").value.trim(),
-      write_nfo: true,
-      download_images: document.querySelector("#metadataDownloadImages").checked,
-      download_episode_thumbs: document.querySelector("#metadataDownloadEpisodeThumbs").checked,
-      download_season_posters: false,
-      overwrite_existing: document.querySelector("#metadataOverwrite").checked,
-      auto_rename: document.querySelector("#metadataAutoRename").checked,
-    },
+    metadata_libraries: libraries,
+    metadata_output: metadataOutputOptionsFromForm(primaryLibrary),
     report: {
       output_dir: document.querySelector("#reportDir").value.trim() || "reports",
     },
@@ -174,8 +229,7 @@ function applyMetadataConfig(config = {}) {
   document.querySelector("#llmModel").value = llm.model || "";
   document.querySelector("#llmTemperature").value = llm.temperature ?? 0;
   document.querySelector("#llmTimeout").value = llm.timeout || 30;
-  document.querySelector("#metadataLibraryPath").value = output.library_path || "";
-  document.querySelector(`input[name='metadataMediaType'][value='${output.media_type === "tvshows" ? "tvshows" : "movies"}']`).checked = true;
+  applyMetadataLibraries(config);
   document.querySelector("#metadataDownloadImages").checked = output.download_images ?? true;
   document.querySelector("#metadataDownloadEpisodeThumbs").checked = output.download_episode_thumbs ?? true;
   document.querySelector("#metadataOverwrite").checked = output.overwrite_existing ?? false;
@@ -391,12 +445,14 @@ async function restartElevated() {
   }
 }
 
-async function executePayload(payload) {
-  if (state.busy) return;
+async function executePayload(payload, options = {}) {
+  const clearReports = options.clearReports ?? true;
+  const reportLabel = options.reportLabel || "";
+  if (state.busy) return { ok: false, error: "已有任务正在执行" };
 
   if (SYMLINK_ACTIONS.has(payload.action) && !payload.path_pairs.length) {
     appendLog("请至少填写一个有效的源目录和目标目录。");
-    return;
+    return { ok: false, error: "请至少填写一个有效的源目录和目标目录。" };
   }
 
   try {
@@ -404,16 +460,19 @@ async function executePayload(payload) {
       appendLog("当前 WebUI 不是管理员权限，真实创建符号链接前需要提权。");
       savePendingElevatedRun(payload);
       showElevationPrompt();
-      return;
+      return { ok: false, requiresElevation: true };
     }
   } catch (error) {
     appendLog(`权限状态检查失败: ${error.message}`);
-    return;
+    return { ok: false, error: error.message };
   }
 
   setBusy(true);
-  reportLinks.innerHTML = "";
-  appendLog(`提交 ${payload.action}，dry-run=${payload.dry_run}`);
+  if (clearReports) {
+    reportLinks.innerHTML = "";
+  }
+  const labelText = reportLabel ? ` (${reportLabel})` : "";
+  appendLog(`提交 ${payload.action}${labelText}，dry-run=${payload.dry_run}`);
 
   try {
     const response = await fetch("/v1/run", {
@@ -430,7 +489,7 @@ async function executePayload(payload) {
         appendLog(data.detail || "需要管理员权限。");
         savePendingElevatedRun(payload);
         showElevationPrompt();
-        return;
+        return { ok: false, requiresElevation: true };
       }
       throw new Error(data.detail || response.statusText);
     }
@@ -438,16 +497,24 @@ async function executePayload(payload) {
     document.querySelector("#runId").textContent = data.run_id;
     document.querySelector("#actionName").textContent = data.action;
     document.querySelector("#runMode").textContent = data.dry_run ? "dry-run" : "run";
-    reportLinks.innerHTML = `
+    const reportHtml = `
+      ${reportLabel ? `<strong>${reportLabel}</strong>` : ""}
       <a href="${withToken(data.reports.html_url)}" target="_blank" rel="noreferrer">打开 HTML 报告</a>
       <a href="${withToken(data.reports.json_url)}" target="_blank" rel="noreferrer">打开 JSON 报告</a>
       <span>${data.reports.html}</span>
       <span>${data.reports.json}</span>
     `;
-    appendLog(`执行完成 run_id=${data.run_id}`);
+    if (clearReports) {
+      reportLinks.innerHTML = reportHtml;
+    } else {
+      reportLinks.insertAdjacentHTML("beforeend", reportHtml);
+    }
+    appendLog(`执行完成${labelText} run_id=${data.run_id}`);
     clearPendingElevatedRun();
+    return { ok: true, data };
   } catch (error) {
-    appendLog(`执行失败: ${error.message}`);
+    appendLog(`执行失败${labelText}: ${error.message}`);
+    return { ok: false, error: error.message };
   } finally {
     setBusy(false);
   }
@@ -458,10 +525,17 @@ async function runWorkflow(event) {
   await executePayload(buildPayload());
 }
 
-function buildMetadataPayload(action = "scrape_metadata") {
+function buildMetadataPayload(action = "scrape_metadata", library = null) {
+  const config = metadataConfigFromForm();
+  const selectedLibrary = library || config.metadata_libraries.find((item) => item.enabled && item.library_path) || config.metadata_libraries[0];
+  const metadataOutput = {
+    ...config.metadata_output,
+    media_type: selectedLibrary?.media_type || "movies",
+    library_path: selectedLibrary?.library_path || "",
+  };
   return {
     action,
-    dry_run: document.querySelector("#metadataDryRun").checked,
+    dry_run: config.dry_run,
     symlink: {
       video_extensions: document
         .querySelector("#extensions")
@@ -469,13 +543,35 @@ function buildMetadataPayload(action = "scrape_metadata") {
         .map((item) => item.trim())
         .filter(Boolean),
     },
-    ...metadataConfigFromForm(),
+    ...config,
+    metadata_output: metadataOutput,
   };
 }
 
 async function runMetadataWorkflow(event) {
   event.preventDefault();
-  await executePayload(buildMetadataPayload("scrape_metadata"));
+  const libraries = collectMetadataLibraries().filter((library) => library.enabled && library.library_path);
+  if (!libraries.length) {
+    appendLog("不存在已勾选且路径有效的媒体库。");
+    return;
+  }
+
+  let successCount = 0;
+  let failedCount = 0;
+  for (const [index, library] of libraries.entries()) {
+    const label = MEDIA_TYPE_LABELS[library.media_type] || library.media_type;
+    appendLog(`开始刮削${label}: ${library.library_path}`);
+    const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
+      clearReports: index === 0,
+      reportLabel: label,
+    });
+    if (result.ok) {
+      successCount += 1;
+    } else {
+      failedCount += 1;
+    }
+  }
+  appendLog(`元数据刮削队列完成：成功 ${successCount}，失败 ${failedCount}`);
 }
 
 async function testMetadataProvider(action) {

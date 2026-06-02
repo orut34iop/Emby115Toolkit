@@ -45,6 +45,8 @@ python main.py --action test_llm_config --config emby115_v2.config.json
 python main.py --action scrape_metadata --config emby115_v2.config.json --dry-run
 ```
 
+CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs.
+
 `build_symlink_workspace` maps to the confirmed workflow step "构建本地软链接工作区":
 
 - scan mounted CloudDrive2 source folders;
@@ -85,6 +87,7 @@ Implemented:
 - path pair media type uses fixed radio options: `movies` / `tvshows`;
 - WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
 - metadata provider settings are persisted in browser localStorage, including TMDB/LLM API keys by user request;
+- metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links;
 - pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
 - `/health`;
 - `/v1/actions`;
@@ -98,7 +101,7 @@ Implemented:
 - single-run execution lock;
 - non-dry-run symlink creation is blocked unless the Windows process is running as Administrator;
 - WebUI can request an Administrator restart through Windows UAC after user confirmation, wait for the elevated WebUI to become ready, reload, and automatically resume the original request;
-- WebUI metadata section includes TMDB/LLM settings, test buttons, local config load/save buttons, auto rename, and a `scrape_metadata` dry-run entry;
+- WebUI metadata section includes TMDB/LLM settings, test buttons, local config load/save buttons, fixed movie/TV metadata library checklist, auto rename, and a `scrape_metadata` dry-run entry;
 - `python main.py --serve-web` backend startup path.
 
 Not yet implemented:

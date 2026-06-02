@@ -25,6 +25,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
+  - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports.
   - Non-dry-run symlink creation on Windows must check Administrator status and route through the user-confirmed UAC restart flow when needed.
   - When WebUI triggers UAC elevation, it must preserve the pending run in browser sessionStorage, wait for the elevated WebUI to become ready, reload, and resume that same run automatically. Access tokens must not be persisted.
   - Non-localhost listening requires `--access-token`.
@@ -89,6 +90,7 @@ Current V2 action names:
   - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no movie candidates, video-stem NFO writing, and poster/fanart downloading.
   - TV scraping currently supports TMDB search/details, episode details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no TV candidates, `tvshow.nfo`, episode NFO, show poster/fanart downloading, and episode thumbnail downloading.
   - Optional `metadata_output.auto_rename` defaults to true. Movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`; TV first-level folders are renamed from `tvshow.nfo` `title` and `year`. When the target folder already exists, merge non-conflicting files into it, skip conflicting filenames, remove the emptied source folder, and report the result.
+  - The WebUI can submit checked movie and TV metadata libraries sequentially; each submission still uses the existing single-library `metadata_output` Context Object. CLI remains single-library through `metadata_output`.
   - Season posters, LLM arbitration between multiple returned TMDB candidates, and richer scoring are next-stage work.
 
 ### Legacy Dual GUI Frontends

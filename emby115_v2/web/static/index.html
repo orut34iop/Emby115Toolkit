@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-auto-rename">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-metadata-libraries">
 </head>
 <body>
   <header class="topbar">
@@ -82,24 +82,28 @@
         </div>
 
         <form id="metadataForm">
-          <div class="grid two">
-            <fieldset class="fieldbox">
-              <legend>媒体类型</legend>
-              <div class="media-type-group" role="radiogroup" aria-label="元数据媒体类型">
-                <label class="radio-pill">
-                  <input type="radio" name="metadataMediaType" value="movies" checked>
-                  电影
-                </label>
-                <label class="radio-pill">
-                  <input type="radio" name="metadataMediaType" value="tvshows">
-                  电视剧
-                </label>
-              </div>
-            </fieldset>
-            <label>
-              标准化媒体库目录
-              <input id="metadataLibraryPath" placeholder="C:\working-emby\movies">
-            </label>
+          <div class="metadata-library-table" aria-label="元数据媒体库列表">
+            <div class="metadata-library-head">
+              <span>启用</span>
+              <span>媒体类型</span>
+              <span>标准化媒体库目录</span>
+            </div>
+            <div class="metadata-library-row" data-media-type="movies">
+              <label class="checkline compact-check">
+                <input id="metadataMoviesEnabled" class="metadata-library-enabled" type="checkbox" checked>
+                刮削
+              </label>
+              <span class="media-label">电影</span>
+              <input id="metadataMoviesPath" class="metadata-library-path" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+            </div>
+            <div class="metadata-library-row" data-media-type="tvshows">
+              <label class="checkline compact-check">
+                <input id="metadataTvshowsEnabled" class="metadata-library-enabled" type="checkbox" checked>
+                刮削
+              </label>
+              <span class="media-label">电视剧</span>
+              <input id="metadataTvshowsPath" class="metadata-library-path" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+            </div>
           </div>
 
           <div class="grid two">
@@ -237,6 +241,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260603-auto-rename"></script>
+  <script src="/static/app.js?v=20260603-metadata-libraries"></script>
 </body>
 </html>

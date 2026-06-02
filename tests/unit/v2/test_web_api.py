@@ -16,10 +16,14 @@ def test_webui_serves_index():
     assert "测试 TMDB 配置" in response.text
     assert "测试 LLM 配置" in response.text
     assert "metadataAutoRename" in response.text
+    assert "metadataMoviesEnabled" in response.text
+    assert "metadataTvshowsEnabled" in response.text
+    assert "metadataMoviesPath" in response.text
+    assert "metadataTvshowsPath" in response.text
     assert "需要管理员权限" in response.text
 
 
-def test_webui_media_type_uses_radio_controls():
+def test_webui_symlink_media_type_uses_radio_controls():
     client = TestClient(create_app())
 
     response = client.get("/static/app.js")
@@ -29,6 +33,26 @@ def test_webui_media_type_uses_radio_controls():
     assert 'value="movies"' in response.text
     assert 'value="tvshows"' in response.text
     assert "pair-name" not in response.text
+
+
+def test_webui_metadata_uses_fixed_library_checklist():
+    client = TestClient(create_app())
+
+    html = client.get("/").text
+    script = client.get("/static/app.js").text
+
+    assert "元数据媒体库列表" in html
+    assert "metadataMoviesEnabled" in html
+    assert "metadataTvshowsEnabled" in html
+    assert "metadataMoviesPath" in html
+    assert "metadataTvshowsPath" in html
+    assert "name=\"metadataMediaType\"" not in html
+    assert "metadata_libraries" in script
+    assert "collectMetadataLibraries()" in script
+    assert "normalizeMetadataLibraries" in script
+    assert "metadata_output: metadataOutput" in script
+    assert "不存在已勾选且路径有效的媒体库" in script
+    assert "元数据刮削队列完成" in script
 
 
 def test_webui_includes_admin_elevation_flow():
@@ -99,6 +123,8 @@ def test_metadata_config_api_loads_and_saves(tmp_path, monkeypatch):
 
     assert loaded.status_code == 200
     assert loaded.json()["config"]["tmdb"]["language"] == "zh-CN"
+    assert loaded.json()["config"]["metadata_libraries"][0]["media_type"] == "movies"
+    assert loaded.json()["config"]["metadata_libraries"][1]["media_type"] == "tvshows"
     assert saved.status_code == 200
     assert config_path.exists()
     assert client.get("/v1/config/metadata").json()["config"]["tmdb"]["api_key"] == "abc"

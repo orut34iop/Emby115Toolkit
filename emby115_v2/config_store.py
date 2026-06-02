@@ -47,7 +47,7 @@ def default_metadata_config() -> dict[str, Any]:
         },
         "metadata_output": {
             "media_type": "movies",
-            "library_path": "",
+            "library_path": "C:\\working-emby\\movies",
             "write_nfo": True,
             "download_images": True,
             "download_episode_thumbs": True,
@@ -55,6 +55,10 @@ def default_metadata_config() -> dict[str, Any]:
             "overwrite_existing": False,
             "auto_rename": True,
         },
+        "metadata_libraries": [
+            {"enabled": True, "media_type": "movies", "library_path": "C:\\working-emby\\movies"},
+            {"enabled": True, "media_type": "tvshows", "library_path": "C:\\working-emby\\tvshows"},
+        ],
         "report": {"output_dir": "reports"},
         "logging": {"log_dir": "logs", "log_level": "INFO"},
     }
