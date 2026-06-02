@@ -1,6 +1,27 @@
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
-from emby115_v2.services.metadata_service import LlmConfigTestService, MetadataScraperService, TmdbConfigTestService
+import urllib.error
+
+from emby115_v2.services.metadata_service import (
+    LlmConfigTestService,
+    MetadataScraperService,
+    TmdbClient,
+    TmdbConfigTestService,
+)
+
+
+class FakeHttpResponse:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return self.payload
 
 
 class FakeTmdbClient:
@@ -240,6 +261,44 @@ def test_tmdb_config_test_reports_missing_api_key(tmp_path):
     assert result.status == "failed"
     assert result.summary["ok"] is False
     assert "API Key" in result.summary["reason"]
+
+
+def test_tmdb_client_retries_timed_out_json_request(monkeypatch):
+    calls = []
+
+    def fake_urlopen(url, timeout):
+        calls.append((url, timeout))
+        if len(calls) == 1:
+            raise urllib.error.URLError("timed out")
+        return FakeHttpResponse(b'{"results":[{"id":42}]}')
+
+    monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+
+    client = TmdbClient("key", timeout=1, retries=2)
+    result = client.search_movie(type("Query", (), {"title": "Movie", "year": ""})(), "zh-CN")
+
+    assert result == [{"id": 42}]
+    assert len(calls) == 2
+
+
+def test_tmdb_client_retries_timed_out_image_download(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_urlopen(url, timeout):
+        calls.append((url, timeout))
+        if len(calls) == 1:
+            raise urllib.error.URLError("timed out")
+        return FakeHttpResponse(b"image")
+
+    monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+
+    target = tmp_path / "poster.jpg"
+    client = TmdbClient("key", timeout=1, retries=2)
+    status = client.download_image("/poster.jpg", target, overwrite=False)
+
+    assert status == "downloaded"
+    assert target.read_bytes() == b"image"
+    assert len(calls) == 2
 
 
 def test_llm_config_test_reports_missing_required_fields(tmp_path):

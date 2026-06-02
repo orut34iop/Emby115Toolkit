@@ -87,6 +87,7 @@ Current V2 action names:
 - `scrape_metadata` — Metadata scraping workflow for the standardized symlink media library.
   - First phase uses TMDB as the primary metadata provider and reserves provider abstraction for future sources.
   - Default TMDB language is `zh-CN`; fallback language is `en-US`.
+  - TMDB JSON requests and image downloads retry transient timeout, rate-limit, and 5xx failures before marking an item failed.
   - Matching strategy is rules first, TMDB search second, and LLM-assisted title expansion for movie/TV no-candidate cases. LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage.
   - Dry-run may call providers and generate a full report but must not write NFO files or download images.
   - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no movie candidates, video-stem NFO writing, and poster/fanart downloading.

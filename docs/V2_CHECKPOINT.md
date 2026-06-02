@@ -69,6 +69,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 
 - first phase uses TMDB as the primary metadata provider, with provider abstraction reserved for future sources;
 - default TMDB metadata language is `zh-CN`, with `en-US` fallback for failed searches or missing fields;
+- TMDB JSON requests and image downloads retry transient timeout, HTTP 429, and HTTP 5xx failures before marking the affected record failed;
 - matching strategy is rules first, then TMDB search, then LLM-assisted title expansion for movie and TV no-candidate cases; LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage;
 - movie TMDB search/details are implemented; movie NFO and image filenames follow each video file stem, not the first-level folder name;
 - movie details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;

@@ -18,6 +18,7 @@ from emby115_v2.reports.writer import OperationRecord, StepResult
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
+TMDB_REQUEST_RETRIES = 3
 INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 
 
@@ -238,9 +239,10 @@ class LlmConfigTestService:
 
 
 class TmdbClient:
-    def __init__(self, api_key: str, timeout: float = 10.0):
+    def __init__(self, api_key: str, timeout: float = 10.0, retries: int = TMDB_REQUEST_RETRIES):
         self.api_key = api_key
         self.timeout = timeout
+        self.retries = max(1, retries)
 
     def search_movie(self, query: MovieQuery, language: str) -> list[dict[str, Any]]:
         params = {
@@ -284,14 +286,31 @@ class TmdbClient:
         if target_path.exists() and not overwrite:
             return "skipped_existing"
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(TMDB_IMAGE_BASE + image_path, timeout=self.timeout) as response:
-            target_path.write_bytes(response.read())
+        target_path.write_bytes(self._urlopen_with_retry(TMDB_IMAGE_BASE + image_path))
         return "downloaded"
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         url = TMDB_API_BASE + endpoint + "?" + urllib.parse.urlencode(params)
-        with urllib.request.urlopen(url, timeout=self.timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+        return json.loads(self._urlopen_with_retry(url).decode("utf-8"))
+
+    def _urlopen_with_retry(self, url: str) -> bytes:
+        last_error: Exception | None = None
+        for attempt in range(1, self.retries + 1):
+            try:
+                with urllib.request.urlopen(url, timeout=self.timeout) as response:
+                    return response.read()
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == self.retries:
+                    raise
+            except (TimeoutError, urllib.error.URLError) as exc:
+                last_error = exc
+                if attempt == self.retries:
+                    raise
+            time.sleep(min(0.2 * attempt, 1.0))
+        if last_error:
+            raise last_error
+        raise RuntimeError("TMDB 请求失败")
 
 
 class OpenAICompatibleLlmClient:
