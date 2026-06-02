@@ -10,6 +10,19 @@ def test_webui_serves_index():
 
     assert response.status_code == 200
     assert "Emby115Toolkit V2" in response.text
+    assert "媒体类型" in response.text
+
+
+def test_webui_media_type_uses_radio_controls():
+    client = TestClient(create_app())
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert 'type="radio"' in response.text
+    assert 'value="movies"' in response.text
+    assert 'value="tvshows"' in response.text
+    assert "pair-name" not in response.text
 
 
 def test_actions_require_token_when_configured():

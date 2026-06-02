@@ -165,7 +165,7 @@ button:disabled {
 .path-head,
 .path-row {
   display: grid;
-  grid-template-columns: 140px minmax(220px, 1fr) minmax(220px, 1fr) 78px;
+  grid-template-columns: 180px minmax(220px, 1fr) minmax(220px, 1fr) 78px;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -180,6 +180,30 @@ button:disabled {
 
 .path-row + .path-row {
   border-top: 1px solid var(--line);
+}
+
+.media-type-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.radio-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.radio-pill input {
+  width: 14px;
+  min-height: 14px;
+  margin: 0 6px 0 0;
 }
 
 .actions {

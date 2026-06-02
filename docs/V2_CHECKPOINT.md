@@ -50,6 +50,7 @@ Implemented:
 
 - FastAPI app factory;
 - minimal browser UI at `/`;
+- path pair media type uses fixed radio options: `movies` / `tvshows`;
 - `/health`;
 - `/v1/actions`;
 - `/v1/run`;

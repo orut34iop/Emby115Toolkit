@@ -22,6 +22,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
 - **WebUI backend:** `python main.py --serve-web`
   - Current state: minimal browser UI exists for `build_symlink_workspace`.
+  - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
   - Non-localhost listening requires `--access-token`.
 
 Version 1.x legacy desktop entry points still exist:

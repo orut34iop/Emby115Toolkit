@@ -39,9 +39,20 @@ function setBusy(busy) {
 
 function addPair(pair = {}) {
   const row = document.createElement("div");
+  const groupName = `media-type-${Date.now()}-${pathPairs.children.length}`;
+  const mediaType = pair.name === "tvshows" ? "tvshows" : "movies";
   row.className = "path-row";
   row.innerHTML = `
-    <input class="pair-name" value="${pair.name || ""}" placeholder="movies">
+    <div class="media-type-group" role="radiogroup" aria-label="媒体类型">
+      <label class="radio-pill">
+        <input class="pair-media-type" type="radio" name="${groupName}" value="movies" ${mediaType === "movies" ? "checked" : ""}>
+        电影
+      </label>
+      <label class="radio-pill">
+        <input class="pair-media-type" type="radio" name="${groupName}" value="tvshows" ${mediaType === "tvshows" ? "checked" : ""}>
+        电视剧
+      </label>
+    </div>
     <input class="pair-source" value="${pair.source || ""}" placeholder="D:\\115open\\tmp\\origin\\movies">
     <input class="pair-target" value="${pair.target || ""}" placeholder="C:\\working-emby\\movies">
     <button type="button" class="remove-button">移除</button>
@@ -57,7 +68,7 @@ function addPair(pair = {}) {
 function collectPairs() {
   return [...pathPairs.querySelectorAll(".path-row")]
     .map((row, index) => ({
-      name: row.querySelector(".pair-name").value.trim() || `pair_${index + 1}`,
+      name: row.querySelector(".pair-media-type:checked")?.value || `pair_${index + 1}`,
       source: row.querySelector(".pair-source").value.trim(),
       target: row.querySelector(".pair-target").value.trim(),
     }))
