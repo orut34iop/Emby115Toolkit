@@ -206,6 +206,34 @@ def test_tvshow_preserves_version_season_folder(tmp_path, mock_logger):
     )
 
 
+def test_tvshow_ignores_quality_only_source_folder_for_second_level(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    version = source / "tvshow" / "黑夜告白 (2026)完结" / "4K SDR 60帧 高码率"
+    version.mkdir(parents=True)
+    video = version / "Light to the Night.S01E10.2160p.SDR.60fps.H265.10bit.DTS 5.1.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.records[-1].target_path.endswith(
+        os.path.join(
+            "target",
+            "黑夜告白 (2026)",
+            "Light to the Night.S01.2160p.SDR.60fps.H265.10bit.DTS 5.1",
+            video.name,
+        )
+    )
+
+
 def test_unrecognized_tvshow_stays_in_original_relative_path_for_review(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"

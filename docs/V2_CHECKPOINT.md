@@ -42,7 +42,7 @@ python main.py --action scan_and_link
 - build standardized local library paths instead of blindly mirroring the source tree;
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;
 - for TV shows, place symlinks under a show title folder and a season/version second-level folder;
-- TV second-level folder priority is: existing source season/version folder, then release folder derived from episode filename, then `Season NN`;
+- TV second-level folder priority is: existing source folder that contains a season marker, then release folder derived from episode filename, then `Season NN`;
 - keep original video filenames unchanged;
 - keep uncertain TV/movie items in their original relative path and mark them for manual review;
 - create Windows symlinks;

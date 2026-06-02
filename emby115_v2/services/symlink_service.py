@@ -312,12 +312,15 @@ class ScanAndLinkService:
                 remaining = parts[2:]
             else:
                 remaining = parts[1:]
-            if remaining:
+            if remaining and self._path_has_season_marker(remaining):
                 return str(Path(*remaining))
         release_folder = self._season_release_folder_from_filename(source_path.stem, season)
         if release_folder:
             return release_folder
         return f"Season {season}"
+
+    def _path_has_season_marker(self, parts: tuple[str, ...]) -> bool:
+        return any(SEASON_RE.search(part) for part in parts)
 
     def _season_release_folder_from_filename(self, stem: str, season: str) -> str:
         season_episode = SEASON_EPISODE_RE.search(stem)
