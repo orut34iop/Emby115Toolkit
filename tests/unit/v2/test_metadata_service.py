@@ -54,6 +54,25 @@ class FakeTmdbClient:
                 "overview": "",
                 "runtime": 98,
                 "genres": [{"name": "爱情"}],
+                "vote_average": 7.6,
+                "release_dates": {
+                    "results": [
+                        {
+                            "iso_3166_1": "US",
+                            "release_dates": [{"certification": "PG-13"}],
+                        }
+                    ]
+                },
+                "credits": {
+                    "cast": [
+                        {
+                            "name": "Maggie Cheung",
+                            "character": "Ellen",
+                            "order": 0,
+                            "profile_path": "/maggie.jpg",
+                        }
+                    ]
+                },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
             }
@@ -63,11 +82,30 @@ class FakeTmdbClient:
             "original_title": "Sausalito",
             "release_date": "2000-04-20",
             "overview": "Fallback overview",
-            "runtime": 98,
-            "genres": [{"name": "Romance"}],
-            "poster_path": "/poster.jpg",
-            "backdrop_path": "/fanart.jpg",
-        }
+                "runtime": 98,
+                "genres": [{"name": "Romance"}],
+                "vote_average": 7.6,
+                "release_dates": {
+                    "results": [
+                        {
+                            "iso_3166_1": "US",
+                            "release_dates": [{"certification": "PG-13"}],
+                        }
+                    ]
+                },
+                "credits": {
+                    "cast": [
+                        {
+                            "name": "Maggie Cheung",
+                            "character": "Ellen",
+                            "order": 0,
+                            "profile_path": "/maggie.jpg",
+                        }
+                    ]
+                },
+                "poster_path": "/poster.jpg",
+                "backdrop_path": "/fanart.jpg",
+            }
 
     def search_tv(self, query, language):
         self.search_calls.append((query, language))
@@ -90,6 +128,18 @@ class FakeTmdbClient:
                 "first_air_date": "2014-02-05",
                 "overview": "",
                 "genres": [{"name": "喜剧"}, {"name": "悬疑"}],
+                "vote_average": 8.5,
+                "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
+                "credits": {
+                    "cast": [
+                        {
+                            "name": "Reece Shearsmith",
+                            "character": "Stuart",
+                            "order": 0,
+                            "profile_path": "/reece.jpg",
+                        }
+                    ]
+                },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
             }
@@ -98,11 +148,23 @@ class FakeTmdbClient:
             "name": "Inside No. 9",
             "original_name": "Inside No. 9",
             "first_air_date": "2014-02-05",
-            "overview": "Fallback show overview",
-            "genres": [{"name": "Comedy"}],
-            "poster_path": "/tv-poster.jpg",
-            "backdrop_path": "/tv-fanart.jpg",
-        }
+                "overview": "Fallback show overview",
+                "genres": [{"name": "Comedy"}],
+                "vote_average": 8.5,
+                "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
+                "credits": {
+                    "cast": [
+                        {
+                            "name": "Reece Shearsmith",
+                            "character": "Stuart",
+                            "order": 0,
+                            "profile_path": "/reece.jpg",
+                        }
+                    ]
+                },
+                "poster_path": "/tv-poster.jpg",
+                "backdrop_path": "/tv-fanart.jpg",
+            }
 
     def tv_episode_details(self, tmdb_id, season, episode, language):
         self.detail_calls.append((tmdb_id, season, episode, language))
@@ -111,12 +173,14 @@ class FakeTmdbClient:
                 "name": "沙丁鱼",
                 "overview": "",
                 "air_date": "2014-02-05",
+                "vote_average": 8.7,
                 "still_path": "/episode-thumb.jpg",
             }
         return {
             "name": "Sardines",
             "overview": "Fallback episode overview",
             "air_date": "2014-02-05",
+            "vote_average": 8.7,
             "still_path": "/episode-thumb.jpg",
         }
 
@@ -379,9 +443,17 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert result.records[0].status == "written"
     assert result.records[0].extra["tmdb_id"] == 42
     assert result.records[0].extra["fallback_used"] is True
+    assert result.records[0].extra["rating"] == 7.6
+    assert result.records[0].extra["certification"] == "PG-13"
+    assert result.records[0].extra["actor_count"] == 1
     assert nfo.exists()
-    assert "<title>一见钟情</title>" in nfo.read_text(encoding="utf-8")
-    assert "<plot>Fallback overview</plot>" in nfo.read_text(encoding="utf-8")
+    nfo_text = nfo.read_text(encoding="utf-8")
+    assert "<title>一见钟情</title>" in nfo_text
+    assert "<plot>Fallback overview</plot>" in nfo_text
+    assert "<rating>7.6</rating>" in nfo_text
+    assert "<mpaa>PG-13</mpaa>" in nfo_text
+    assert "<name>Maggie Cheung</name>" in nfo_text
+    assert "<role>Ellen</role>" in nfo_text
     assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-poster.jpg").exists()
 
 
@@ -508,10 +580,21 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     assert tvshow_nfo.exists()
     assert episode_nfo.exists()
     assert thumb.exists()
-    assert "<title>9号秘事</title>" in tvshow_nfo.read_text(encoding="utf-8")
-    assert "<plot>Fallback show overview</plot>" in tvshow_nfo.read_text(encoding="utf-8")
-    assert "<title>沙丁鱼</title>" in episode_nfo.read_text(encoding="utf-8")
-    assert "<plot>Fallback episode overview</plot>" in episode_nfo.read_text(encoding="utf-8")
+    tvshow_text = tvshow_nfo.read_text(encoding="utf-8")
+    episode_text = episode_nfo.read_text(encoding="utf-8")
+    assert "<title>9号秘事</title>" in tvshow_text
+    assert "<plot>Fallback show overview</plot>" in tvshow_text
+    assert "<rating>8.5</rating>" in tvshow_text
+    assert "<mpaa>TV-MA</mpaa>" in tvshow_text
+    assert "<name>Reece Shearsmith</name>" in tvshow_text
+    assert "<role>Stuart</role>" in tvshow_text
+    assert "<title>沙丁鱼</title>" in episode_text
+    assert "<plot>Fallback episode overview</plot>" in episode_text
+    assert "<rating>8.7</rating>" in episode_text
+    assert "<name>Reece Shearsmith</name>" in episode_text
+    episode_record = next(record for record in result.records if record.target_path.endswith(episode_nfo.name))
+    assert episode_record.extra["rating"] == 8.7
+    assert episode_record.extra["actor_count"] == 1
 
 
 def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):

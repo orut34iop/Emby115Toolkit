@@ -51,6 +51,14 @@ class LlmMovieCandidate:
 
 
 @dataclass(frozen=True)
+class ActorMetadata:
+    name: str
+    role: str = ""
+    order: int = 0
+    profile_path: str = ""
+
+
+@dataclass(frozen=True)
 class MovieMetadata:
     tmdb_id: int
     title: str
@@ -59,6 +67,9 @@ class MovieMetadata:
     overview: str = ""
     runtime: int = 0
     genres: tuple[str, ...] = ()
+    rating: float = 0.0
+    certification: str = ""
+    actors: tuple[ActorMetadata, ...] = ()
     poster_path: str = ""
     backdrop_path: str = ""
     language: str = ""
@@ -73,6 +84,9 @@ class TvShowMetadata:
     year: str = ""
     overview: str = ""
     genres: tuple[str, ...] = ()
+    rating: float = 0.0
+    certification: str = ""
+    actors: tuple[ActorMetadata, ...] = ()
     poster_path: str = ""
     backdrop_path: str = ""
     language: str = ""
@@ -86,6 +100,7 @@ class EpisodeMetadata:
     episode: int
     overview: str = ""
     air_date: str = ""
+    rating: float = 0.0
     still_path: str = ""
     fallback_used: bool = False
 
@@ -257,7 +272,14 @@ class TmdbClient:
         return list(data.get("results", []))
 
     def movie_details(self, tmdb_id: int, language: str) -> dict[str, Any]:
-        return self._get(f"/movie/{tmdb_id}", {"api_key": self.api_key, "language": language})
+        return self._get(
+            f"/movie/{tmdb_id}",
+            {
+                "api_key": self.api_key,
+                "language": language,
+                "append_to_response": "credits,release_dates",
+            },
+        )
 
     def search_tv(self, query: TvShowQuery, language: str) -> list[dict[str, Any]]:
         params = {
@@ -272,7 +294,14 @@ class TmdbClient:
         return list(data.get("results", []))
 
     def tv_details(self, tmdb_id: int, language: str) -> dict[str, Any]:
-        return self._get(f"/tv/{tmdb_id}", {"api_key": self.api_key, "language": language})
+        return self._get(
+            f"/tv/{tmdb_id}",
+            {
+                "api_key": self.api_key,
+                "language": language,
+                "append_to_response": "credits,content_ratings",
+            },
+        )
 
     def tv_episode_details(self, tmdb_id: int, season: int, episode: int, language: str) -> dict[str, Any]:
         return self._get(
@@ -673,6 +702,9 @@ class MetadataScraperService:
                 "tmdb_id": metadata.tmdb_id,
                 "tmdb_language": metadata.language,
                 "fallback_used": metadata.fallback_used,
+                "rating": metadata.rating,
+                "certification": metadata.certification,
+                "actor_count": len(metadata.actors),
                 "candidates": candidates,
                 "poster_path": str(show_dir / "poster.jpg"),
                 "fanart_path": str(show_dir / "fanart.jpg"),
@@ -741,6 +773,8 @@ class MetadataScraperService:
                 extra={
                     "tmdb_id": show_metadata.tmdb_id,
                     "fallback_used": episode_metadata.fallback_used,
+                    "rating": episode_metadata.rating,
+                    "actor_count": len(show_metadata.actors),
                     "thumb_path": str(thumb_path),
                     "thumb_status": thumb_status,
                 },
@@ -846,6 +880,9 @@ class MetadataScraperService:
                     "tmdb_id": metadata.tmdb_id,
                     "tmdb_language": metadata.language,
                     "fallback_used": metadata.fallback_used,
+                    "rating": metadata.rating,
+                    "certification": metadata.certification,
+                    "actor_count": len(metadata.actors),
                     "candidates": candidates,
                     "poster_path": str(poster_path),
                     "fanart_path": str(fanart_path),
@@ -1175,6 +1212,73 @@ def missing_episode_core_fields(details: dict[str, Any]) -> bool:
     return not details.get("overview") or not details.get("name")
 
 
+def normalize_rating(value: Any) -> float:
+    try:
+        return round(max(0.0, min(float(value), 10.0)), 1)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def extract_actors(details: dict[str, Any], fallback: dict[str, Any], limit: int = 20) -> tuple[ActorMetadata, ...]:
+    cast = (details.get("credits") or {}).get("cast") or (fallback.get("credits") or {}).get("cast") or []
+    actors: list[ActorMetadata] = []
+    for item in cast:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        actors.append(
+            ActorMetadata(
+                name=name,
+                role=str(item.get("character") or "").strip(),
+                order=int(item.get("order") or len(actors)),
+                profile_path=str(item.get("profile_path") or "").strip(),
+            )
+        )
+        if len(actors) >= limit:
+            break
+    return tuple(actors)
+
+
+def extract_movie_certification(details: dict[str, Any], fallback: dict[str, Any]) -> str:
+    release_dates = (details.get("release_dates") or {}).get("results") or (
+        fallback.get("release_dates") or {}
+    ).get("results") or []
+    by_country = {str(item.get("iso_3166_1") or "").upper(): item for item in release_dates}
+    for country in ("CN", "US", "HK", "TW", "JP", "KR", "GB"):
+        certification = first_movie_certification(by_country.get(country, {}))
+        if certification:
+            return certification
+    for item in release_dates:
+        certification = first_movie_certification(item)
+        if certification:
+            return certification
+    return ""
+
+
+def first_movie_certification(country_release: dict[str, Any]) -> str:
+    for release in country_release.get("release_dates") or []:
+        certification = str(release.get("certification") or "").strip()
+        if certification:
+            return certification
+    return ""
+
+
+def extract_tv_certification(details: dict[str, Any], fallback: dict[str, Any]) -> str:
+    ratings = (details.get("content_ratings") or {}).get("results") or (
+        fallback.get("content_ratings") or {}
+    ).get("results") or []
+    by_country = {str(item.get("iso_3166_1") or "").upper(): item for item in ratings}
+    for country in ("CN", "US", "HK", "TW", "JP", "KR", "GB"):
+        rating = str((by_country.get(country) or {}).get("rating") or "").strip()
+        if rating:
+            return rating
+    for item in ratings:
+        rating = str(item.get("rating") or "").strip()
+        if rating:
+            return rating
+    return ""
+
+
 def movie_metadata_from_details(
     details: dict[str, Any],
     fallback: dict[str, Any],
@@ -1190,6 +1294,9 @@ def movie_metadata_from_details(
         overview=str(details.get("overview") or fallback.get("overview") or ""),
         runtime=int(details.get("runtime") or fallback.get("runtime") or 0),
         genres=tuple(str(item.get("name")) for item in details.get("genres") or fallback.get("genres") or []),
+        rating=normalize_rating(details.get("vote_average") or fallback.get("vote_average")),
+        certification=extract_movie_certification(details, fallback),
+        actors=extract_actors(details, fallback),
         poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
         backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
         language=language,
@@ -1211,6 +1318,9 @@ def tvshow_metadata_from_details(
         year=first_air_date[:4],
         overview=str(details.get("overview") or fallback.get("overview") or ""),
         genres=tuple(str(item.get("name")) for item in details.get("genres") or fallback.get("genres") or []),
+        rating=normalize_rating(details.get("vote_average") or fallback.get("vote_average")),
+        certification=extract_tv_certification(details, fallback),
+        actors=extract_actors(details, fallback),
         poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
         backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
         language=language,
@@ -1231,6 +1341,7 @@ def episode_metadata_from_details(
         episode=episode,
         overview=str(details.get("overview") or fallback.get("overview") or ""),
         air_date=str(details.get("air_date") or fallback.get("air_date") or ""),
+        rating=normalize_rating(details.get("vote_average") or fallback.get("vote_average")),
         still_path=str(details.get("still_path") or fallback.get("still_path") or ""),
         fallback_used=fallback_used,
     )
@@ -1303,6 +1414,8 @@ def render_movie_nfo(metadata: MovieMetadata) -> str:
         "year": metadata.year,
         "plot": metadata.overview,
         "runtime": str(metadata.runtime) if metadata.runtime else "",
+        "rating": format_nfo_rating(metadata.rating),
+        "mpaa": metadata.certification,
         "tmdbid": str(metadata.tmdb_id),
     }
     for key, value in fields.items():
@@ -1311,6 +1424,7 @@ def render_movie_nfo(metadata: MovieMetadata) -> str:
     for genre in metadata.genres:
         child = ET.SubElement(movie, "genre")
         child.text = genre
+    append_actor_elements(movie, metadata.actors)
     ET.indent(movie, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
         movie,
@@ -1325,6 +1439,8 @@ def render_tvshow_nfo(metadata: TvShowMetadata) -> str:
         "originaltitle": metadata.original_title,
         "year": metadata.year,
         "plot": metadata.overview,
+        "rating": format_nfo_rating(metadata.rating),
+        "mpaa": metadata.certification,
         "tmdbid": str(metadata.tmdb_id),
     }
     for key, value in fields.items():
@@ -1333,6 +1449,7 @@ def render_tvshow_nfo(metadata: TvShowMetadata) -> str:
     for genre in metadata.genres:
         child = ET.SubElement(tvshow, "genre")
         child.text = genre
+    append_actor_elements(tvshow, metadata.actors)
     ET.indent(tvshow, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
         tvshow,
@@ -1349,16 +1466,36 @@ def render_episode_nfo(show_metadata: TvShowMetadata, episode_metadata: EpisodeM
         "episode": str(episode_metadata.episode),
         "plot": episode_metadata.overview,
         "aired": episode_metadata.air_date,
+        "rating": format_nfo_rating(episode_metadata.rating),
         "tmdbid": str(show_metadata.tmdb_id),
     }
     for key, value in fields.items():
         child = ET.SubElement(episode, key)
         child.text = value
+    append_actor_elements(episode, show_metadata.actors)
     ET.indent(episode, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
         episode,
         encoding="unicode",
     )
+
+
+def format_nfo_rating(rating: float) -> str:
+    return f"{rating:.1f}" if rating else ""
+
+
+def append_actor_elements(parent: ET.Element, actors: tuple[ActorMetadata, ...]) -> None:
+    for actor in actors:
+        actor_node = ET.SubElement(parent, "actor")
+        name = ET.SubElement(actor_node, "name")
+        name.text = actor.name
+        role = ET.SubElement(actor_node, "role")
+        role.text = actor.role
+        order = ET.SubElement(actor_node, "order")
+        order.text = str(actor.order)
+        if actor.profile_path:
+            thumb = ET.SubElement(actor_node, "thumb")
+            thumb.text = TMDB_IMAGE_BASE + actor.profile_path
 
 
 def auto_rename_from_movie_records(
