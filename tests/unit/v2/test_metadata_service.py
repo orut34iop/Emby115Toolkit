@@ -45,6 +45,21 @@ class FakeTmdbClient:
 
     def movie_details(self, tmdb_id, language):
         self.detail_calls.append((tmdb_id, language))
+        cast = [
+            {
+                "name": f"Actor {index:02d}",
+                "character": f"Role {index:02d}",
+                "order": index,
+                "profile_path": f"/actor-{index:02d}.jpg",
+            }
+            for index in range(25)
+        ]
+        cast[0] = {
+            "name": "Maggie Cheung",
+            "character": "Ellen",
+            "order": 0,
+            "profile_path": "/maggie.jpg",
+        }
         if language == "zh-CN":
             return {
                 "id": tmdb_id,
@@ -64,14 +79,7 @@ class FakeTmdbClient:
                     ]
                 },
                 "credits": {
-                    "cast": [
-                        {
-                            "name": "Maggie Cheung",
-                            "character": "Ellen",
-                            "order": 0,
-                            "profile_path": "/maggie.jpg",
-                        }
-                    ]
+                    "cast": cast
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
@@ -94,14 +102,7 @@ class FakeTmdbClient:
                     ]
                 },
                 "credits": {
-                    "cast": [
-                        {
-                            "name": "Maggie Cheung",
-                            "character": "Ellen",
-                            "order": 0,
-                            "profile_path": "/maggie.jpg",
-                        }
-                    ]
+                    "cast": cast
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
@@ -130,11 +131,11 @@ class FakeTmdbClient:
                 "genres": [{"name": "喜剧"}, {"name": "悬疑"}],
                 "vote_average": 8.5,
                 "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
-                "credits": {
+                "aggregate_credits": {
                     "cast": [
                         {
                             "name": "Reece Shearsmith",
-                            "character": "Stuart",
+                            "roles": [{"character": "Stuart"}, {"character": "A Stranger"}],
                             "order": 0,
                             "profile_path": "/reece.jpg",
                         }
@@ -152,11 +153,11 @@ class FakeTmdbClient:
                 "genres": [{"name": "Comedy"}],
                 "vote_average": 8.5,
                 "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
-                "credits": {
+                "aggregate_credits": {
                     "cast": [
                         {
                             "name": "Reece Shearsmith",
-                            "character": "Stuart",
+                            "roles": [{"character": "Stuart"}, {"character": "A Stranger"}],
                             "order": 0,
                             "profile_path": "/reece.jpg",
                         }
@@ -445,7 +446,7 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert result.records[0].extra["fallback_used"] is True
     assert result.records[0].extra["rating"] == 7.6
     assert result.records[0].extra["certification"] == "PG-13"
-    assert result.records[0].extra["actor_count"] == 1
+    assert result.records[0].extra["actor_count"] == 25
     assert nfo.exists()
     nfo_text = nfo.read_text(encoding="utf-8")
     assert "<title>一见钟情</title>" in nfo_text
@@ -454,6 +455,8 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert "<mpaa>PG-13</mpaa>" in nfo_text
     assert "<name>Maggie Cheung</name>" in nfo_text
     assert "<role>Ellen</role>" in nfo_text
+    assert "<name>Actor 24</name>" in nfo_text
+    assert "<role>Role 24</role>" in nfo_text
     assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-poster.jpg").exists()
 
 
@@ -587,7 +590,7 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     assert "<rating>8.5</rating>" in tvshow_text
     assert "<mpaa>TV-MA</mpaa>" in tvshow_text
     assert "<name>Reece Shearsmith</name>" in tvshow_text
-    assert "<role>Stuart</role>" in tvshow_text
+    assert "<role>Stuart / A Stranger</role>" in tvshow_text
     assert "<title>沙丁鱼</title>" in episode_text
     assert "<plot>Fallback episode overview</plot>" in episode_text
     assert "<rating>8.7</rating>" in episode_text

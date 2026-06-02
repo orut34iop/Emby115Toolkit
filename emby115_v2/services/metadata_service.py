@@ -299,7 +299,7 @@ class TmdbClient:
             {
                 "api_key": self.api_key,
                 "language": language,
-                "append_to_response": "credits,content_ratings",
+                "append_to_response": "credits,aggregate_credits,content_ratings",
             },
         )
 
@@ -1219,24 +1219,57 @@ def normalize_rating(value: Any) -> float:
         return 0.0
 
 
-def extract_actors(details: dict[str, Any], fallback: dict[str, Any], limit: int = 20) -> tuple[ActorMetadata, ...]:
-    cast = (details.get("credits") or {}).get("cast") or (fallback.get("credits") or {}).get("cast") or []
+def extract_actors(details: dict[str, Any], fallback: dict[str, Any]) -> tuple[ActorMetadata, ...]:
     actors: list[ActorMetadata] = []
-    for item in cast:
-        name = str(item.get("name") or "").strip()
-        if not name:
-            continue
-        actors.append(
-            ActorMetadata(
-                name=name,
-                role=str(item.get("character") or "").strip(),
-                order=int(item.get("order") or len(actors)),
-                profile_path=str(item.get("profile_path") or "").strip(),
-            )
-        )
-        if len(actors) >= limit:
-            break
+    seen: set[tuple[str, str]] = set()
+    for item in iter_tmdb_cast_entries(details):
+        append_actor_from_cast_item(actors, seen, item)
+    for item in iter_tmdb_cast_entries(fallback):
+        append_actor_from_cast_item(actors, seen, item)
     return tuple(actors)
+
+
+def iter_tmdb_cast_entries(payload: dict[str, Any]):
+    for item in (payload.get("credits") or {}).get("cast") or []:
+        yield item
+    for item in (payload.get("aggregate_credits") or {}).get("cast") or []:
+        yield item
+
+
+def append_actor_from_cast_item(
+    actors: list[ActorMetadata],
+    seen: set[tuple[str, str]],
+    item: dict[str, Any],
+) -> None:
+    name = str(item.get("name") or "").strip()
+    if not name:
+        return
+    role = actor_role_from_cast_item(item)
+    key = (name, role)
+    if key in seen:
+        return
+    seen.add(key)
+    actors.append(
+        ActorMetadata(
+            name=name,
+            role=role,
+            order=int(item.get("order") or len(actors)),
+            profile_path=str(item.get("profile_path") or "").strip(),
+        )
+    )
+
+
+def actor_role_from_cast_item(item: dict[str, Any]) -> str:
+    role = str(item.get("character") or "").strip()
+    if role:
+        return role
+    roles = item.get("roles") or []
+    names = []
+    for entry in roles:
+        character = str(entry.get("character") or "").strip()
+        if character and character not in names:
+            names.append(character)
+    return " / ".join(names)
 
 
 def extract_movie_certification(details: dict[str, Any], fallback: dict[str, Any]) -> str:

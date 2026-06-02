@@ -89,7 +89,7 @@ Current V2 action names:
   - First phase uses TMDB as the primary metadata provider and reserves provider abstraction for future sources.
   - Default TMDB language is `zh-CN`; fallback language is `en-US`.
   - TMDB JSON requests and image downloads retry transient timeout, rate-limit, and 5xx failures before marking an item failed.
-  - TMDB metadata NFO output must include rating, certification/MPAA when available, and actor lists for movies and TV shows; episode NFO inherits show actors and includes episode rating when available.
+  - TMDB metadata NFO output should collect actor lists as completely as TMDB provides, including TV aggregate credits when available. Rating and certification/MPAA are optional enrichment fields; missing values must not fail scraping. Episode NFO inherits show actors and includes episode rating when available.
   - Matching strategy is rules first, TMDB search second, and LLM-assisted title expansion for movie/TV no-candidate cases. LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage.
   - Dry-run may call providers and generate a full report but must not write NFO files or download images.
   - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no movie candidates, video-stem NFO writing, and poster/fanart downloading.

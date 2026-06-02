@@ -73,10 +73,10 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - matching strategy is rules first, then TMDB search, then LLM-assisted title expansion for movie and TV no-candidate cases; LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage;
 - movie TMDB search/details are implemented; movie NFO and image filenames follow each video file stem, not the first-level folder name;
 - movie details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;
-- non-dry-run movie scraping writes Emby-compatible movie NFO with rating, certification/MPAA, actors, genres, plot, and TMDB ID, and downloads poster/fanart when TMDB image paths are available;
+- non-dry-run movie scraping writes Emby-compatible movie NFO with TMDB actors as completely as available, optional rating/certification/MPAA, genres, plot, and TMDB ID, and downloads poster/fanart when TMDB image paths are available;
 - TV TMDB search/details and episode details are implemented; TV output uses `tvshow.nfo`, show poster/fanart, and per-episode NFO/thumb filenames following each episode video stem;
 - TV details and episode details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;
-- TV `tvshow.nfo` includes rating, certification/MPAA, actors, genres, plot, and TMDB ID; episode NFO includes episode rating and inherits show actors when available;
+- TV `tvshow.nfo` includes TMDB actors as completely as available, including aggregate credits when present, optional rating/certification/MPAA, genres, plot, and TMDB ID; episode NFO includes optional episode rating and inherits show actors when available;
 - when movie or TV TMDB search returns no candidates and LLM config is enabled and complete, the scraper asks the configured OpenAI-compatible LLM for alias/original-title candidates, retries TMDB with those candidates, and records the LLM suggestion and retry queries in the report;
 - dry-run scans, parses, calls providers when implemented, and reports the plan without writing NFO or downloading images;
 - default `overwrite_existing=false`; existing NFO/images are skipped unless overwrite is enabled;
