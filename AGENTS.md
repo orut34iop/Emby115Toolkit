@@ -72,6 +72,7 @@ Current V2 action names:
 
 - `build_symlink_workspace` — Build the local symlink workspace from mounted CloudDrive2 source folders.
   - This action must standardize symlink target paths by media type. Movies go under a movie title folder; TV shows go under a show title folder plus a season/version second-level folder.
+  - TV second-level folder priority is existing source season/version folder, then a release folder derived from the episode filename, then `Season NN`.
   - It must preserve original video filenames and mark uncertain items for manual review instead of inventing missing metadata.
 - `scan_and_link` — Backward-compatible alias for `build_symlink_workspace`.
 

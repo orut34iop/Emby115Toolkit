@@ -192,7 +192,7 @@ class ScanAndLinkService:
             )
 
         series_folder = self._title_folder(title, year)
-        second_level = self._tv_second_level(relative_path, series_source, season)
+        second_level = self._tv_second_level(relative_path, season, source_path)
         return LinkPlan(
             pair.name,
             source_path,
@@ -304,7 +304,7 @@ class ScanAndLinkService:
             return Path(parts[1])
         return Path(parts[0])
 
-    def _tv_second_level(self, relative_path: Path, series_source: Path, season: str) -> str:
+    def _tv_second_level(self, relative_path: Path, season: str, source_path: Path) -> str:
         parts = relative_path.parts[:-1]
         if len(parts) >= 2:
             first = parts[0].lower()
@@ -314,7 +314,28 @@ class ScanAndLinkService:
                 remaining = parts[1:]
             if remaining:
                 return str(Path(*remaining))
+        release_folder = self._season_release_folder_from_filename(source_path.stem, season)
+        if release_folder:
+            return release_folder
         return f"Season {season}"
+
+    def _season_release_folder_from_filename(self, stem: str, season: str) -> str:
+        season_episode = SEASON_EPISODE_RE.search(stem)
+        if not season_episode:
+            return ""
+
+        suffix = stem[season_episode.end() :]
+        quality_match = QUALITY_RE.search(suffix)
+        if not quality_match:
+            return ""
+
+        prefix = stem[: season_episode.start()].rstrip(" ._-")
+        release_suffix = suffix[quality_match.start() :].lstrip(" ._-")
+        if not prefix or not release_suffix:
+            return ""
+
+        season_token = f"S{season}"
+        return f"{prefix}.{season_token}.{release_suffix}".strip(" ._-")
 
     def _season_from_path(self, relative_path: Path) -> str:
         for part in relative_path.parts[:-1]:

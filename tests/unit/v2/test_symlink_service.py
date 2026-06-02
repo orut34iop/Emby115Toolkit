@@ -111,6 +111,78 @@ def test_tvshow_standardizes_under_series_and_season(tmp_path, mock_logger):
     assert record.episode == "02"
 
 
+def test_tvshow_derives_season_folder_from_episode_filename(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    series = source / "tvshow" / "Girigo：夺命许愿 (2026)(1)"
+    series.mkdir(parents=True)
+    video = series / "If Wishes Could Kill.S01E01.2160p.DV.H.265.DDP 5.1 Atmos.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.records[-1].target_path.endswith(
+        os.path.join(
+            "target",
+            "Girigo：夺命许愿 (2026)",
+            "If Wishes Could Kill.S01.2160p.DV.H.265.DDP 5.1 Atmos",
+            video.name,
+        )
+    )
+
+
+def test_tvshow_simple_episode_filename_falls_back_to_season_folder(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    series = source / "tvshow" / "低智商犯罪 (2026)"
+    series.mkdir(parents=True)
+    video = series / "低智商犯罪.S01E01.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.records[-1].target_path.endswith(os.path.join("target", "低智商犯罪 (2026)", "Season 01", video.name))
+
+
+def test_tvshow_drops_episode_title_when_deriving_release_folder(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    series = source / "tvshow" / "Inside No. 9 (2014)"
+    series.mkdir(parents=True)
+    video = series / "Inside.No.9.S01E01.Sardines.1080i.BluRay.REMUX.AVC.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.records[-1].target_path.endswith(
+        os.path.join("target", "Inside No. 9 (2014)", "Inside.No.9.S01.1080i.BluRay.REMUX.AVC", video.name)
+    )
+
+
 def test_tvshow_preserves_version_season_folder(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"
