@@ -87,7 +87,7 @@ Current V2 action names:
   - Matching strategy is rules first, TMDB search second, and LLM-assisted decision only for ambiguous candidates.
   - Dry-run may call providers and generate a full report but must not write NFO files or download images.
   - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, video-stem NFO writing, and poster/fanart downloading.
-  - Optional `metadata_output.auto_rename` defaults to false. When enabled, movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`; TV first-level folders are renamed from `tvshow.nfo` `title` and `year`. Target folder collisions must be skipped and reported.
+  - Optional `metadata_output.auto_rename` defaults to true. Movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`; TV first-level folders are renamed from `tvshow.nfo` `title` and `year`. Target folder collisions must be skipped and reported.
   - TV scraping is still a scan skeleton. TV TMDB matching, `tvshow.nfo`, episode NFO, episode thumbnails, LLM candidate arbitration, and richer scoring are next-stage work.
 
 ### Legacy Dual GUI Frontends

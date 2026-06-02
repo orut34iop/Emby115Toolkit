@@ -66,3 +66,4 @@ def test_context_to_dict_serializes_paths(tmp_path):
     assert data["path_pairs"][0]["source"] == str(Path(tmp_path / "s"))
     assert data["path_pairs"][0]["target"] == str(Path(tmp_path / "t"))
     assert data["metadata_output"]["library_path"] == "."
+    assert data["metadata_output"]["auto_rename"] is True

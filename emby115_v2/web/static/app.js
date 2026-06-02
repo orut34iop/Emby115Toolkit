@@ -179,7 +179,7 @@ function applyMetadataConfig(config = {}) {
   document.querySelector("#metadataDownloadImages").checked = output.download_images ?? true;
   document.querySelector("#metadataDownloadEpisodeThumbs").checked = output.download_episode_thumbs ?? true;
   document.querySelector("#metadataOverwrite").checked = output.overwrite_existing ?? false;
-  document.querySelector("#metadataAutoRename").checked = output.auto_rename ?? false;
+  document.querySelector("#metadataAutoRename").checked = output.auto_rename ?? true;
 }
 
 function restoreFormConfig() {
