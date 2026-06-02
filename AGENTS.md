@@ -25,6 +25,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Path pair media type must stay as fixed radio choices (`movies` / `tvshows`), not free-form text.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Non-dry-run symlink creation on Windows must check Administrator status and route through the user-confirmed UAC restart flow when needed.
+  - When WebUI triggers UAC elevation, it must preserve the pending run in browser sessionStorage, wait for the elevated WebUI to become ready, reload, and resume that same run automatically. Access tokens must not be persisted.
   - Non-localhost listening requires `--access-token`.
 
 Version 1.x legacy desktop entry points still exist:

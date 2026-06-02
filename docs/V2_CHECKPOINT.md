@@ -57,6 +57,7 @@ Implemented:
 - minimal browser UI at `/`;
 - path pair media type uses fixed radio options: `movies` / `tvshows`;
 - WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
+- pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
 - `/health`;
 - `/v1/actions`;
 - `/v1/admin/status`;
@@ -67,7 +68,7 @@ Implemented:
 - access token enforcement for `/v1/*` when configured;
 - single-run execution lock;
 - non-dry-run symlink creation is blocked unless the Windows process is running as Administrator;
-- WebUI can request an Administrator restart through Windows UAC after user confirmation;
+- WebUI can request an Administrator restart through Windows UAC after user confirmation, wait for the elevated WebUI to become ready, reload, and automatically resume the original request;
 - `python main.py --serve-web` backend startup path.
 
 Not yet implemented:

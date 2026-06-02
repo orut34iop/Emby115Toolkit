@@ -35,6 +35,11 @@ def test_webui_includes_admin_elevation_flow():
     assert response.status_code == 200
     assert "/v1/admin/status" in response.text
     assert "/v1/admin/restart-elevated" in response.text
+    assert "emby115_v2.webui.pending_elevated_run.v1" in response.text
+    assert "savePendingElevatedRun(payload)" in response.text
+    assert "waitForElevatedRestart" in response.text
+    assert "resumePendingElevatedRun" in response.text
+    assert "sessionStorage.setItem" in response.text
 
 
 def test_webui_persists_form_without_access_token():

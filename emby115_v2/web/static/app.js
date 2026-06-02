@@ -4,6 +4,7 @@ const DEFAULT_PAIR = {
   target: "C:\\working-emby\\movies",
 };
 const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
+const PENDING_ELEVATED_RUN_KEY = "emby115_v2.webui.pending_elevated_run.v1";
 
 const state = {
   busy: false,
@@ -191,6 +192,64 @@ async function checkHealth() {
   }
 }
 
+async function waitForElevatedRestart(timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`/v1/admin/status?ts=${Date.now()}`, {
+        cache: "no-store",
+        headers: tokenHeaders(),
+      });
+      const data = await parseJson(response);
+      if (response.ok && data.is_admin) {
+        return true;
+      }
+    } catch (error) {
+      // The old server exits before the elevated one binds the port.
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+  }
+  return false;
+}
+
+function savePendingElevatedRun(payload) {
+  try {
+    sessionStorage.setItem(
+      PENDING_ELEVATED_RUN_KEY,
+      JSON.stringify({
+        payload,
+        created_at: Date.now(),
+      }),
+    );
+  } catch (error) {
+    appendLog("浏览器无法保存待恢复任务；管理员重启后请手动重新点击执行。");
+  }
+}
+
+function clearPendingElevatedRun() {
+  try {
+    sessionStorage.removeItem(PENDING_ELEVATED_RUN_KEY);
+  } catch (error) {
+    // Ignore storage cleanup failures in restricted browser contexts.
+  }
+}
+
+function readPendingElevatedRun() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_ELEVATED_RUN_KEY);
+    if (!raw) return null;
+    const pending = JSON.parse(raw);
+    if (!pending?.payload || Date.now() - Number(pending.created_at || 0) > 10 * 60 * 1000) {
+      clearPendingElevatedRun();
+      return null;
+    }
+    return pending.payload;
+  } catch (error) {
+    clearPendingElevatedRun();
+    return null;
+  }
+}
+
 async function needsElevation(payload) {
   if (payload.dry_run) return false;
   const response = await fetch("/v1/admin/status", {
@@ -219,10 +278,16 @@ async function restartElevated() {
     if (data.status === "already_admin") {
       appendLog("当前 WebUI 已经是管理员权限，可以直接执行。");
       hideElevationPrompt();
+      await resumePendingElevatedRun();
       return;
     }
-    appendLog("已发起管理员重启。当前页面会在几秒后刷新。");
-    window.setTimeout(() => window.location.reload(), 5000);
+    appendLog("已发起管理员重启，正在等待新服务上线。");
+    if (await waitForElevatedRestart()) {
+      appendLog("管理员 WebUI 已就绪，正在恢复执行。");
+      window.location.reload();
+      return;
+    }
+    appendLog("管理员 WebUI 未在预期时间内响应，请确认 UAC 已同意后手动刷新页面。");
   } catch (error) {
     appendLog(`管理员重启失败: ${error.message}`);
   } finally {
@@ -231,11 +296,9 @@ async function restartElevated() {
   }
 }
 
-async function runWorkflow(event) {
-  event.preventDefault();
+async function executePayload(payload) {
   if (state.busy) return;
 
-  const payload = buildPayload();
   if (!payload.path_pairs.length) {
     appendLog("请至少填写一个有效的源目录和目标目录。");
     return;
@@ -244,6 +307,7 @@ async function runWorkflow(event) {
   try {
     if (await needsElevation(payload)) {
       appendLog("当前 WebUI 不是管理员权限，真实创建符号链接前需要提权。");
+      savePendingElevatedRun(payload);
       showElevationPrompt();
       return;
     }
@@ -269,6 +333,7 @@ async function runWorkflow(event) {
     if (!response.ok) {
       if (data.requires_elevation) {
         appendLog(data.detail || "需要管理员权限。");
+        savePendingElevatedRun(payload);
         showElevationPrompt();
         return;
       }
@@ -285,11 +350,31 @@ async function runWorkflow(event) {
       <span>${data.reports.json}</span>
     `;
     appendLog(`执行完成 run_id=${data.run_id}`);
+    clearPendingElevatedRun();
   } catch (error) {
     appendLog(`执行失败: ${error.message}`);
   } finally {
     setBusy(false);
   }
+}
+
+async function runWorkflow(event) {
+  event.preventDefault();
+  await executePayload(buildPayload());
+}
+
+async function resumePendingElevatedRun() {
+  const payload = readPendingElevatedRun();
+  if (!payload) return;
+  const status = await fetch("/v1/admin/status", { headers: tokenHeaders() })
+    .then(parseJson)
+    .catch(() => ({}));
+  if (!status.is_admin) {
+    appendLog("检测到待恢复任务，但当前 WebUI 仍不是管理员权限。");
+    return;
+  }
+  appendLog("检测到管理员重启前的待执行任务，正在继续执行。");
+  await executePayload(payload);
 }
 
 document.querySelector("#addPairButton").addEventListener("click", () => addPair({
@@ -315,3 +400,4 @@ cancelElevationButton.addEventListener("click", hideElevationPrompt);
 
 restoreFormConfig();
 checkHealth();
+resumePendingElevatedRun();
