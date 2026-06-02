@@ -42,6 +42,14 @@ class LlmTvShowCandidate:
 
 
 @dataclass(frozen=True)
+class LlmMovieCandidate:
+    title: str
+    year: str = ""
+    confidence: float = 0.0
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class MovieMetadata:
     tmdb_id: int
     title: str
@@ -287,6 +295,68 @@ class TmdbClient:
 
 
 class OpenAICompatibleLlmClient:
+    def suggest_movie_queries(
+        self,
+        context: AppContext,
+        video_path: Path,
+        query: MovieQuery,
+    ) -> list[LlmMovieCandidate]:
+        url = context.llm.base_url.rstrip("/") + "/chat/completions"
+        payload = {
+            "model": context.llm.model,
+            "temperature": context.llm.temperature,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You identify movie titles for TMDB search. "
+                        "Return compact JSON only, no markdown."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "task": "TMDB movie search returned no result. Infer alternative titles.",
+                            "expected_schema": {
+                                "candidates": [
+                                    {
+                                        "title": "string, original/localized/English title for TMDB search",
+                                        "year": "optional 4 digit release year",
+                                        "confidence": "0.0-1.0",
+                                        "reason": "short audit reason",
+                                    }
+                                ]
+                            },
+                            "folder_name": video_path.parent.name,
+                            "video_name": video_path.name,
+                            "parsed_query": query.__dict__,
+                            "rules": [
+                                "Prefer official original titles when the folder title may be localized.",
+                                "Keep the provided year when it is likely correct.",
+                                "Return at most five candidates.",
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+        }
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {context.llm.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=context.llm.timeout) as response:
+            raw = response.read().decode("utf-8")
+        data = json.loads(raw)
+        content = str(data.get("choices", [{}])[0].get("message", {}).get("content", ""))
+        return parse_llm_movie_candidates(content, fallback_year=query.year)
+
     def suggest_tvshow_queries(
         self,
         context: AppContext,
@@ -693,6 +763,20 @@ class MetadataScraperService:
             client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout)
             metadata, candidates = fetch_movie_metadata(client, query, context.tmdb.language, context.tmdb.fallback_language)
             if metadata is None:
+                llm_resolution = infer_movie_queries_with_llm(context, self.llm_client, video_path, query, logger)
+                for llm_query in llm_resolution.get("queries", []):
+                    metadata, candidates = fetch_movie_metadata(
+                        client,
+                        llm_query,
+                        context.tmdb.language,
+                        context.tmdb.fallback_language,
+                    )
+                    llm_resolution.setdefault("tmdb_retry_queries", []).append(llm_query.__dict__)
+                    if metadata is not None:
+                        query = llm_query
+                        break
+
+            if metadata is None:
                 return OperationRecord(
                     action="scrape_metadata",
                     status="manual_review",
@@ -702,7 +786,11 @@ class MetadataScraperService:
                     title=query.title,
                     year=query.year,
                     reason="TMDB 未返回可用候选",
-                    extra={"query": query.__dict__, "candidates": candidates},
+                    extra={
+                        "query": query.__dict__,
+                        "candidates": candidates,
+                        "llm_resolution": llm_resolution_for_report(locals().get("llm_resolution", {})),
+                    },
                 )
 
             nfo_status = plan_or_write_movie_nfo(context, nfo_path, metadata)
@@ -744,6 +832,7 @@ class MetadataScraperService:
                     "fanart_path": str(fanart_path),
                     "poster_status": poster_status,
                     "fanart_status": fanart_status,
+                    "llm_resolution": llm_resolution_for_report(locals().get("llm_resolution", {})),
                 },
             )
         except Exception as exc:
@@ -810,6 +899,33 @@ def llm_config_ready(context: AppContext) -> bool:
     return bool(context.llm.enabled and context.llm.base_url and context.llm.api_key and context.llm.model)
 
 
+def infer_movie_queries_with_llm(
+    context: AppContext,
+    llm_client: OpenAICompatibleLlmClient | None,
+    video_path: Path,
+    query: MovieQuery,
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    if not llm_config_ready(context) and llm_client is None:
+        return {"status": "skipped", "reason": "LLM 未启用或配置不完整", "queries": []}
+
+    try:
+        client = llm_client or OpenAICompatibleLlmClient()
+        candidates = client.suggest_movie_queries(context, video_path, query)
+        queries = unique_llm_movie_queries(candidates, original=query)
+        logger.info("LLM 电影候选扩展 video=%s candidates=%s", video_path, len(queries))
+        return {
+            "status": "suggested" if queries else "empty",
+            "reason": "LLM 已生成 TMDB 二次搜索候选" if queries else "LLM 未返回有效候选",
+            "candidates": [candidate.__dict__ for candidate in candidates],
+            "query_candidates": [item.__dict__ for item in queries],
+            "queries": queries,
+        }
+    except Exception as exc:
+        logger.warning("LLM 电影候选扩展失败 video=%s error=%s", video_path, exc)
+        return {"status": "failed", "reason": str(exc), "queries": []}
+
+
 def infer_tvshow_queries_with_llm(
     context: AppContext,
     llm_client: OpenAICompatibleLlmClient | None,
@@ -846,6 +962,22 @@ def llm_resolution_for_report(resolution: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def unique_llm_movie_queries(candidates: list[LlmMovieCandidate], original: MovieQuery) -> list[MovieQuery]:
+    queries: list[MovieQuery] = []
+    seen = {(original.title.casefold(), original.year)}
+    for candidate in sorted(candidates, key=lambda item: item.confidence, reverse=True):
+        title = candidate.title.strip()
+        year = normalize_year(candidate.year) or original.year
+        key = (title.casefold(), year)
+        if not title or key in seen:
+            continue
+        seen.add(key)
+        queries.append(MovieQuery(title=title, year=year))
+        if len(queries) >= 5:
+            break
+    return queries
+
+
 def unique_llm_tvshow_queries(candidates: list[LlmTvShowCandidate], original: TvShowQuery) -> list[TvShowQuery]:
     queries: list[TvShowQuery] = []
     seen = {(original.title.casefold(), original.year)}
@@ -860,6 +992,30 @@ def unique_llm_tvshow_queries(candidates: list[LlmTvShowCandidate], original: Tv
         if len(queries) >= 5:
             break
     return queries
+
+
+def parse_llm_movie_candidates(content: str, fallback_year: str = "") -> list[LlmMovieCandidate]:
+    payload = parse_json_object_from_text(content)
+    raw_candidates = payload.get("candidates", []) if isinstance(payload, dict) else []
+    if not isinstance(raw_candidates, list):
+        return []
+
+    candidates = []
+    for item in raw_candidates:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        candidates.append(
+            LlmMovieCandidate(
+                title=title,
+                year=normalize_year(str(item.get("year") or "")) or fallback_year,
+                confidence=normalize_confidence(item.get("confidence")),
+                reason=str(item.get("reason") or "").strip(),
+            )
+        )
+    return candidates
 
 
 def parse_llm_tvshow_candidates(content: str, fallback_year: str = "") -> list[LlmTvShowCandidate]:

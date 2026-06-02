@@ -154,7 +154,64 @@ class FakeTmdbClientWithLlmRetry:
         return "missing"
 
 
+class FakeTmdbMovieClientWithLlmRetry:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+
+    def search_movie(self, query, language):
+        self.search_calls.append((query, language))
+        if query.title == "The Devil Wears Prada 2":
+            return [
+                {
+                    "id": 12345,
+                    "title": "穿普拉达的女王2",
+                    "original_title": "The Devil Wears Prada 2",
+                    "release_date": "2026-05-01",
+                }
+            ]
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        return {
+            "id": tmdb_id,
+            "title": "穿普拉达的女王2",
+            "original_title": "The Devil Wears Prada 2",
+            "release_date": "2026-05-01",
+            "overview": "时尚杂志故事续篇。",
+            "runtime": 110,
+            "genres": [{"name": "喜剧"}],
+            "poster_path": "",
+            "backdrop_path": "",
+        }
+
+    def search_tv(self, query, language):
+        return []
+
+    def tv_details(self, tmdb_id, language):
+        return {}
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        return {}
+
+    def download_image(self, image_path, target_path, overwrite):
+        return "missing"
+
+
 class FakeLlmClient:
+    def suggest_movie_queries(self, context, video_path, query):
+        from emby115_v2.services.metadata_service import LlmMovieCandidate
+
+        return [
+            LlmMovieCandidate(
+                title="The Devil Wears Prada 2",
+                year="2026",
+                confidence=0.96,
+                reason="Chinese title maps to English original title.",
+            )
+        ]
+
     def suggest_tvshow_queries(self, context, show_dir, query, video_names):
         from emby115_v2.services.metadata_service import LlmTvShowCandidate
 
@@ -486,3 +543,53 @@ def test_tvshow_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):
     assert show_record.extra["query"]["title"] == "黒革の手帖"
     assert show_record.extra["llm_resolution"]["status"] == "suggested"
     assert show_record.extra["llm_resolution"]["query_candidates"][0]["title"] == "黒革の手帖"
+
+
+def test_movie_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "穿普拉达的女王2 (2026)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "穿普拉达的女王2.2026.1080p.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "llm": {
+                "enabled": True,
+                "base_url": "http://llm.local/v1",
+                "api_key": "llm-key",
+                "model": "test-model",
+            },
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_llm_retry", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbMovieClientWithLlmRetry()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb, llm_client=FakeLlmClient()).run(context, logger)
+
+    nfo = movie_dir / "穿普拉达的女王2.2026.1080p.nfo"
+    assert result.status == "success"
+    assert result.summary["matched"] == 1
+    assert result.summary["manual_review"] == 0
+    assert nfo.exists()
+    assert "<title>穿普拉达的女王2</title>" in nfo.read_text(encoding="utf-8")
+    assert [call[0].title for call in fake_tmdb.search_calls] == [
+        "穿普拉达的女王2",
+        "穿普拉达的女王2",
+        "The Devil Wears Prada 2",
+    ]
+    movie_record = next(record for record in result.records if record.target_path == str(nfo))
+    assert movie_record.extra["query"]["title"] == "The Devil Wears Prada 2"
+    assert movie_record.extra["llm_resolution"]["status"] == "suggested"
+    assert movie_record.extra["llm_resolution"]["query_candidates"][0]["title"] == "The Devil Wears Prada 2"
