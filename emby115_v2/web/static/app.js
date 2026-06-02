@@ -522,10 +522,21 @@ async function executePayload(payload, options = {}) {
   }
 }
 
-function appendReportLinks(reports, reportLabel = "", clearReports = false) {
+function statusDisplay(status) {
+  if (status === "success") return { className: "success", text: "成功" };
+  if (status === "partial") return { className: "partial", text: "部分成功" };
+  if (status === "failed") return { className: "failed", text: "失败" };
+  return { className: "running", text: "执行中" };
+}
+
+function appendReportLinks(reports, reportLabel = "", clearReports = false, status = "") {
+  const display = statusDisplay(status);
   const reportHtml = `
     <div class="report-link-group">
-      ${reportLabel ? `<strong>${reportLabel}</strong>` : ""}
+      <div class="report-link-title">
+        ${reportLabel ? `<strong>${reportLabel}</strong>` : ""}
+        <span class="result-status ${display.className}">${display.text}</span>
+      </div>
       <a href="${withToken(reports.html_url)}" target="_blank" rel="noreferrer">打开 HTML 报告</a>
       <a href="${withToken(reports.json_url)}" target="_blank" rel="noreferrer">打开 JSON 报告</a>
       <span>${reports.html}</span>
@@ -568,7 +579,7 @@ function streamRunEvents(run, options = {}) {
     source.addEventListener("report", (event) => {
       const data = parseEventData(event);
       if (data.reports) {
-        appendReportLinks(data.reports, options.reportLabel, options.clearReports && !reportRendered);
+        appendReportLinks(data.reports, options.reportLabel, options.clearReports && !reportRendered, finalStatus);
         reportRendered = true;
       }
     });
@@ -587,9 +598,23 @@ function streamRunEvents(run, options = {}) {
       const data = parseEventData(event);
       finalStatus = data.status || finalStatus;
       source.close();
+      if (reportRendered) {
+        updateLastReportStatus(finalStatus);
+      }
       resolve({ status: finalStatus });
     });
   });
+}
+
+function updateLastReportStatus(status) {
+  const groups = reportLinks.querySelectorAll(".report-link-group");
+  const lastGroup = groups[groups.length - 1];
+  if (!lastGroup) return;
+  const badge = lastGroup.querySelector(".result-status");
+  if (!badge) return;
+  const display = statusDisplay(status);
+  badge.className = `result-status ${display.className}`;
+  badge.textContent = display.text;
 }
 
 async function pollRunStatus(run, options = {}) {
@@ -601,7 +626,7 @@ async function pollRunStatus(run, options = {}) {
     if (!response.ok) throw new Error(data.detail || response.statusText);
     if (data.status === "success" || data.status === "partial" || data.status === "failed") {
       if (data.reports?.html_url) {
-        appendReportLinks(data.reports, options.reportLabel, options.clearReports);
+        appendReportLinks(data.reports, options.reportLabel, options.clearReports, data.status);
       }
       if (data.error) appendLog(`后台任务错误: ${data.error}`);
       return { status: data.status };

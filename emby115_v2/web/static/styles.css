@@ -368,6 +368,34 @@ button:disabled {
   border-bottom: 1px solid var(--line);
 }
 
+.report-link-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.result-status {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.result-status.success {
+  color: var(--ok);
+}
+
+.result-status.partial {
+  color: #b45309;
+}
+
+.result-status.failed {
+  color: var(--danger);
+}
+
+.result-status.running {
+  color: var(--muted);
+}
+
 .report-links a {
   color: var(--accent);
   word-break: break-all;

@@ -95,6 +95,7 @@ Implemented:
 - metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links;
 - one-click full flow executes `构建本地软链接工作区 -> 刮削媒体元数据` from WebUI. Metadata paths in this mode come from checked symlink target directories, not from the metadata card's manually entered paths;
 - WebUI single-step and full-flow execution use background run APIs with SSE logs/status while preserving `/v1/run` as a synchronous compatibility endpoint;
+- report link groups in the WebUI execution result panel show a bold colored final result label: green `成功`, orange `部分成功`, or red `失败`;
 - pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
 - `/health`;
 - `/v1/actions`;

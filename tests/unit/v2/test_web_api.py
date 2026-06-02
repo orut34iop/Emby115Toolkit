@@ -85,6 +85,9 @@ def test_webui_uses_background_runs_and_sse():
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
     assert "library_path: pair.target" in script
+    assert "result-status" in script
+    assert "部分成功" in script
+    assert "updateLastReportStatus" in script
 
 
 def test_webui_includes_admin_elevation_flow():
