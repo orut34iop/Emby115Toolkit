@@ -48,6 +48,57 @@ class FakeTmdbClient:
             "backdrop_path": "/fanart.jpg",
         }
 
+    def search_tv(self, query, language):
+        self.search_calls.append((query, language))
+        return [
+            {
+                "id": 9001,
+                "name": "9号秘事",
+                "original_name": "Inside No. 9",
+                "first_air_date": "2014-02-05",
+            }
+        ]
+
+    def tv_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        if language == "zh-CN":
+            return {
+                "id": tmdb_id,
+                "name": "9号秘事",
+                "original_name": "Inside No. 9",
+                "first_air_date": "2014-02-05",
+                "overview": "",
+                "genres": [{"name": "喜剧"}, {"name": "悬疑"}],
+                "poster_path": "/tv-poster.jpg",
+                "backdrop_path": "/tv-fanart.jpg",
+            }
+        return {
+            "id": tmdb_id,
+            "name": "Inside No. 9",
+            "original_name": "Inside No. 9",
+            "first_air_date": "2014-02-05",
+            "overview": "Fallback show overview",
+            "genres": [{"name": "Comedy"}],
+            "poster_path": "/tv-poster.jpg",
+            "backdrop_path": "/tv-fanart.jpg",
+        }
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        self.detail_calls.append((tmdb_id, season, episode, language))
+        if language == "zh-CN":
+            return {
+                "name": "沙丁鱼",
+                "overview": "",
+                "air_date": "2014-02-05",
+                "still_path": "/episode-thumb.jpg",
+            }
+        return {
+            "name": "Sardines",
+            "overview": "Fallback episode overview",
+            "air_date": "2014-02-05",
+            "still_path": "/episode-thumb.jpg",
+        }
+
     def download_image(self, image_path, target_path, overwrite):
         self.download_calls.append((image_path, target_path, overwrite))
         target_path.write_text("image", encoding="utf-8")
@@ -237,6 +288,51 @@ def test_movie_auto_rename_merges_when_target_folder_exists(tmp_path):
     assert (right_dir / "[恶灵空间2 2007][22.18G].nfo").exists()
     assert (right_dir / "[恶灵空间2 2007][22.18G].iso").exists()
     assert (right_dir / "Boogeyman 2.2007.1080p.mkv").exists()
+
+
+def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
+    library = tmp_path / "tvshows"
+    show_dir = library / "Inside No. 9 (2014)"
+    season_dir = show_dir / "Season 01"
+    season_dir.mkdir(parents=True)
+    video = season_dir / "Inside.No.9.S01E01.Sardines.1080p.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "tvshows",
+                "library_path": str(library),
+                "download_images": True,
+                "download_episode_thumbs": True,
+                "auto_rename": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_tvshow_metadata", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    renamed = library / "9号秘事 (2014)"
+    tvshow_nfo = renamed / "tvshow.nfo"
+    episode_nfo = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p.nfo"
+    thumb = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p-thumb.jpg"
+    assert result.status == "success"
+    assert result.summary["matched"] == 2
+    assert result.summary["auto_rename"]["renamed"] == 1
+    assert tvshow_nfo.exists()
+    assert episode_nfo.exists()
+    assert thumb.exists()
+    assert "<title>9号秘事</title>" in tvshow_nfo.read_text(encoding="utf-8")
+    assert "<plot>Fallback show overview</plot>" in tvshow_nfo.read_text(encoding="utf-8")
+    assert "<title>沙丁鱼</title>" in episode_nfo.read_text(encoding="utf-8")
+    assert "<plot>Fallback episode overview</plot>" in episode_nfo.read_text(encoding="utf-8")
 
 
 def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):

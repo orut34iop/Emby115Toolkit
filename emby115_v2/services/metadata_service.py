@@ -28,6 +28,12 @@ class MovieQuery:
 
 
 @dataclass(frozen=True)
+class TvShowQuery:
+    title: str
+    year: str = ""
+
+
+@dataclass(frozen=True)
 class MovieMetadata:
     tmdb_id: int
     title: str
@@ -39,6 +45,31 @@ class MovieMetadata:
     poster_path: str = ""
     backdrop_path: str = ""
     language: str = ""
+    fallback_used: bool = False
+
+
+@dataclass(frozen=True)
+class TvShowMetadata:
+    tmdb_id: int
+    title: str
+    original_title: str = ""
+    year: str = ""
+    overview: str = ""
+    genres: tuple[str, ...] = ()
+    poster_path: str = ""
+    backdrop_path: str = ""
+    language: str = ""
+    fallback_used: bool = False
+
+
+@dataclass(frozen=True)
+class EpisodeMetadata:
+    title: str
+    season: int
+    episode: int
+    overview: str = ""
+    air_date: str = ""
+    still_path: str = ""
     fallback_used: bool = False
 
 
@@ -210,6 +241,27 @@ class TmdbClient:
     def movie_details(self, tmdb_id: int, language: str) -> dict[str, Any]:
         return self._get(f"/movie/{tmdb_id}", {"api_key": self.api_key, "language": language})
 
+    def search_tv(self, query: TvShowQuery, language: str) -> list[dict[str, Any]]:
+        params = {
+            "api_key": self.api_key,
+            "language": language,
+            "query": query.title,
+            "include_adult": "false",
+        }
+        if query.year:
+            params["first_air_date_year"] = query.year
+        data = self._get("/search/tv", params)
+        return list(data.get("results", []))
+
+    def tv_details(self, tmdb_id: int, language: str) -> dict[str, Any]:
+        return self._get(f"/tv/{tmdb_id}", {"api_key": self.api_key, "language": language})
+
+    def tv_episode_details(self, tmdb_id: int, season: int, episode: int, language: str) -> dict[str, Any]:
+        return self._get(
+            f"/tv/{tmdb_id}/season/{season}/episode/{episode}",
+            {"api_key": self.api_key, "language": language},
+        )
+
     def download_image(self, image_path: str, target_path: Path, overwrite: bool) -> str:
         if not image_path:
             return "missing"
@@ -299,29 +351,24 @@ class MetadataScraperService:
 
     def _run_tvshows_skeleton(self, context: AppContext, logger: logging.Logger, library_path: Path) -> StepResult:
         records = []
-        extensions = set(context.symlink.video_extensions)
-        for video_path in iter_video_files(library_path, extensions):
-            records.append(
-                OperationRecord(
-                    action="scrape_metadata",
-                    status="planned" if context.dry_run else "manual_review",
-                    source_path=str(video_path),
-                    target_path=str(video_path.with_suffix(".nfo")),
-                    media_type="tvshows",
-                    title=video_path.stem,
-                    reason="电视剧 TMDB 匹配、tvshow.nfo 和单集 NFO 将在电影链路稳定后实现",
-                )
-            )
+        for show_dir in direct_child_dirs(library_path):
+            records.extend(self._process_tvshow(context, show_dir, logger))
         rename_summary = auto_rename_tvshow_folders(context, library_path, records, logger)
-        logger.info("电视剧元数据刮削骨架扫描完成 library=%s planned=%s", library_path, len(records))
+        matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
+        manual_review = sum(1 for record in records if record.status == "manual_review")
+        failed = sum(1 for record in records if record.status == "failed") + rename_summary.get("failed", 0)
+        logger.info("电视剧元数据刮削完成 library=%s matched=%s manual_review=%s", library_path, matched, manual_review)
         return StepResult(
             step_id="scrape_metadata",
-            status="planned" if context.dry_run else "manual_review",
+            status="success" if failed == 0 else "partial",
             summary={
                 "media_type": "tvshows",
                 "library_path": str(library_path),
                 "dry_run": context.dry_run,
-                "planned": len(records),
+                "scanned": len(records),
+                "matched": matched,
+                "manual_review": manual_review,
+                "failed": failed,
                 "tmdb_language": context.tmdb.language,
                 "tmdb_fallback_language": context.tmdb.fallback_language,
                 "llm_enabled": context.llm.enabled,
@@ -329,6 +376,196 @@ class MetadataScraperService:
             },
             records=records,
         )
+
+    def _process_tvshow(self, context: AppContext, show_dir: Path, logger: logging.Logger) -> list[OperationRecord]:
+        query = infer_tvshow_query(show_dir)
+        tvshow_nfo = show_dir / "tvshow.nfo"
+        if not context.tmdb.api_key and self.tmdb_client is None:
+            return [
+                OperationRecord(
+                    action="scrape_metadata",
+                    status="manual_review",
+                    source_path=str(show_dir),
+                    target_path=str(tvshow_nfo),
+                    media_type="tvshows",
+                    title=query.title,
+                    year=query.year,
+                    reason="TMDB API Key 未配置，无法执行电视剧元数据匹配",
+                )
+            ]
+
+        try:
+            client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout)
+            show_metadata, candidates = fetch_tvshow_metadata(
+                client,
+                query,
+                context.tmdb.language,
+                context.tmdb.fallback_language,
+            )
+            if show_metadata is None:
+                return [
+                    OperationRecord(
+                        action="scrape_metadata",
+                        status="manual_review",
+                        source_path=str(show_dir),
+                        target_path=str(tvshow_nfo),
+                        media_type="tvshows",
+                        title=query.title,
+                        year=query.year,
+                        reason="TMDB 未返回可用电视剧候选",
+                        extra={"query": query.__dict__, "candidates": candidates},
+                    )
+                ]
+
+            records = [self._write_tvshow_metadata_record(context, client, show_dir, tvshow_nfo, show_metadata, query, candidates)]
+            extensions = set(context.symlink.video_extensions)
+            for video_path in iter_video_files(show_dir, extensions):
+                records.append(self._process_episode(context, client, video_path, show_metadata, logger))
+            return records
+        except Exception as exc:
+            logger.warning("电视剧元数据处理失败 show=%s error=%s", show_dir, exc)
+            return [
+                OperationRecord(
+                    action="scrape_metadata",
+                    status="failed",
+                    source_path=str(show_dir),
+                    target_path=str(tvshow_nfo),
+                    media_type="tvshows",
+                    title=query.title,
+                    year=query.year,
+                    reason=str(exc),
+                )
+            ]
+
+    def _write_tvshow_metadata_record(
+        self,
+        context: AppContext,
+        client: TmdbClient,
+        show_dir: Path,
+        tvshow_nfo: Path,
+        metadata: TvShowMetadata,
+        query: TvShowQuery,
+        candidates: list[dict[str, Any]],
+    ) -> OperationRecord:
+        nfo_status = plan_or_write_tvshow_nfo(context, tvshow_nfo, metadata)
+        poster_status = "not_requested"
+        fanart_status = "not_requested"
+        if context.metadata_output.download_images:
+            if context.dry_run:
+                poster_status = "planned" if metadata.poster_path else "missing"
+                fanart_status = "planned" if metadata.backdrop_path else "missing"
+            else:
+                poster_status = client.download_image(
+                    metadata.poster_path,
+                    show_dir / "poster.jpg",
+                    context.metadata_output.overwrite_existing,
+                )
+                fanart_status = client.download_image(
+                    metadata.backdrop_path,
+                    show_dir / "fanart.jpg",
+                    context.metadata_output.overwrite_existing,
+                )
+        return OperationRecord(
+            action="scrape_metadata",
+            status=nfo_status,
+            source_path=str(show_dir),
+            target_path=str(tvshow_nfo),
+            media_type="tvshows",
+            title=metadata.title,
+            year=metadata.year,
+            confidence="0.90",
+            reason="TMDB 电视剧自动匹配成功",
+            extra={
+                "query": query.__dict__,
+                "tmdb_id": metadata.tmdb_id,
+                "tmdb_language": metadata.language,
+                "fallback_used": metadata.fallback_used,
+                "candidates": candidates,
+                "poster_path": str(show_dir / "poster.jpg"),
+                "fanart_path": str(show_dir / "fanart.jpg"),
+                "poster_status": poster_status,
+                "fanart_status": fanart_status,
+            },
+        )
+
+    def _process_episode(
+        self,
+        context: AppContext,
+        client: TmdbClient,
+        video_path: Path,
+        show_metadata: TvShowMetadata,
+        logger: logging.Logger,
+    ) -> OperationRecord:
+        parsed = parse_episode_from_filename(video_path.stem)
+        nfo_path = video_path.with_suffix(".nfo")
+        if not parsed:
+            return OperationRecord(
+                action="scrape_metadata",
+                status="manual_review",
+                source_path=str(video_path),
+                target_path=str(nfo_path),
+                media_type="tvshows",
+                title=show_metadata.title,
+                reason="无法从文件名解析 SxxEyy，跳过单集元数据生成",
+                extra={"tmdb_id": show_metadata.tmdb_id},
+            )
+
+        season, episode = parsed
+        try:
+            episode_metadata = fetch_episode_metadata(
+                client,
+                show_metadata.tmdb_id,
+                season,
+                episode,
+                context.tmdb.language,
+                context.tmdb.fallback_language,
+            )
+            nfo_status = plan_or_write_episode_nfo(context, nfo_path, show_metadata, episode_metadata)
+            thumb_path = video_path.with_name(f"{video_path.stem}-thumb.jpg")
+            thumb_status = "not_requested"
+            if context.metadata_output.download_episode_thumbs:
+                if context.dry_run:
+                    thumb_status = "planned" if episode_metadata.still_path else "missing"
+                else:
+                    thumb_status = client.download_image(
+                        episode_metadata.still_path,
+                        thumb_path,
+                        context.metadata_output.overwrite_existing,
+                    )
+            return OperationRecord(
+                action="scrape_metadata",
+                status=nfo_status,
+                source_path=str(video_path),
+                target_path=str(nfo_path),
+                media_type="tvshows",
+                title=episode_metadata.title,
+                year=show_metadata.year,
+                season=f"{season:02d}",
+                episode=f"{episode:02d}",
+                confidence="0.90",
+                reason="TMDB 单集自动匹配成功",
+                extra={
+                    "tmdb_id": show_metadata.tmdb_id,
+                    "fallback_used": episode_metadata.fallback_used,
+                    "thumb_path": str(thumb_path),
+                    "thumb_status": thumb_status,
+                },
+            )
+        except Exception as exc:
+            logger.warning("单集元数据处理失败 video=%s error=%s", video_path, exc)
+            return OperationRecord(
+                action="scrape_metadata",
+                status="failed",
+                source_path=str(video_path),
+                target_path=str(nfo_path),
+                media_type="tvshows",
+                title=show_metadata.title,
+                year=show_metadata.year,
+                season=f"{season:02d}",
+                episode=f"{episode:02d}",
+                reason=str(exc),
+                extra={"tmdb_id": show_metadata.tmdb_id},
+            )
 
     def _process_movie(self, context: AppContext, video_path: Path, logger: logging.Logger) -> OperationRecord:
         query = infer_movie_query(video_path, context.metadata_output.library_path)
@@ -435,6 +672,23 @@ def infer_movie_query(video_path: Path, library_path: Path) -> MovieQuery:
     return MovieQuery(title=title.strip(" ._-"), year=year)
 
 
+def infer_tvshow_query(show_dir: Path) -> TvShowQuery:
+    raw_title = show_dir.name
+    match = re.search(r"\((\d{4})\)", raw_title)
+    year = match.group(1) if match else extract_year(raw_title)
+    title = re.sub(r"\(\d{4}\)", "", raw_title).strip(" ._-")
+    if year and title == raw_title:
+        title = raw_title.split(year, 1)[0]
+    return TvShowQuery(title=title.strip(" ._-"), year=year)
+
+
+def parse_episode_from_filename(stem: str) -> tuple[int, int] | None:
+    match = re.search(r"(?i)\bS(?P<season>\d{1,2})E(?P<episode>\d{1,3})\b", stem)
+    if not match:
+        return None
+    return int(match.group("season")), int(match.group("episode"))
+
+
 def extract_year(value: str) -> str:
     match = re.search(r"(?:^|[ ._\-])((?:19|20)\d{2})(?:[ ._\-]|$)", value)
     return match.group(1) if match else ""
@@ -474,8 +728,60 @@ def fetch_movie_metadata(
     return metadata, summarize_candidates(candidates)
 
 
+def fetch_tvshow_metadata(
+    client: TmdbClient,
+    query: TvShowQuery,
+    language: str,
+    fallback_language: str,
+) -> tuple[TvShowMetadata | None, list[dict[str, Any]]]:
+    candidates = client.search_tv(query, language)
+    used_language = language
+    fallback_used = False
+    if not candidates and fallback_language != language:
+        candidates = client.search_tv(query, fallback_language)
+        used_language = fallback_language
+        fallback_used = True
+    if not candidates:
+        return None, []
+
+    selected = candidates[0]
+    tmdb_id = int(selected["id"])
+    details = client.tv_details(tmdb_id, used_language)
+    fallback_details = {}
+    if fallback_language != used_language and missing_tv_core_fields(details):
+        fallback_details = client.tv_details(tmdb_id, fallback_language)
+        fallback_used = True
+    metadata = tvshow_metadata_from_details(details, fallback_details, used_language, fallback_used)
+    return metadata, summarize_tv_candidates(candidates)
+
+
+def fetch_episode_metadata(
+    client: TmdbClient,
+    tmdb_id: int,
+    season: int,
+    episode: int,
+    language: str,
+    fallback_language: str,
+) -> EpisodeMetadata:
+    details = client.tv_episode_details(tmdb_id, season, episode, language)
+    fallback_details = {}
+    fallback_used = False
+    if fallback_language != language and missing_episode_core_fields(details):
+        fallback_details = client.tv_episode_details(tmdb_id, season, episode, fallback_language)
+        fallback_used = True
+    return episode_metadata_from_details(details, fallback_details, season, episode, fallback_used)
+
+
 def missing_core_fields(details: dict[str, Any]) -> bool:
     return not details.get("overview") or not details.get("title")
+
+
+def missing_tv_core_fields(details: dict[str, Any]) -> bool:
+    return not details.get("overview") or not details.get("name")
+
+
+def missing_episode_core_fields(details: dict[str, Any]) -> bool:
+    return not details.get("overview") or not details.get("name")
 
 
 def movie_metadata_from_details(
@@ -500,6 +806,45 @@ def movie_metadata_from_details(
     )
 
 
+def tvshow_metadata_from_details(
+    details: dict[str, Any],
+    fallback: dict[str, Any],
+    language: str,
+    fallback_used: bool,
+) -> TvShowMetadata:
+    first_air_date = str(details.get("first_air_date") or fallback.get("first_air_date") or "")
+    return TvShowMetadata(
+        tmdb_id=int(details.get("id") or fallback.get("id")),
+        title=str(details.get("name") or fallback.get("name") or ""),
+        original_title=str(details.get("original_name") or fallback.get("original_name") or ""),
+        year=first_air_date[:4],
+        overview=str(details.get("overview") or fallback.get("overview") or ""),
+        genres=tuple(str(item.get("name")) for item in details.get("genres") or fallback.get("genres") or []),
+        poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
+        backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
+        language=language,
+        fallback_used=fallback_used,
+    )
+
+
+def episode_metadata_from_details(
+    details: dict[str, Any],
+    fallback: dict[str, Any],
+    season: int,
+    episode: int,
+    fallback_used: bool,
+) -> EpisodeMetadata:
+    return EpisodeMetadata(
+        title=str(details.get("name") or fallback.get("name") or f"S{season:02d}E{episode:02d}"),
+        season=season,
+        episode=episode,
+        overview=str(details.get("overview") or fallback.get("overview") or ""),
+        air_date=str(details.get("air_date") or fallback.get("air_date") or ""),
+        still_path=str(details.get("still_path") or fallback.get("still_path") or ""),
+        fallback_used=fallback_used,
+    )
+
+
 def summarize_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
@@ -512,6 +857,18 @@ def summarize_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any
     ]
 
 
+def summarize_tv_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": item.get("id"),
+            "name": item.get("name"),
+            "original_name": item.get("original_name"),
+            "first_air_date": item.get("first_air_date"),
+        }
+        for item in candidates[:5]
+    ]
+
+
 def plan_or_write_movie_nfo(context: AppContext, nfo_path: Path, metadata: MovieMetadata) -> str:
     if nfo_path.exists() and not context.metadata_output.overwrite_existing:
         return "skipped_existing"
@@ -519,6 +876,31 @@ def plan_or_write_movie_nfo(context: AppContext, nfo_path: Path, metadata: Movie
         return "planned"
     nfo_path.parent.mkdir(parents=True, exist_ok=True)
     nfo_path.write_text(render_movie_nfo(metadata), encoding="utf-8")
+    return "written"
+
+
+def plan_or_write_tvshow_nfo(context: AppContext, nfo_path: Path, metadata: TvShowMetadata) -> str:
+    if nfo_path.exists() and not context.metadata_output.overwrite_existing:
+        return "skipped_existing"
+    if context.dry_run or not context.metadata_output.write_nfo:
+        return "planned"
+    nfo_path.parent.mkdir(parents=True, exist_ok=True)
+    nfo_path.write_text(render_tvshow_nfo(metadata), encoding="utf-8")
+    return "written"
+
+
+def plan_or_write_episode_nfo(
+    context: AppContext,
+    nfo_path: Path,
+    show_metadata: TvShowMetadata,
+    episode_metadata: EpisodeMetadata,
+) -> str:
+    if nfo_path.exists() and not context.metadata_output.overwrite_existing:
+        return "skipped_existing"
+    if context.dry_run or not context.metadata_output.write_nfo:
+        return "planned"
+    nfo_path.parent.mkdir(parents=True, exist_ok=True)
+    nfo_path.write_text(render_episode_nfo(show_metadata, episode_metadata), encoding="utf-8")
     return "written"
 
 
@@ -541,6 +923,49 @@ def render_movie_nfo(metadata: MovieMetadata) -> str:
     ET.indent(movie, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
         movie,
+        encoding="unicode",
+    )
+
+
+def render_tvshow_nfo(metadata: TvShowMetadata) -> str:
+    tvshow = ET.Element("tvshow")
+    fields = {
+        "title": metadata.title,
+        "originaltitle": metadata.original_title,
+        "year": metadata.year,
+        "plot": metadata.overview,
+        "tmdbid": str(metadata.tmdb_id),
+    }
+    for key, value in fields.items():
+        child = ET.SubElement(tvshow, key)
+        child.text = value
+    for genre in metadata.genres:
+        child = ET.SubElement(tvshow, "genre")
+        child.text = genre
+    ET.indent(tvshow, space="  ")
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
+        tvshow,
+        encoding="unicode",
+    )
+
+
+def render_episode_nfo(show_metadata: TvShowMetadata, episode_metadata: EpisodeMetadata) -> str:
+    episode = ET.Element("episodedetails")
+    fields = {
+        "title": episode_metadata.title,
+        "showtitle": show_metadata.title,
+        "season": str(episode_metadata.season),
+        "episode": str(episode_metadata.episode),
+        "plot": episode_metadata.overview,
+        "aired": episode_metadata.air_date,
+        "tmdbid": str(show_metadata.tmdb_id),
+    }
+    for key, value in fields.items():
+        child = ET.SubElement(episode, key)
+        child.text = value
+    ET.indent(episode, space="  ")
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
+        episode,
         encoding="unicode",
     )
 
