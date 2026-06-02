@@ -15,6 +15,7 @@ def test_webui_serves_index():
     assert "刮削媒体元数据" in response.text
     assert "测试 TMDB 配置" in response.text
     assert "测试 LLM 配置" in response.text
+    assert "metadataAutoRename" in response.text
     assert "需要管理员权限" in response.text
 
 
@@ -67,6 +68,7 @@ def test_webui_includes_metadata_config_controls():
     assert "test_tmdb_config" in response.text
     assert "test_llm_config" in response.text
     assert "scrape_metadata" in response.text
+    assert "auto_rename" in response.text
     assert "/v1/config/metadata" in response.text
 
 

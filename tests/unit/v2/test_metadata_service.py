@@ -153,3 +153,77 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert "<title>一见钟情</title>" in nfo.read_text(encoding="utf-8")
     assert "<plot>Fallback overview</plot>" in nfo.read_text(encoding="utf-8")
     assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-poster.jpg").exists()
+
+
+def test_movie_metadata_auto_renames_first_level_folder_from_nfo(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "The Devil Wears Prada 2 (2026)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "The Devil Wears Prada 2.2026.1080p.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_metadata_auto_rename", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    renamed = library / "一见钟情 (2000)"
+    assert result.summary["auto_rename"]["renamed"] == 1
+    assert renamed.exists()
+    assert not movie_dir.exists()
+    assert (renamed / "The Devil Wears Prada 2.2026.1080p.nfo").exists()
+    assert result.records[0].extra["auto_rename"]["target_path"] == str(renamed)
+
+
+def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):
+    library = tmp_path / "tvshows"
+    show_dir = library / "Inside.No.9"
+    show_dir.mkdir(parents=True)
+    (show_dir / "tvshow.nfo").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<tvshow>
+  <title>9号秘事</title>
+  <year>2014</year>
+</tvshow>
+""",
+        encoding="utf-8",
+    )
+    (show_dir / "S01E01.mkv").write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "tvshows",
+                "library_path": str(library),
+                "auto_rename": True,
+            },
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_tvshow_auto_rename", context.logging.log_dir, context.run_id)
+
+    result = MetadataScraperService().run(context, logger)
+
+    renamed = library / "9号秘事 (2014)"
+    assert result.summary["auto_rename"]["renamed"] == 1
+    assert renamed.exists()
+    assert not show_dir.exists()
+    assert any(record.action == "auto_rename" and record.target_path == str(renamed) for record in result.records)

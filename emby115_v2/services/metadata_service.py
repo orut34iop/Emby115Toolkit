@@ -18,6 +18,7 @@ from emby115_v2.reports.writer import OperationRecord, StepResult
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
+INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 
 
 @dataclass(frozen=True)
@@ -271,10 +272,11 @@ class MetadataScraperService:
         extensions = set(context.symlink.video_extensions)
         for video_path in iter_video_files(library_path, extensions):
             records.append(self._process_movie(context, video_path, logger))
+        rename_summary = auto_rename_from_movie_records(context, records, logger)
 
         matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
         manual_review = sum(1 for record in records if record.status == "manual_review")
-        failed = sum(1 for record in records if record.status == "failed")
+        failed = sum(1 for record in records if record.status == "failed") + rename_summary.get("failed", 0)
         logger.info("电影元数据刮削完成 library=%s matched=%s manual_review=%s", library_path, matched, manual_review)
         return StepResult(
             step_id="scrape_metadata",
@@ -290,6 +292,7 @@ class MetadataScraperService:
                 "tmdb_language": context.tmdb.language,
                 "tmdb_fallback_language": context.tmdb.fallback_language,
                 "llm_enabled": context.llm.enabled,
+                "auto_rename": rename_summary,
             },
             records=records,
         )
@@ -309,6 +312,7 @@ class MetadataScraperService:
                     reason="电视剧 TMDB 匹配、tvshow.nfo 和单集 NFO 将在电影链路稳定后实现",
                 )
             )
+        rename_summary = auto_rename_tvshow_folders(context, library_path, records, logger)
         logger.info("电视剧元数据刮削骨架扫描完成 library=%s planned=%s", library_path, len(records))
         return StepResult(
             step_id="scrape_metadata",
@@ -321,6 +325,7 @@ class MetadataScraperService:
                 "tmdb_language": context.tmdb.language,
                 "tmdb_fallback_language": context.tmdb.fallback_language,
                 "llm_enabled": context.llm.enabled,
+                "auto_rename": rename_summary,
             },
             records=records,
         )
@@ -538,3 +543,161 @@ def render_movie_nfo(metadata: MovieMetadata) -> str:
         movie,
         encoding="unicode",
     )
+
+
+def auto_rename_from_movie_records(
+    context: AppContext,
+    records: list[OperationRecord],
+    logger: logging.Logger,
+) -> dict[str, int]:
+    summary = {"planned": 0, "renamed": 0, "skipped": 0, "failed": 0}
+    if not context.metadata_output.auto_rename:
+        return summary
+
+    library_path = context.metadata_output.library_path
+    folders: dict[Path, OperationRecord] = {}
+    for record in records:
+        if record.media_type != "movies" or record.status not in {"written", "skipped_existing", "planned"}:
+            continue
+        nfo_path = Path(record.target_path)
+        folder = first_level_folder(library_path, nfo_path)
+        if folder and folder not in folders:
+            folders[folder] = record
+
+    for folder, record in folders.items():
+        nfo_path = Path(record.target_path)
+        result = auto_rename_folder_from_nfo(
+            folder=folder,
+            nfo_path=nfo_path,
+            expected_root="movie",
+            dry_run=context.dry_run,
+            logger=logger,
+        )
+        summary[result["status"]] = summary.get(result["status"], 0) + 1
+        record.extra["auto_rename"] = result
+    return summary
+
+
+def auto_rename_tvshow_folders(
+    context: AppContext,
+    library_path: Path,
+    records: list[OperationRecord],
+    logger: logging.Logger,
+) -> dict[str, int]:
+    summary = {"planned": 0, "renamed": 0, "skipped": 0, "failed": 0}
+    if not context.metadata_output.auto_rename:
+        return summary
+
+    for folder in direct_child_dirs(library_path):
+        result = auto_rename_folder_from_nfo(
+            folder=folder,
+            nfo_path=folder / "tvshow.nfo",
+            expected_root="tvshow",
+            dry_run=context.dry_run,
+            logger=logger,
+        )
+        summary[result["status"]] = summary.get(result["status"], 0) + 1
+        records.append(
+            OperationRecord(
+                action="auto_rename",
+                status=result["status"],
+                source_path=str(folder),
+                target_path=result.get("target_path", ""),
+                media_type="tvshows",
+                title=result.get("title", ""),
+                year=result.get("year", ""),
+                reason=result.get("reason", ""),
+                extra=result,
+            )
+        )
+    return summary
+
+
+def auto_rename_folder_from_nfo(
+    folder: Path,
+    nfo_path: Path,
+    expected_root: str,
+    dry_run: bool,
+    logger: logging.Logger,
+) -> dict[str, str]:
+    parsed = parse_title_year_from_nfo(nfo_path, expected_root)
+    if not parsed:
+        return {
+            "status": "skipped",
+            "source_path": str(folder),
+            "target_path": "",
+            "reason": f"未找到可解析的 {expected_root}.nfo title/year",
+        }
+
+    title, year = parsed
+    target = folder.with_name(format_media_folder_name(title, year))
+    result = {
+        "status": "planned" if dry_run else "renamed",
+        "source_path": str(folder),
+        "target_path": str(target),
+        "title": title,
+        "year": year,
+        "reason": "自动重命名一级目录",
+    }
+    if folder == target:
+        result["status"] = "skipped"
+        result["reason"] = "一级目录名称已经符合 title (year)"
+        return result
+    if target.exists():
+        result["status"] = "skipped"
+        result["reason"] = "目标目录已存在，跳过自动重命名"
+        return result
+    if dry_run:
+        return result
+
+    try:
+        folder.rename(target)
+        logger.info("自动重命名媒体目录 %s -> %s", folder, target)
+        return result
+    except OSError as exc:
+        result["status"] = "failed"
+        result["reason"] = str(exc)
+        return result
+
+
+def parse_title_year_from_nfo(nfo_path: Path, expected_root: str) -> tuple[str, str] | None:
+    if not nfo_path.exists():
+        return None
+    try:
+        root = ET.parse(nfo_path).getroot()
+    except ET.ParseError:
+        return None
+    if root.tag != expected_root:
+        return None
+    title = (root.findtext("title") or "").strip()
+    year = (root.findtext("year") or "").strip()
+    if not title or not year:
+        return None
+    return title, year
+
+
+def format_media_folder_name(title: str, year: str) -> str:
+    safe_title = sanitize_windows_name(title).strip()
+    return f"{safe_title} ({year})"
+
+
+def sanitize_windows_name(value: str) -> str:
+    sanitized = "".join(" " if char in INVALID_WINDOWS_NAME_CHARS else char for char in value)
+    return re.sub(r"\s+", " ", sanitized).strip(" .")
+
+
+def first_level_folder(library_path: Path, child_path: Path) -> Path | None:
+    try:
+        relative = child_path.relative_to(library_path)
+    except ValueError:
+        return None
+    if not relative.parts:
+        return None
+    folder = library_path / relative.parts[0]
+    return folder if folder != library_path else None
+
+
+def direct_child_dirs(library_path: Path):
+    if not library_path.exists():
+        return []
+    return [path for path in library_path.iterdir() if path.is_dir()]

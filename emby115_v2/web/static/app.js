@@ -139,6 +139,7 @@ function metadataConfigFromForm() {
       download_episode_thumbs: document.querySelector("#metadataDownloadEpisodeThumbs").checked,
       download_season_posters: false,
       overwrite_existing: document.querySelector("#metadataOverwrite").checked,
+      auto_rename: document.querySelector("#metadataAutoRename").checked,
     },
     report: {
       output_dir: document.querySelector("#reportDir").value.trim() || "reports",
@@ -178,6 +179,7 @@ function applyMetadataConfig(config = {}) {
   document.querySelector("#metadataDownloadImages").checked = output.download_images ?? true;
   document.querySelector("#metadataDownloadEpisodeThumbs").checked = output.download_episode_thumbs ?? true;
   document.querySelector("#metadataOverwrite").checked = output.overwrite_existing ?? false;
+  document.querySelector("#metadataAutoRename").checked = output.auto_rename ?? false;
 }
 
 function restoreFormConfig() {

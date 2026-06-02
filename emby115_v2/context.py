@@ -150,6 +150,7 @@ class MetadataOutputConfig:
     download_episode_thumbs: bool = True
     download_season_posters: bool = False
     overwrite_existing: bool = False
+    auto_rename: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "MetadataOutputConfig":
@@ -166,6 +167,7 @@ class MetadataOutputConfig:
             download_episode_thumbs=bool(data.get("download_episode_thumbs", True)),
             download_season_posters=bool(data.get("download_season_posters", False)),
             overwrite_existing=bool(data.get("overwrite_existing", False)),
+            auto_rename=bool(data.get("auto_rename", False)),
         )
 
 

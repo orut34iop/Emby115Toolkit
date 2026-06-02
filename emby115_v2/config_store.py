@@ -53,6 +53,7 @@ def default_metadata_config() -> dict[str, Any]:
             "download_episode_thumbs": True,
             "download_season_posters": False,
             "overwrite_existing": False,
+            "auto_rename": False,
         },
         "report": {"output_dir": "reports"},
         "logging": {"log_dir": "logs", "log_level": "INFO"},

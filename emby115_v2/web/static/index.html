@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-metadata-foundation">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-auto-rename">
 </head>
 <body>
   <header class="topbar">
@@ -187,6 +187,10 @@
               覆盖已有 NFO/图片
             </label>
             <label class="checkline">
+              <input id="metadataAutoRename" type="checkbox">
+              元数据成功后自动重命名一级目录
+            </label>
+            <label class="checkline">
               <input id="metadataDownloadImages" type="checkbox" checked>
               下载 poster/fanart
             </label>
@@ -233,6 +237,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260603-metadata-foundation"></script>
+  <script src="/static/app.js?v=20260603-auto-rename"></script>
 </body>
 </html>
