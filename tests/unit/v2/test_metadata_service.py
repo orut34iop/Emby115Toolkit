@@ -105,6 +105,69 @@ class FakeTmdbClient:
         return "downloaded"
 
 
+class FakeTmdbClientWithLlmRetry:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+
+    def search_movie(self, query, language):
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        return {}
+
+    def search_tv(self, query, language):
+        self.search_calls.append((query, language))
+        if query.title == "黒革の手帖":
+            return [
+                {
+                    "id": 71151,
+                    "name": "黑皮记事本",
+                    "original_name": "黒革の手帖",
+                    "first_air_date": "2017-07-20",
+                }
+            ]
+        return []
+
+    def tv_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        return {
+            "id": tmdb_id,
+            "name": "黑皮记事本",
+            "original_name": "黒革の手帖",
+            "first_air_date": "2017-07-20",
+            "overview": "银行职员利用假账户购买银座俱乐部。",
+            "genres": [{"name": "剧情"}],
+            "poster_path": "",
+            "backdrop_path": "",
+        }
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        return {
+            "name": "第一集",
+            "overview": "第一集剧情。",
+            "air_date": "2017-07-20",
+            "still_path": "",
+        }
+
+    def download_image(self, image_path, target_path, overwrite):
+        return "missing"
+
+
+class FakeLlmClient:
+    def suggest_tvshow_queries(self, context, show_dir, query, video_names):
+        from emby115_v2.services.metadata_service import LlmTvShowCandidate
+
+        return [
+            LlmTvShowCandidate(
+                title="黒革の手帖",
+                year="2017",
+                confidence=0.95,
+                reason="Chinese title maps to Japanese original title.",
+            )
+        ]
+
+
 def test_tmdb_config_test_reports_missing_api_key(tmp_path):
     context = AppContext.from_dict(
         {
@@ -372,3 +435,54 @@ def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):
     assert renamed.exists()
     assert not show_dir.exists()
     assert any(record.action == "auto_rename" and record.target_path == str(renamed) for record in result.records)
+
+
+def test_tvshow_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):
+    library = tmp_path / "tvshows"
+    show_dir = library / "黑皮记事本 (2017)"
+    season_dir = show_dir / "Season 01"
+    season_dir.mkdir(parents=True)
+    (season_dir / "Kurokawa.no.Techou.S01E01.mkv").write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "tvshows",
+                "library_path": str(library),
+                "download_images": False,
+                "download_episode_thumbs": False,
+                "auto_rename": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "llm": {
+                "enabled": True,
+                "base_url": "http://llm.local/v1",
+                "api_key": "llm-key",
+                "model": "test-model",
+            },
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_tvshow_llm_retry", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbClientWithLlmRetry()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb, llm_client=FakeLlmClient()).run(context, logger)
+
+    tvshow_nfo = show_dir / "tvshow.nfo"
+    assert result.status == "success"
+    assert result.summary["matched"] == 2
+    assert result.summary["manual_review"] == 0
+    assert tvshow_nfo.exists()
+    assert "<title>黑皮记事本</title>" in tvshow_nfo.read_text(encoding="utf-8")
+    assert [call[0].title for call in fake_tmdb.search_calls] == [
+        "黑皮记事本",
+        "黑皮记事本",
+        "黒革の手帖",
+    ]
+    show_record = next(record for record in result.records if record.target_path == str(tvshow_nfo))
+    assert show_record.extra["query"]["title"] == "黒革の手帖"
+    assert show_record.extra["llm_resolution"]["status"] == "suggested"
+    assert show_record.extra["llm_resolution"]["query_candidates"][0]["title"] == "黒革の手帖"
