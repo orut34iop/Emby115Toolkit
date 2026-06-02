@@ -30,6 +30,7 @@ def test_dry_run_plans_without_creating_links(tmp_path, mock_logger):
     assert result.status == "success"
     assert result.summary["planned"] == 1
     assert result.records[-1].status == "planned"
+    assert not (tmp_path / "target").exists()
     assert not (tmp_path / "target" / "Movie" / "movie.mkv").exists()
 
 
@@ -58,3 +59,99 @@ def test_existing_target_is_skipped(tmp_path, mock_logger):
     assert result.status == "success"
     assert result.summary["skipped_existing"] == 1
     assert result.summary["created"] == 0
+
+
+def test_movie_standardizes_to_title_year_folder(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    (source / "mixed").mkdir()
+    video = source / "mixed" / "一见钟情.Sausalito.2000.BD1080P.x265.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "一见钟情.Sausalito (2000)", video.name))
+    assert record.title == "一见钟情.Sausalito"
+    assert record.year == "2000"
+
+
+def test_tvshow_standardizes_under_series_and_season(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    series = source / "tvshow" / "低智商犯罪 (2026)"
+    series.mkdir(parents=True)
+    video = series / "低智商犯罪 (2026)S01E02.mp4"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mp4"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "低智商犯罪 (2026)", "Season 01", video.name))
+    assert record.title == "低智商犯罪"
+    assert record.year == "2026"
+    assert record.season == "01"
+    assert record.episode == "02"
+
+
+def test_tvshow_preserves_version_season_folder(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    version = source / "tvshow" / "柏林：抱银貂的女子 (2026)" / "Season 1"
+    version.mkdir(parents=True)
+    video = version / "Berlin and the Lady with an Ermine.S01E01.2160p.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.records[-1].target_path.endswith(
+        os.path.join("target", "柏林：抱银貂的女子 (2026)", "Season 1", video.name)
+    )
+
+
+def test_unrecognized_tvshow_stays_in_original_relative_path_for_review(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    video = source / "unknown-video.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.status == "manual_review"
+    assert record.target_path.endswith(os.path.join("target", video.name))
+    assert result.summary["manual_review"] == 1

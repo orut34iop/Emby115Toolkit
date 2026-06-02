@@ -87,6 +87,11 @@ class RunReport:
                 f"<td>{html.escape(record['status'])}</td>"
                 f"<td>{html.escape(record['source_path'])}</td>"
                 f"<td>{html.escape(record['target_path'])}</td>"
+                f"<td>{html.escape(record['media_type'])}</td>"
+                f"<td>{html.escape(record['title'])}</td>"
+                f"<td>{html.escape(record['year'])}</td>"
+                f"<td>{html.escape(record['season'])}</td>"
+                f"<td>{html.escape(record['episode'])}</td>"
                 f"<td>{html.escape(record['confidence'])}</td>"
                 f"<td>{html.escape(record['reason'])}</td>"
                 "</tr>"
@@ -127,10 +132,9 @@ class RunReport:
   </table>
   <h2>操作记录</h2>
   <table>
-    <thead><tr><th>动作</th><th>状态</th><th>原路径</th><th>目标路径</th><th>置信度</th><th>原因</th></tr></thead>
+    <thead><tr><th>动作</th><th>状态</th><th>原路径</th><th>目标路径</th><th>类型</th><th>标题</th><th>年份</th><th>季</th><th>集</th><th>置信度</th><th>原因</th></tr></thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
 </body>
 </html>
 """
-

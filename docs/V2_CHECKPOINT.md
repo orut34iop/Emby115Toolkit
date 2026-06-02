@@ -39,7 +39,11 @@ python main.py --action scan_and_link
 
 - scan mounted CloudDrive2 source folders;
 - filter video files;
-- recreate relative folder structure in the local workspace;
+- build standardized local library paths instead of blindly mirroring the source tree;
+- for movies, place symlinks under a movie title folder with explicit year when the year is present;
+- for TV shows, place symlinks under a show title folder and a season/version second-level folder;
+- keep original video filenames unchanged;
+- keep uncertain TV/movie items in their original relative path and mark them for manual review;
 - create Windows symlinks;
 - skip existing targets for incremental sync;
 - report broken local symlinks without deleting them.
