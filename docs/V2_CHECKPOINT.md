@@ -99,6 +99,7 @@ Implemented:
 - report link groups in the WebUI execution result panel show a bold colored final result label: green `成功`, orange `部分成功`, or red `失败`;
 - metadata scraping emits progress logs for SSE, including current movie file, current TV first-level directory, matched show title/year, episode progress, and per-show summary;
 - pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
+- when one-click full flow triggers UAC elevation, WebUI persists the full-flow intent in sessionStorage and resumes `build_symlink_workspace` followed by metadata scraping after the elevated WebUI reloads;
 - `/health`;
 - `/v1/actions`;
 - `/v1/admin/status`;

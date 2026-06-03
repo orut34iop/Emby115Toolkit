@@ -85,6 +85,8 @@ def test_webui_uses_background_runs_and_sse():
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
     assert "library_path: pair.target" in script
+    assert "runFullWorkflowPayload" in script
+    assert "metadataLibrariesFromPathPairs" in script
     assert "result-status" in script
     assert "部分成功" in script
     assert "updateLastReportStatus" in script
@@ -99,7 +101,9 @@ def test_webui_includes_admin_elevation_flow():
     assert "/v1/admin/status" in response.text
     assert "/v1/admin/restart-elevated" in response.text
     assert "emby115_v2.webui.pending_elevated_run.v1" in response.text
-    assert "savePendingElevatedRun(payload)" in response.text
+    assert "pendingSingleRun(payload)" in response.text
+    assert "pendingFullWorkflow" in response.text
+    assert "full_workflow" in response.text
     assert "waitForElevatedRestart" in response.text
     assert "resumePendingElevatedRun" in response.text
     assert "sessionStorage.setItem" in response.text

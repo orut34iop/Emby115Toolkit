@@ -31,6 +31,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports.
   - Non-dry-run symlink creation on Windows must check Administrator status and route through the user-confirmed UAC restart flow when needed.
   - When WebUI triggers UAC elevation, it must preserve the pending run in browser sessionStorage, wait for the elevated WebUI to become ready, reload, and resume that same run automatically. Access tokens must not be persisted.
+  - If UAC elevation is triggered from the WebUI one-click full flow, sessionStorage must preserve the full-flow intent, not only the symlink step, so the elevated WebUI resumes symlink creation and then continues metadata scraping.
   - Non-localhost listening requires `--access-token`.
 
 Version 1.x legacy desktop entry points still exist:

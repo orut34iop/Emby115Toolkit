@@ -373,12 +373,33 @@ async function waitForElevatedRestart(timeoutMs = 45000) {
   return false;
 }
 
-function savePendingElevatedRun(payload) {
+function pendingSingleRun(payload) {
+  return { kind: "single", payload };
+}
+
+function metadataLibrariesFromPathPairs(pathPairs) {
+  return (pathPairs || [])
+    .filter((pair) => pair.name && pair.target)
+    .map((pair) => ({
+      media_type: pair.name,
+      library_path: pair.target,
+    }));
+}
+
+function pendingFullWorkflow(symlinkPayload) {
+  return {
+    kind: "full_workflow",
+    symlink_payload: symlinkPayload,
+    metadata_libraries: metadataLibrariesFromPathPairs(symlinkPayload.path_pairs),
+  };
+}
+
+function savePendingElevatedRun(run) {
   try {
     sessionStorage.setItem(
       PENDING_ELEVATED_RUN_KEY,
       JSON.stringify({
-        payload,
+        run,
         created_at: Date.now(),
       }),
     );
@@ -400,11 +421,12 @@ function readPendingElevatedRun() {
     const raw = sessionStorage.getItem(PENDING_ELEVATED_RUN_KEY);
     if (!raw) return null;
     const pending = JSON.parse(raw);
-    if (!pending?.payload || Date.now() - Number(pending.created_at || 0) > 10 * 60 * 1000) {
+    const run = pending?.run || (pending?.payload ? pendingSingleRun(pending.payload) : null);
+    if (!run || Date.now() - Number(pending.created_at || 0) > 10 * 60 * 1000) {
       clearPendingElevatedRun();
       return null;
     }
-    return pending.payload;
+    return run;
   } catch (error) {
     clearPendingElevatedRun();
     return null;
@@ -471,7 +493,7 @@ async function executePayload(payload, options = {}) {
   try {
     if (await needsElevation(payload)) {
       appendLog("当前 WebUI 不是管理员权限，真实创建符号链接前需要提权。");
-      savePendingElevatedRun(payload);
+      savePendingElevatedRun(options.pendingRun || pendingSingleRun(payload));
       showElevationPrompt();
       return { ok: false, requiresElevation: true };
     }
@@ -500,7 +522,7 @@ async function executePayload(payload, options = {}) {
     if (!response.ok) {
       if (data.requires_elevation) {
         appendLog(data.detail || "需要管理员权限。");
-        savePendingElevatedRun(payload);
+        savePendingElevatedRun(options.pendingRun || pendingSingleRun(payload));
         showElevationPrompt();
         return { ok: false, requiresElevation: true };
       }
@@ -691,16 +713,21 @@ async function runMetadataWorkflow(event) {
 
 async function runFullWorkflow(event) {
   event.preventDefault();
-  const pairs = collectPairs();
+  await runFullWorkflowPayload(buildPayload());
+}
+
+async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) {
+  const pairs = symlinkPayload.path_pairs || [];
   if (!pairs.length) {
     appendLog("请至少勾选一个源目录和目标目录都有效的媒体库。");
     return;
   }
 
   appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据。");
-  const symlinkResult = await executePayload(buildPayload(), {
+  const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
     reportLabel: "软链接工作区",
+    pendingRun: pendingFullWorkflow(symlinkPayload),
   });
   if (symlinkResult.requiresElevation) {
     appendLog("完整流程已暂停：等待管理员权限后恢复软链接步骤。");
@@ -712,12 +739,9 @@ async function runFullWorkflow(event) {
 
   let successCount = symlinkResult.ok ? 1 : 0;
   let failedCount = symlinkResult.ok ? 0 : 1;
-  const metadataLibraries = pairs.map((pair) => ({
-    media_type: pair.name,
-    library_path: pair.target,
-  }));
+  const libraries = metadataLibraries || metadataLibrariesFromPathPairs(pairs);
 
-  for (const library of metadataLibraries) {
+  for (const library of libraries) {
     const label = `${MEDIA_TYPE_LABELS[library.media_type] || library.media_type}元数据`;
     appendLog(`完整流程开始${label}: ${library.library_path}`);
     const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
@@ -777,8 +801,8 @@ async function saveMetadataConfigToServer() {
 }
 
 async function resumePendingElevatedRun() {
-  const payload = readPendingElevatedRun();
-  if (!payload) return;
+  const pending = readPendingElevatedRun();
+  if (!pending) return;
   const status = await fetch("/v1/admin/status", { headers: tokenHeaders() })
     .then(parseJson)
     .catch(() => ({}));
@@ -786,8 +810,13 @@ async function resumePendingElevatedRun() {
     appendLog("检测到待恢复任务，但当前 WebUI 仍不是管理员权限。");
     return;
   }
+  if (pending.kind === "full_workflow") {
+    appendLog("检测到管理员重启前的完整流程任务，正在继续执行。");
+    await runFullWorkflowPayload(pending.symlink_payload, pending.metadata_libraries);
+    return;
+  }
   appendLog("检测到管理员重启前的待执行任务，正在继续执行。");
-  await executePayload(payload);
+  await executePayload(pending.payload);
 }
 
 document.querySelector("#runForm").addEventListener("input", saveFormConfig);
