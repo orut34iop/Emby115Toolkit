@@ -103,7 +103,7 @@ def test_cloud_library_skips_existing_video_by_default(tmp_path, mock_logger):
     assert result.summary["videos_skipped_existing"] == 1
 
 
-def test_cloud_library_clouddrive2_or_fixed_falls_back_when_not_observed(
+def test_cloud_library_clouddrive2_or_fixed_treats_not_observed_as_settled(
     tmp_path,
     mock_logger,
     monkeypatch,
@@ -141,10 +141,10 @@ def test_cloud_library_clouddrive2_or_fixed_falls_back_when_not_observed(
     assert result.status == "success"
     assert (target / "Movie (2026)" / "movie.mkv").exists()
     assert any(record.action == "wait_for_cloud_upload" and record.status == "not_observed" for record in result.records)
-    assert any(record.action == "wait_for_cloud_upload" and record.status == "fallback" for record in result.records)
+    assert not any(record.action == "wait_for_cloud_upload" and record.status == "fallback" for record in result.records)
 
 
-def test_cloud_library_clouddrive2_strict_blocks_move_when_not_observed(
+def test_cloud_library_clouddrive2_strict_treats_not_observed_as_settled(
     tmp_path,
     mock_logger,
     monkeypatch,
@@ -175,7 +175,86 @@ def test_cloud_library_clouddrive2_strict_blocks_move_when_not_observed(
         mock_logger,
     )
 
+    assert result.status == "success"
+    assert not real_video.exists()
+    assert (target / "Movie (2026)" / "movie.mkv").exists()
+    assert (target / "Movie (2026)" / "movie.nfo").exists()
+    assert any(record.action == "move_real_video" and record.status == "moved" for record in result.records)
+
+
+def test_cloud_library_clouddrive2_strict_marks_partial_when_timeout(
+    tmp_path,
+    mock_logger,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
+
+    class FakeWaiter:
+        def wait_for_paths(self, paths, run_id, logger):
+            return CloudDrive2WaitResult("timeout", "测试等待上传任务超时", observed=True)
+
+    monkeypatch.setattr(
+        "emby115_v2.services.cloud_library_service.CloudDrive2UploadWaiter.from_context",
+        lambda _context: FakeWaiter(),
+    )
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, wait_minutes=0, upload_wait_strategy="clouddrive2"),
+        mock_logger,
+    )
+
+    assert result.status == "partial"
+    assert result.summary["cloud_upload_wait_unconfirmed"] is True
+    assert result.summary["videos_skipped_wait_unconfirmed"] == 1
+    assert real_video.exists()
+    assert not (target / "Movie (2026)" / "movie.mkv").exists()
+    assert (target / "Movie (2026)" / "movie.nfo").exists()
+    assert any(record.action == "move_real_video" and record.status == "skipped" for record in result.records)
+
+
+def test_cloud_library_clouddrive2_strict_fails_when_upload_task_failed(
+    tmp_path,
+    mock_logger,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
+
+    class FakeWaiter:
+        def wait_for_paths(self, paths, run_id, logger):
+            return CloudDrive2WaitResult("failed", "测试上传任务失败")
+
+    monkeypatch.setattr(
+        "emby115_v2.services.cloud_library_service.CloudDrive2UploadWaiter.from_context",
+        lambda _context: FakeWaiter(),
+    )
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, wait_minutes=0, upload_wait_strategy="clouddrive2"),
+        mock_logger,
+    )
+
     assert result.status == "failed"
+    assert result.summary["failed_before_video_move"] is True
     assert real_video.exists()
     assert not (target / "Movie (2026)" / "movie.mkv").exists()
 

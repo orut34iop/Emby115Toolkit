@@ -47,7 +47,9 @@ class CloudScrapedLibraryService:
             "videos_planned": 0,
             "videos_moved": 0,
             "videos_skipped_existing": 0,
+            "videos_skipped_wait_unconfirmed": 0,
             "videos_failed": 0,
+            "cloud_upload_wait_unconfirmed": False,
             "wait_minutes": context.cloud_library_output.wait_minutes,
             "move_videos_after_wait": context.cloud_library_output.move_videos_after_wait,
             "upload_wait_strategy": context.cloud_library_output.upload_wait_strategy,
@@ -76,6 +78,8 @@ class CloudScrapedLibraryService:
                 wait_status, wait_reason = wait_result
                 if wait_status == "canceled":
                     return self._canceled_result(summary, records, wait_reason)
+                if wait_status == "unconfirmed":
+                    return self._upload_wait_unconfirmed_result(summary, records, move_plans, wait_reason)
                 return self._failed_result(summary, records, wait_reason)
             for plan in move_plans:
                 if cancellation.is_cancelled(context.run_id):
@@ -314,6 +318,11 @@ class CloudScrapedLibraryService:
             if cd2_result == "canceled":
                 return ("canceled", "等待 CloudDrive2 上传任务期间收到取消请求")
             if strategy == "clouddrive2":
+                if cd2_result == "timeout":
+                    return (
+                        "unconfirmed",
+                        "CloudDrive2 上传任务探测未能确认元数据上传完成，已跳过真实视频移动",
+                    )
                 return ("failed", "CloudDrive2 上传任务探测未能确认元数据上传完成")
             records.append(
                 OperationRecord(
@@ -366,6 +375,9 @@ class CloudScrapedLibraryService:
         )
         if result.status == "success":
             logger.info("CloudDrive2 上传任务已确认完成，进入真实视频移动阶段")
+            return "success"
+        if result.status == "not_observed":
+            logger.info("CloudDrive2 上传任务列表在静默窗口内无匹配任务，视为上传队列已静默，进入真实视频移动阶段")
             return "success"
         logger.warning("CloudDrive2 上传任务探测结果: %s %s", result.status, result.reason)
         return result.status
@@ -441,6 +453,42 @@ class CloudScrapedLibraryService:
         summary["failed_before_video_move"] = True
         records.append(OperationRecord(action="wait_for_cloud_upload", status="failed", reason=reason))
         return StepResult(self.step_id, "failed", summary, records)
+
+    def _upload_wait_unconfirmed_result(
+        self,
+        summary: dict[str, Any],
+        records: list[OperationRecord],
+        move_plans: list[VideoMovePlan],
+        reason: str,
+    ) -> StepResult:
+        summary["cloud_upload_wait_unconfirmed"] = True
+        summary["videos_skipped_wait_unconfirmed"] = len(move_plans)
+        for plan in move_plans:
+            records.append(
+                self._record_video_plan(
+                    plan,
+                    "skipped",
+                    "CloudDrive2 未确认元数据上传完成，已跳过真实视频移动",
+                )
+            )
+        records.append(
+            OperationRecord(
+                action="move_videos",
+                status="skipped",
+                reason=reason,
+                extra={"skipped_count": len(move_plans)},
+            )
+        )
+        stage_a_had_effect = any(
+            int(summary.get(key, 0))
+            for key in (
+                "metadata_copied",
+                "metadata_skipped_existing",
+                "symlinks_skipped_copy",
+                "videos_planned",
+            )
+        )
+        return StepResult(self.step_id, "partial" if stage_a_had_effect else "failed", summary, records)
 
     def _status(self, summary: dict[str, Any]) -> str:
         failures = int(summary.get("metadata_failed", 0)) + int(summary.get("videos_failed", 0))
