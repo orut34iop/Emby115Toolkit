@@ -59,6 +59,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;
 - for TV shows, place symlinks under a show title folder and a season/version second-level folder;
 - TV second-level folder priority is: existing source folder that contains a season marker, then release folder derived from episode filename, then `Season NN`;
+- TV show title parsing treats `SxxEyy` and season markers as structural metadata rather than title text, so files such as `小镇疑云.S02E01...` are grouped under the show folder `小镇疑云` instead of one first-level folder per episode;
 - keep original video filenames unchanged;
 - keep uncertain TV/movie items in their original relative path and mark them for manual review;
 - create Windows symlinks;

@@ -289,7 +289,7 @@ class ScanAndLinkService:
         title_part = cleaned[: year_match.start()] if year_match else cleaned
 
         if stop_at_season:
-            season_match = SEASON_RE.search(title_part)
+            season_match = SEASON_EPISODE_RE.search(title_part) or SEASON_RE.search(title_part)
             if season_match:
                 title_part = title_part[: season_match.start()]
 

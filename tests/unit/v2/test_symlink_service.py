@@ -243,6 +243,31 @@ def test_tvshow_preserves_version_season_folder(tmp_path, mock_logger):
     )
 
 
+def test_tvshow_episode_filename_does_not_become_series_folder(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    season_dir = source / "[小镇疑云 1-3季][1080P蓝光Remux][内封简英双语字幕]" / "S02"
+    season_dir.mkdir(parents=True)
+    video = season_dir / "小镇疑云.S02E01.Episode.1.1080i.BluRay.REMUX.AVC.DTS.5.1-Gz.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "小镇疑云", "S02", video.name))
+    assert record.title == "小镇疑云"
+    assert record.season == "02"
+    assert record.episode == "01"
+
+
 def test_tvshow_ignores_quality_only_source_folder_for_second_level(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"
