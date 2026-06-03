@@ -25,6 +25,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - The WebUI has a one-click full-flow button that front-end orchestrates as `build_symlink_workspace` followed by one `scrape_metadata` run per checked symlink target. Do not add a separate CLI/full-flow backend action unless the product contract changes.
   - WebUI task execution uses `/v1/runs`, `/v1/runs/{run_id}`, and `/v1/runs/{run_id}/events` for background runs plus SSE log/status streaming. `/v1/run` remains the synchronous compatibility API.
   - WebUI report link groups must show a bold colored final result label: success, partial, or failed, so users can quickly audit each run without opening the report.
+  - Metadata scraping must log per-library progress frequently enough for SSE: current movie file, current TV first-level show directory, matched show title/year, episode progress, and per-show summary.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
   - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports.

@@ -538,8 +538,12 @@ class MetadataScraperService:
     def _run_movies(self, context: AppContext, logger: logging.Logger, library_path: Path) -> StepResult:
         records = []
         extensions = set(context.symlink.video_extensions)
-        for video_path in iter_video_files(library_path, extensions):
+        video_paths = list(iter_video_files(library_path, extensions))
+        logger.info("开始电影元数据刮削 library=%s videos=%s", library_path, len(video_paths))
+        for index, video_path in enumerate(video_paths, start=1):
+            logger.info("正在刮削电影元数据 [%s/%s] %s", index, len(video_paths), video_path)
             records.append(self._process_movie(context, video_path, logger))
+            logger.info("完成电影元数据 [%s/%s] %s status=%s", index, len(video_paths), video_path.name, records[-1].status)
         rename_summary = auto_rename_from_movie_records(context, records, logger)
 
         matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
@@ -567,8 +571,24 @@ class MetadataScraperService:
 
     def _run_tvshows_skeleton(self, context: AppContext, logger: logging.Logger, library_path: Path) -> StepResult:
         records = []
-        for show_dir in direct_child_dirs(library_path):
-            records.extend(self._process_tvshow(context, show_dir, logger))
+        show_dirs = list(direct_child_dirs(library_path))
+        logger.info("开始电视剧元数据刮削 library=%s shows=%s", library_path, len(show_dirs))
+        for index, show_dir in enumerate(show_dirs, start=1):
+            logger.info("正在刮削电视剧元数据 [%s/%s] %s", index, len(show_dirs), show_dir)
+            show_records = self._process_tvshow(context, show_dir, logger)
+            records.extend(show_records)
+            show_matched = sum(1 for record in show_records if record.status in {"planned", "written", "skipped_existing"})
+            show_failed = sum(1 for record in show_records if record.status == "failed")
+            show_manual = sum(1 for record in show_records if record.status == "manual_review")
+            logger.info(
+                "完成电视剧元数据 [%s/%s] %s matched=%s manual_review=%s failed=%s",
+                index,
+                len(show_dirs),
+                show_dir.name,
+                show_matched,
+                show_manual,
+                show_failed,
+            )
         rename_summary = auto_rename_tvshow_folders(context, library_path, records, logger)
         matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
         manual_review = sum(1 for record in records if record.status == "manual_review")
@@ -664,8 +684,26 @@ class MetadataScraperService:
                 )
             ]
             extensions = set(context.symlink.video_extensions)
-            for video_path in iter_video_files(show_dir, extensions):
+            video_paths = list(iter_video_files(show_dir, extensions))
+            logger.info(
+                "电视剧匹配成功 show=%s title=%s year=%s episodes=%s",
+                show_dir,
+                show_metadata.title,
+                show_metadata.year,
+                len(video_paths),
+            )
+            for index, video_path in enumerate(video_paths, start=1):
+                if index == 1 or index == len(video_paths) or index % 10 == 0:
+                    logger.info("正在刮削单集元数据 show=%s [%s/%s] %s", show_dir.name, index, len(video_paths), video_path.name)
                 records.append(self._process_episode(context, client, video_path, show_metadata, logger))
+                if index == len(video_paths) or index % 10 == 0:
+                    logger.info(
+                        "单集元数据进度 show=%s [%s/%s] latest_status=%s",
+                        show_dir.name,
+                        index,
+                        len(video_paths),
+                        records[-1].status,
+                    )
             return records
         except Exception as exc:
             logger.warning("电视剧元数据处理失败 show=%s error=%s", show_dir, exc)

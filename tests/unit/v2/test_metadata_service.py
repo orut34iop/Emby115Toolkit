@@ -714,6 +714,12 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     episode_record = next(record for record in result.records if record.target_path.endswith(episode_nfo.name))
     assert episode_record.extra["rating"] == 8.7
     assert episode_record.extra["actor_count"] == 1
+    log_text = (context.logging.log_dir / f"{context.run_id}.log").read_text(encoding="utf-8")
+    assert "开始电视剧元数据刮削" in log_text
+    assert "正在刮削电视剧元数据 [1/1]" in log_text
+    assert "电视剧匹配成功" in log_text
+    assert "正在刮削单集元数据" in log_text
+    assert "完成电视剧元数据 [1/1]" in log_text
 
 
 def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):
