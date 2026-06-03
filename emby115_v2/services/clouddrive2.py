@@ -63,6 +63,10 @@ class CloudDrive2UploadTask:
     def is_error(self) -> bool:
         return self.status_enum in ERROR_UPLOAD_STATUSES
 
+    @property
+    def is_terminal_success(self) -> bool:
+        return self.status_enum in TERMINAL_UPLOAD_STATUSES
+
 
 @dataclass(frozen=True)
 class CloudDrive2WaitResult:
@@ -270,8 +274,8 @@ class CloudDrive2UploadWaiter:
     def __init__(
         self,
         client: CloudDrive2ClientProtocol,
-        poll_interval_seconds: float = 5.0,
-        settle_seconds: float = 60.0,
+        poll_interval_seconds: float = 0.5,
+        settle_seconds: float = 30.0,
         max_wait_minutes: int = 60,
     ):
         self.client = client
@@ -307,6 +311,7 @@ class CloudDrive2UploadWaiter:
         logger.info("CloudDrive2 上传等待开始，监控路径: %s", ", ".join(watched_roots))
         deadline = started + self.max_wait_seconds if self.max_wait_seconds > 0 else started
         observed = False
+        first_observed_at: float | None = None
         last_no_match_at: float | None = None
         last_tasks: tuple[CloudDrive2UploadTask, ...] = ()
 
@@ -350,9 +355,14 @@ class CloudDrive2UploadWaiter:
             )
             active = tuple(task for task in matched if task.is_active)
             errors = tuple(task for task in matched if task.is_error)
-            last_tasks = matched
+            terminal_success = tuple(task for task in matched if task.is_terminal_success)
             if matched:
+                last_tasks = matched
                 observed = True
+                if first_observed_at is None:
+                    first_observed_at = now
+                    logger.info("已观测到匹配的 CloudDrive2 挂载上传任务，进入已开始上传状态")
+                last_no_match_at = None
 
             if errors:
                 reason = "; ".join(
@@ -380,8 +390,7 @@ class CloudDrive2UploadWaiter:
                     total_size,
                     active[0].dest_path,
                 )
-                last_no_match_at = None
-            elif observed:
+            elif terminal_success:
                 return CloudDrive2WaitResult(
                     "success",
                     "CloudDrive2 挂载盘上传任务已全部进入完成状态",
@@ -395,7 +404,24 @@ class CloudDrive2UploadWaiter:
                 if last_no_match_at is None:
                     last_no_match_at = now
                 quiet_seconds = now - last_no_match_at
-                logger.info("尚未观测到匹配的 CloudDrive2 挂载上传任务，已等待 %.1f 秒", quiet_seconds)
+                if observed:
+                    logger.info(
+                        "已观测到上传任务，当前无匹配任务，连续静默 %.1f/%s 秒",
+                        quiet_seconds,
+                        self.settle_seconds,
+                    )
+                else:
+                    logger.info("尚未观测到匹配的 CloudDrive2 挂载上传任务，已等待 %.1f 秒", quiet_seconds)
+                if quiet_seconds >= self.settle_seconds and observed:
+                    return CloudDrive2WaitResult(
+                        "success",
+                        "已观测到 CloudDrive2 上传任务，随后连续静默窗口内无匹配任务，视为上传结束",
+                        observed=True,
+                        waited_seconds=now - started,
+                        watched_roots=watched_roots,
+                        matched_count=len(last_tasks),
+                        matched_tasks=last_tasks,
+                    )
                 if quiet_seconds >= self.settle_seconds:
                     return CloudDrive2WaitResult(
                         "not_observed",

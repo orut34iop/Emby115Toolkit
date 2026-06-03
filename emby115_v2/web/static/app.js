@@ -418,8 +418,8 @@ function applyCloudConfig(config = {}) {
   document.querySelector("#cloudDryRun").checked = config.dry_run ?? true;
   document.querySelector("#cd2Endpoint").value = cd2.endpoint || "127.0.0.1:19798";
   document.querySelector("#cd2ApiToken").value = cd2.api_token || "";
-  document.querySelector("#cd2PollInterval").value = cd2.poll_interval_seconds ?? 5;
-  document.querySelector("#cd2SettleSeconds").value = cd2.settle_seconds ?? 60;
+  document.querySelector("#cd2PollInterval").value = cd2.poll_interval_seconds ?? 0.5;
+  document.querySelector("#cd2SettleSeconds").value = cd2.settle_seconds ?? 30;
   document.querySelector("#cd2MaxWaitMinutes").value = cd2.max_wait_minutes ?? 60;
   document.querySelector("#cd2Timeout").value = cd2.timeout ?? 10;
 }
@@ -440,8 +440,8 @@ function cloudConfigFromForm() {
       endpoint: document.querySelector("#cd2Endpoint").value.trim() || "127.0.0.1:19798",
       api_token: document.querySelector("#cd2ApiToken").value,
       timeout: Number(document.querySelector("#cd2Timeout").value || 10),
-      poll_interval_seconds: Number(document.querySelector("#cd2PollInterval").value || 5),
-      settle_seconds: Number(document.querySelector("#cd2SettleSeconds").value || 60),
+      poll_interval_seconds: Number(document.querySelector("#cd2PollInterval").value || 0.5),
+      settle_seconds: Number(document.querySelector("#cd2SettleSeconds").value || 30),
       max_wait_minutes: Number(document.querySelector("#cd2MaxWaitMinutes").value || 60),
     },
     report: {

@@ -200,8 +200,8 @@ class CloudDrive2Config:
     endpoint: str = "127.0.0.1:19798"
     api_token: str = ""
     timeout: float = 10.0
-    poll_interval_seconds: float = 5.0
-    settle_seconds: float = 60.0
+    poll_interval_seconds: float = 0.5
+    settle_seconds: float = 30.0
     max_wait_minutes: int = 60
     page_size: int = 100
     max_pages: int = 50
@@ -214,8 +214,8 @@ class CloudDrive2Config:
             endpoint=str(data.get("endpoint") or "127.0.0.1:19798"),
             api_token=str(data.get("api_token", "")),
             timeout=max(1.0, float(data.get("timeout", 10.0))),
-            poll_interval_seconds=max(0.5, float(data.get("poll_interval_seconds", 5.0))),
-            settle_seconds=max(0.0, float(data.get("settle_seconds", 60.0))),
+            poll_interval_seconds=max(0.5, float(data.get("poll_interval_seconds", 0.5))),
+            settle_seconds=max(0.0, float(data.get("settle_seconds", 30.0))),
             max_wait_minutes=max(0, int(data.get("max_wait_minutes", 60))),
             page_size=max(1, int(data.get("page_size", 100))),
             max_pages=max(1, int(data.get("max_pages", 50))),
