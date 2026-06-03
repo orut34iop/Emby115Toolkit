@@ -271,6 +271,8 @@ class ScanAndLinkService:
         stem_title, stem_year = self._title_year_from_text(source_path.stem)
         if stem_title and stem_year:
             return stem_title, stem_year or parent_year
+        if parent_title and parent_year:
+            return parent_title, parent_year
         if parent_title and not self._looks_like_release_folder(source_path.parent.name):
             return parent_title, parent_year
         if stem_title:

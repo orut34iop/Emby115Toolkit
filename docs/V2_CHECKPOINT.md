@@ -57,6 +57,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - filter video files;
 - build standardized local library paths instead of blindly mirroring the source tree;
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;
+- movie title parsing prefers a parent folder that contains both a usable title and a year over short release filenames, avoiding folders such as `eb (2013)` when the source folder has `东方男孩Eastern.Boys.2013...`;
 - for TV shows, place symlinks under a show title folder and a season/version second-level folder;
 - TV second-level folder priority is: existing source folder that contains a season marker, then release folder derived from episode filename, then `Season NN`;
 - TV show title parsing treats `SxxEyy` and season markers as structural metadata rather than title text, so files such as `小镇疑云.S02E01...` are grouped under the show folder `小镇疑云` instead of one first-level folder per episode;
