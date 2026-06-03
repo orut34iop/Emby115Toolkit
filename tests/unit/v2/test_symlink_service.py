@@ -146,6 +146,30 @@ def test_movie_prefers_parent_title_year_over_short_release_filename(tmp_path, m
     assert record.year == "2013"
 
 
+def test_movie_combines_chinese_parent_title_with_english_filename_title(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    release = source / "惊蛰无声 (2026)"
+    release.mkdir(parents=True)
+    video = release / "Scare Out.2026.2160p.SDR.50fps.WEB-DL.H265.Dolby Atmos 5.1.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "惊蛰无声.Scare Out (2026)", video.name))
+    assert record.title == "惊蛰无声.Scare Out"
+    assert record.year == "2026"
+
+
 def test_tvshow_standardizes_under_series_and_season(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"

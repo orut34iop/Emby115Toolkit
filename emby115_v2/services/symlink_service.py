@@ -16,6 +16,8 @@ SEASON_EPISODE_RE = re.compile(r"(?i)\bS(?P<season>\d{1,2})E(?P<episode>\d{1,3})
 SEASON_RE = re.compile(r"(?i)(?:\bS(?P<snum>\d{1,2})\b|Season[\s._-]*(?P<season>\d{1,2})|第(?P<zh>[一二三四五六七八九十\d]+)季)")
 BRACKET_RE = re.compile(r"[\[{【].*?[\]}】]")
 TMDB_RE = re.compile(r"\{tmdbid=\d+\}", re.IGNORECASE)
+CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+LATIN_RE = re.compile(r"[A-Za-z]")
 QUALITY_RE = re.compile(
     r"(?i)\b("
     r"2160p|1080p|1080i|720p|4k|8k|blu-?ray|bdrip|web-?dl|webrip|hdtv|remux|"
@@ -270,6 +272,9 @@ class ScanAndLinkService:
         parent_title, parent_year = self._title_year_from_text(source_path.parent.name)
         stem_title, stem_year = self._title_year_from_text(source_path.stem)
         if stem_title and stem_year:
+            combined_title = self._combined_movie_title(parent_title, parent_year, stem_title, stem_year)
+            if combined_title:
+                return combined_title, stem_year
             return stem_title, stem_year or parent_year
         if parent_title and parent_year:
             return parent_title, parent_year
@@ -278,6 +283,18 @@ class ScanAndLinkService:
         if stem_title:
             return stem_title, stem_year or parent_year
         return parent_title, parent_year
+
+    def _combined_movie_title(self, parent_title: str, parent_year: str, stem_title: str, stem_year: str) -> str:
+        if not parent_title or not parent_year or parent_year != stem_year:
+            return ""
+        if not CJK_RE.search(parent_title) or not LATIN_RE.search(stem_title):
+            return ""
+        if self._normalized_title_token(stem_title) in self._normalized_title_token(parent_title):
+            return ""
+        return f"{parent_title}.{stem_title}"
+
+    def _normalized_title_token(self, title: str) -> str:
+        return re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "", title).lower()
 
     def _tv_title_year(self, folder_name: str, filename_stem: str) -> tuple[str, str]:
         folder_title, folder_year = self._title_year_from_text(folder_name, stop_at_season=True)
