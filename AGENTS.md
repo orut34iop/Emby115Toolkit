@@ -104,11 +104,18 @@ Current V2 action names:
 - `build_cloud_scraped_library` — Build a cloud-side scraped library from the local symlink workspace.
   - `path_pairs[].source` is the local C-drive symlink workspace; `path_pairs[].target` is the new D-drive organized cloud library directory.
   - Stage A mirrors the whole workspace directory tree to the target and copies every non-symlink file while excluding symlink files/directories.
-  - After Stage A, the service waits `cloud_library_output.wait_minutes` minutes, default `60`, to allow CloudDrive2/115 asynchronous upload cache to flush before moving videos.
+  - After Stage A, the default `cloud_library_output.upload_wait_strategy=fixed` waits `cloud_library_output.wait_minutes` minutes, default `60`, to allow CloudDrive2/115 asynchronous upload cache to flush before moving videos.
+  - `cloud_library_output.upload_wait_strategy=clouddrive2` uses CloudDrive2 gRPC upload task polling instead of fixed waiting. It monitors mounted-filesystem upload tasks (`UploadFileInfo.operatorType=Mount`) under the target path and only continues when matching tasks complete; if it cannot confirm completion, the workflow fails before moving videos.
+  - `cloud_library_output.upload_wait_strategy=clouddrive2_or_fixed` is the recommended real-world transition mode: it first tries CloudDrive2 upload task polling and falls back to the fixed minute wait when tasks are not observable or the API is unavailable.
   - Stage B walks the original workspace symlinks, resolves each real video target, and moves that real D-drive video into the same relative path under the new cloud library target.
   - Dry-run must not create directories, copy files, wait, or move videos; it only reports the planned copy/move operations.
   - Existing metadata and video targets are skipped by default. `overwrite_metadata` and `overwrite_videos` are separate explicit options.
   - This is a high-risk final migration/archive step because moving real videos makes the original symlink workspace links stale.
+- `test_clouddrive2_upload_wait` — Verify whether CloudDrive2 mounted-disk writes can be observed through gRPC upload task polling.
+  - The action writes a small probe file under `path_pairs[0].target/.emby115_cd2_probe/`, waits for matching `Mount` upload tasks, then deletes the local probe file after successful observation.
+  - It uses `clouddrive2.endpoint`, `clouddrive2.api_token`, `poll_interval_seconds`, `settle_seconds`, and `max_wait_minutes`.
+  - Dry-run only reports the probe plan and does not write files or connect to CloudDrive2.
+  - This action is the required validation step before changing production cloud-library runs from fixed waiting to CloudDrive2 task-based waiting.
 
 ### Legacy Dual GUI Frontends
 

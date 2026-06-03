@@ -11,6 +11,7 @@ from typing import Any
 from emby115_v2 import cancellation
 from emby115_v2.context import AppContext, PathPair
 from emby115_v2.reports.writer import OperationRecord, StepResult
+from emby115_v2.services.clouddrive2 import CloudDrive2UploadWaiter
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class CloudScrapedLibraryService:
             "videos_failed": 0,
             "wait_minutes": context.cloud_library_output.wait_minutes,
             "move_videos_after_wait": context.cloud_library_output.move_videos_after_wait,
+            "upload_wait_strategy": context.cloud_library_output.upload_wait_strategy,
             "dry_run": context.dry_run,
         }
         records: list[OperationRecord] = []
@@ -67,7 +69,10 @@ class CloudScrapedLibraryService:
         if context.cloud_library_output.move_videos_after_wait and move_plans:
             wait_result = self._wait_before_move(context, logger, records)
             if wait_result:
-                return self._canceled_result(summary, records, wait_result)
+                wait_status, wait_reason = wait_result
+                if wait_status == "canceled":
+                    return self._canceled_result(summary, records, wait_reason)
+                return self._failed_result(summary, records, wait_reason)
             for plan in move_plans:
                 if cancellation.is_cancelled(context.run_id):
                     return self._canceled_result(summary, records, "移动真实视频前收到取消请求")
@@ -266,29 +271,100 @@ class CloudScrapedLibraryService:
         context: AppContext,
         logger: logging.Logger,
         records: list[OperationRecord],
+    ) -> tuple[str, str] | None:
+        strategy = context.cloud_library_output.upload_wait_strategy
+        if strategy in {"clouddrive2", "clouddrive2_or_fixed"}:
+            cd2_result = self._wait_with_clouddrive2(context, logger, records)
+            if cd2_result == "success":
+                return None
+            if cd2_result == "canceled":
+                return ("canceled", "等待 CloudDrive2 上传任务期间收到取消请求")
+            if strategy == "clouddrive2":
+                return ("failed", "CloudDrive2 上传任务探测未能确认元数据上传完成")
+            records.append(
+                OperationRecord(
+                    action="wait_for_cloud_upload",
+                    status="fallback",
+                    reason="CloudDrive2 上传任务探测未确认完成，回退到固定等待",
+                    extra={"strategy": strategy},
+                )
+            )
+            logger.warning("CloudDrive2 上传任务探测未确认完成，回退到固定等待")
+        return self._fixed_wait_before_move(context, logger, records)
+
+    def _wait_with_clouddrive2(
+        self,
+        context: AppContext,
+        logger: logging.Logger,
+        records: list[OperationRecord],
     ) -> str:
+        target_roots = [pair.target for pair in context.path_pairs]
+        try:
+            result = CloudDrive2UploadWaiter.from_context(context).wait_for_paths(target_roots, context.run_id, logger)
+        except Exception as exc:
+            result = None
+            records.append(
+                OperationRecord(
+                    action="wait_for_cloud_upload",
+                    status="failed",
+                    reason=f"CloudDrive2 上传任务探测初始化失败: {exc}",
+                    extra={"strategy": context.cloud_library_output.upload_wait_strategy},
+                )
+            )
+            logger.error("CloudDrive2 上传任务探测初始化失败: %s", exc)
+            return "failed"
+
+        records.append(
+            OperationRecord(
+                action="wait_for_cloud_upload",
+                status=result.status,
+                reason=result.reason,
+                extra={
+                    "strategy": context.cloud_library_output.upload_wait_strategy,
+                    "observed": result.observed,
+                    "waited_seconds": round(result.waited_seconds, 2),
+                    "watched_roots": list(result.watched_roots),
+                    "active_count": result.active_count,
+                    "error_count": result.error_count,
+                    "matched_count": result.matched_count,
+                },
+            )
+        )
+        if result.status == "success":
+            logger.info("CloudDrive2 上传任务已确认完成，进入真实视频移动阶段")
+            return "success"
+        logger.warning("CloudDrive2 上传任务探测结果: %s %s", result.status, result.reason)
+        return result.status
+
+    def _fixed_wait_before_move(
+        self,
+        context: AppContext,
+        logger: logging.Logger,
+        records: list[OperationRecord],
+    ) -> tuple[str, str] | None:
         wait_seconds = context.cloud_library_output.wait_minutes * 60
         records.append(
             OperationRecord(
                 action="wait_for_cloud_upload",
                 status="planned" if wait_seconds else "skipped",
                 reason=(
-                    f"等待 {context.cloud_library_output.wait_minutes} 分钟，给网络硬盘异步上传缓存留时间"
+                    f"固定等待 {context.cloud_library_output.wait_minutes} 分钟，给网络硬盘异步上传缓存留时间"
                     if wait_seconds
                     else "等待时间为 0，直接进入真实视频移动阶段"
                 ),
+                extra={"strategy": "fixed"},
             )
         )
         if wait_seconds <= 0:
-            return ""
+            return None
 
         logger.info("阶段 A 已完成，等待 %s 分钟后开始移动真实视频", context.cloud_library_output.wait_minutes)
         deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             if cancellation.is_cancelled(context.run_id):
-                return "等待上传缓冲期间收到取消请求"
+                return ("canceled", "等待上传缓冲期间收到取消请求")
             time.sleep(min(5.0, max(0.1, deadline - time.monotonic())))
-        return ""
+        return None
 
     def _move_video(self, plan: VideoMovePlan, context: AppContext) -> OperationRecord:
         if not plan.real_video_path:
@@ -324,6 +400,11 @@ class CloudScrapedLibraryService:
         summary["canceled"] = True
         records.append(OperationRecord(action="cancel", status="canceled", reason=reason))
         return StepResult(self.step_id, "canceled", summary, records)
+
+    def _failed_result(self, summary: dict[str, Any], records: list[OperationRecord], reason: str) -> StepResult:
+        summary["failed_before_video_move"] = True
+        records.append(OperationRecord(action="wait_for_cloud_upload", status="failed", reason=reason))
+        return StepResult(self.step_id, "failed", summary, records)
 
     def _status(self, summary: dict[str, Any]) -> str:
         failures = int(summary.get("metadata_failed", 0)) + int(summary.get("videos_failed", 0))

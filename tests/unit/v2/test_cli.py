@@ -120,3 +120,32 @@ def test_cli_runs_build_cloud_scraped_library_dry_run_from_config(tmp_path, caps
     assert code == 0
     assert output["action"] == "build_cloud_scraped_library"
     assert (report_dir / output["run_id"] / "report.json").exists()
+
+
+def test_cli_runs_clouddrive2_upload_probe_dry_run(tmp_path, capsys):
+    target = tmp_path / "cloud-target"
+    report_dir = tmp_path / "reports"
+
+    code = run_cli(
+        [
+            "--action",
+            "test_clouddrive2_upload_wait",
+            "--source",
+            str(tmp_path / "workspace"),
+            "--target",
+            str(target),
+            "--report-dir",
+            str(report_dir),
+            "--cd2-endpoint",
+            "127.0.0.1:19798",
+            "--cd2-api-token",
+            "token",
+            "--dry-run",
+            "--json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert output["action"] == "test_clouddrive2_upload_wait"
+    assert (report_dir / output["run_id"] / "report.json").exists()

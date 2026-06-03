@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from emby115_v2.context import AppContext
+from emby115_v2.services.clouddrive2_probe_service import CloudDrive2UploadProbeService
 from emby115_v2.reports.writer import RunReport
 from emby115_v2.services.cloud_library_service import CloudScrapedLibraryService
 from emby115_v2.services.metadata_service import LlmConfigTestService, MetadataScraperService, TmdbConfigTestService
@@ -19,6 +20,7 @@ def build_runner() -> WorkflowRunner:
             "test_llm_config": LlmConfigTestService(),
             "scrape_metadata": MetadataScraperService(),
             "build_cloud_scraped_library": CloudScrapedLibraryService(),
+            "test_clouddrive2_upload_wait": CloudDrive2UploadProbeService(),
         }
     )
 

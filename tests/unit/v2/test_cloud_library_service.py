@@ -4,6 +4,7 @@ import pytest
 
 from emby115_v2.context import AppContext
 from emby115_v2.services.cloud_library_service import CloudScrapedLibraryService
+from emby115_v2.services.clouddrive2 import CloudDrive2WaitResult
 
 
 def _make_symlink(link_path, target_path):
@@ -13,14 +14,17 @@ def _make_symlink(link_path, target_path):
         pytest.skip(f"当前环境无法创建 symlink: {exc}")
 
 
-def _context(workspace, target, dry_run=False, wait_minutes=0):
+def _context(workspace, target, dry_run=False, wait_minutes=0, upload_wait_strategy="fixed"):
     return AppContext.from_dict(
         {
             "action": "build_cloud_scraped_library",
             "dry_run": dry_run,
             "path_pairs": [{"name": "movies", "source": str(workspace), "target": str(target)}],
             "symlink": {"video_extensions": [".mkv"]},
-            "cloud_library_output": {"wait_minutes": wait_minutes},
+            "cloud_library_output": {
+                "wait_minutes": wait_minutes,
+                "upload_wait_strategy": upload_wait_strategy,
+            },
         }
     )
 
@@ -96,3 +100,80 @@ def test_cloud_library_skips_existing_video_by_default(tmp_path, mock_logger):
     assert existing_target.read_text(encoding="utf-8") == "existing"
     assert real_video.exists()
     assert result.summary["videos_skipped_existing"] == 1
+
+
+def test_cloud_library_clouddrive2_or_fixed_falls_back_when_not_observed(
+    tmp_path,
+    mock_logger,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
+
+    class FakeWaiter:
+        def wait_for_paths(self, paths, run_id, logger):
+            return CloudDrive2WaitResult(
+                "not_observed",
+                "测试未观测到上传任务",
+                watched_roots=("d:/organized",),
+            )
+
+    monkeypatch.setattr(
+        "emby115_v2.services.cloud_library_service.CloudDrive2UploadWaiter.from_context",
+        lambda _context: FakeWaiter(),
+    )
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, wait_minutes=0, upload_wait_strategy="clouddrive2_or_fixed"),
+        mock_logger,
+    )
+
+    assert result.status == "success"
+    assert (target / "Movie (2026)" / "movie.mkv").exists()
+    assert any(record.action == "wait_for_cloud_upload" and record.status == "not_observed" for record in result.records)
+    assert any(record.action == "wait_for_cloud_upload" and record.status == "fallback" for record in result.records)
+
+
+def test_cloud_library_clouddrive2_strict_blocks_move_when_not_observed(
+    tmp_path,
+    mock_logger,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
+
+    class FakeWaiter:
+        def wait_for_paths(self, paths, run_id, logger):
+            return CloudDrive2WaitResult("not_observed", "测试未观测到上传任务")
+
+    monkeypatch.setattr(
+        "emby115_v2.services.cloud_library_service.CloudDrive2UploadWaiter.from_context",
+        lambda _context: FakeWaiter(),
+    )
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, wait_minutes=0, upload_wait_strategy="clouddrive2"),
+        mock_logger,
+    )
+
+    assert result.status == "failed"
+    assert real_video.exists()
+    assert not (target / "Movie (2026)" / "movie.mkv").exists()

@@ -29,9 +29,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source", action="append", help="源目录，可重复")
     parser.add_argument("--target", action="append", help="目标工作区目录，可重复")
     parser.add_argument("--cloud-wait-minutes", type=int, help="构建网盘已刮削媒体库时阶段 A 后等待分钟数")
+    parser.add_argument(
+        "--cloud-upload-wait-strategy",
+        choices=["fixed", "clouddrive2", "clouddrive2_or_fixed"],
+        help="阶段 A 后等待策略：fixed 固定等待，clouddrive2 轮询 CloudDrive2 上传任务，clouddrive2_or_fixed 探测失败时回退固定等待",
+    )
     parser.add_argument("--cloud-metadata-only", action="store_true", help="构建网盘已刮削媒体库时只复制非 symlink 文件，不移动真实视频")
     parser.add_argument("--overwrite-metadata", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的元数据文件")
     parser.add_argument("--overwrite-videos", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的视频文件")
+    parser.add_argument("--cd2-endpoint", help="CloudDrive2 gRPC 地址，例如 127.0.0.1:19798")
+    parser.add_argument("--cd2-api-token", help="CloudDrive2 API token")
+    parser.add_argument("--cd2-timeout", type=float, help="CloudDrive2 gRPC 单次请求超时时间，单位秒")
+    parser.add_argument("--cd2-poll-interval", type=float, help="CloudDrive2 上传任务轮询间隔，单位秒")
+    parser.add_argument("--cd2-settle-seconds", type=float, help="未观测到上传任务时的静默等待窗口，单位秒")
+    parser.add_argument("--cd2-max-wait-minutes", type=int, help="CloudDrive2 上传任务最长等待分钟数")
     parser.add_argument("--serve-web", action="store_true", help="启动 V2 WebUI 后端服务")
     parser.add_argument("--host", default="127.0.0.1", help="Web 服务监听地址")
     parser.add_argument("--port", type=int, default=8765, help="Web 服务端口")
@@ -61,12 +72,26 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
         cli_overrides.setdefault("symlink", {})["thread_count"] = args.thread_count
     if args.cloud_wait_minutes is not None:
         cli_overrides.setdefault("cloud_library_output", {})["wait_minutes"] = args.cloud_wait_minutes
+    if args.cloud_upload_wait_strategy:
+        cli_overrides.setdefault("cloud_library_output", {})["upload_wait_strategy"] = args.cloud_upload_wait_strategy
     if args.cloud_metadata_only:
         cli_overrides.setdefault("cloud_library_output", {})["move_videos_after_wait"] = False
     if args.overwrite_metadata:
         cli_overrides.setdefault("cloud_library_output", {})["overwrite_metadata"] = True
     if args.overwrite_videos:
         cli_overrides.setdefault("cloud_library_output", {})["overwrite_videos"] = True
+    if args.cd2_endpoint:
+        cli_overrides.setdefault("clouddrive2", {})["endpoint"] = args.cd2_endpoint
+    if args.cd2_api_token:
+        cli_overrides.setdefault("clouddrive2", {})["api_token"] = args.cd2_api_token
+    if args.cd2_timeout is not None:
+        cli_overrides.setdefault("clouddrive2", {})["timeout"] = args.cd2_timeout
+    if args.cd2_poll_interval is not None:
+        cli_overrides.setdefault("clouddrive2", {})["poll_interval_seconds"] = args.cd2_poll_interval
+    if args.cd2_settle_seconds is not None:
+        cli_overrides.setdefault("clouddrive2", {})["settle_seconds"] = args.cd2_settle_seconds
+    if args.cd2_max_wait_minutes is not None:
+        cli_overrides.setdefault("clouddrive2", {})["max_wait_minutes"] = args.cd2_max_wait_minutes
 
     if args.source or args.target:
         sources = args.source or []

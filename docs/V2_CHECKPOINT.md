@@ -94,12 +94,25 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - input `path_pairs` map local symlink workspaces to new cloud-side organized library roots. `source` is the C-drive symlink workspace and `target` is the new D-drive CloudDrive2/115 library directory;
 - Stage A mirrors the whole local workspace directory tree and copies every non-symlink file to the target while excluding symlink files and symlink directories. This preserves the already-scraped folder structure exactly and carries future metadata file types without special-case extension lists;
 - Stage A does not move real videos;
-- after Stage A, non-dry-run execution waits `cloud_library_output.wait_minutes` minutes, default `60`, so CloudDrive2/115 has time to upload copied metadata from its local cache before videos are moved;
+- after Stage A, non-dry-run execution defaults to `cloud_library_output.upload_wait_strategy=fixed`, which waits `cloud_library_output.wait_minutes` minutes, default `60`, so CloudDrive2/115 has time to upload copied metadata from its local cache before videos are moved;
+- CloudDrive2 task-based waiting is available through `upload_wait_strategy=clouddrive2` or `clouddrive2_or_fixed`. It polls CloudDrive2 gRPC `GetUploadFileList` for mounted-filesystem uploads (`operatorType=Mount`) matching the target path. Strict `clouddrive2` fails before moving videos if completion cannot be confirmed; `clouddrive2_or_fixed` falls back to the fixed minute wait;
 - Stage B resolves each video symlink in the local workspace and moves the real video file into the same relative path under the new cloud target directory;
 - dry-run only generates the copy/move plan and report. It does not create target folders, copy metadata, wait, or move videos;
 - existing metadata targets and video targets are skipped by default. `cloud_library_output.overwrite_metadata` and `cloud_library_output.overwrite_videos` are explicit separate options;
-- the CLI supports `--cloud-wait-minutes`, `--cloud-metadata-only`, `--overwrite-metadata`, and `--overwrite-videos`;
+- the CLI supports `--cloud-wait-minutes`, `--cloud-upload-wait-strategy`, `--cloud-metadata-only`, `--overwrite-metadata`, `--overwrite-videos`, and CloudDrive2 connection options such as `--cd2-endpoint` / `--cd2-api-token`;
 - this step is a final migration/archive operation: moving real videos makes the original C-drive symlink workspace stale and requires rebuilding symlinks if the workflow needs to run again against the moved library.
+
+`test_clouddrive2_upload_wait` is the validation action for replacing fixed waiting:
+
+- it writes a small probe file to `path_pairs[0].target/.emby115_cd2_probe/` in non-dry-run mode;
+- it maps the mounted Windows path to CloudDrive2's cloud path using `GetMountPoints`, then observes `GetUploadFileList` until matching `Mount` upload tasks finish, fail, time out, or are not observed within the configured quiet window;
+- successful probe runs delete the local probe file after the upload task has been observed complete;
+- dry-run reports the probe plan only and does not write to the virtual disk;
+- the recommended first real test is:
+
+```bash
+python main.py --action test_clouddrive2_upload_wait --target D:\115open\tmp\organized-probe --source C:\working-emby\movies --cd2-api-token YOUR_CD2_TOKEN
+```
 
 ## Current WebUI Status
 

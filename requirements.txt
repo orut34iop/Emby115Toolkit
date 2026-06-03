@@ -12,6 +12,8 @@ pyyaml>=6.0       # YAML配置文件解析
 requests>=2.32.0  # HTTP请求
 fastapi>=0.115.0  # V2 WebUI 后端
 uvicorn>=0.30.0   # V2 WebUI 本地服务
+grpcio>=1.64.0    # CloudDrive2 gRPC 上传任务探测
+protobuf>=5.27.0  # CloudDrive2 gRPC 动态消息解析
 
 # 打包依赖
 pyinstaller

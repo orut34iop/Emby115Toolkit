@@ -34,6 +34,14 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
                 "move_videos_after_wait": False,
                 "overwrite_metadata": True,
                 "overwrite_videos": False,
+                "upload_wait_strategy": "clouddrive2_or_fixed",
+            },
+            "clouddrive2": {
+                "endpoint": "127.0.0.1:19798",
+                "api_token": "cd2-token",
+                "poll_interval_seconds": 1,
+                "settle_seconds": 2,
+                "max_wait_minutes": 3,
             },
             "report": {"output_dir": str(tmp_path / "reports")},
             "logging": {"log_dir": str(tmp_path / "logs"), "log_level": "debug"},
@@ -57,6 +65,11 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
     assert context.cloud_library_output.move_videos_after_wait is False
     assert context.cloud_library_output.overwrite_metadata is True
     assert context.cloud_library_output.overwrite_videos is False
+    assert context.cloud_library_output.upload_wait_strategy == "clouddrive2_or_fixed"
+    assert context.clouddrive2.api_token == "cd2-token"
+    assert context.clouddrive2.poll_interval_seconds == 1
+    assert context.clouddrive2.settle_seconds == 2
+    assert context.clouddrive2.max_wait_minutes == 3
     assert context.report.output_dir == tmp_path / "reports"
     assert context.logging.log_level == "DEBUG"
 
@@ -78,3 +91,5 @@ def test_context_to_dict_serializes_paths(tmp_path):
     assert data["metadata_output"]["library_path"] == "."
     assert data["metadata_output"]["auto_rename"] is True
     assert data["cloud_library_output"]["wait_minutes"] == 60
+    assert data["cloud_library_output"]["upload_wait_strategy"] == "fixed"
+    assert data["clouddrive2"]["endpoint"] == "127.0.0.1:19798"

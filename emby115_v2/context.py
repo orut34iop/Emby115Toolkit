@@ -177,16 +177,48 @@ class CloudLibraryOutputConfig:
     move_videos_after_wait: bool = True
     overwrite_metadata: bool = False
     overwrite_videos: bool = False
+    upload_wait_strategy: str = "fixed"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "CloudLibraryOutputConfig":
         if not data:
             return cls()
+        upload_wait_strategy = str(data.get("upload_wait_strategy") or "fixed")
+        if upload_wait_strategy not in {"fixed", "clouddrive2", "clouddrive2_or_fixed"}:
+            upload_wait_strategy = "fixed"
         return cls(
             wait_minutes=max(0, int(data.get("wait_minutes", 60))),
             move_videos_after_wait=bool(data.get("move_videos_after_wait", True)),
             overwrite_metadata=bool(data.get("overwrite_metadata", False)),
             overwrite_videos=bool(data.get("overwrite_videos", False)),
+            upload_wait_strategy=upload_wait_strategy,
+        )
+
+
+@dataclass(frozen=True)
+class CloudDrive2Config:
+    endpoint: str = "127.0.0.1:19798"
+    api_token: str = ""
+    timeout: float = 10.0
+    poll_interval_seconds: float = 5.0
+    settle_seconds: float = 60.0
+    max_wait_minutes: int = 60
+    page_size: int = 100
+    max_pages: int = 50
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "CloudDrive2Config":
+        if not data:
+            return cls()
+        return cls(
+            endpoint=str(data.get("endpoint") or "127.0.0.1:19798"),
+            api_token=str(data.get("api_token", "")),
+            timeout=max(1.0, float(data.get("timeout", 10.0))),
+            poll_interval_seconds=max(0.5, float(data.get("poll_interval_seconds", 5.0))),
+            settle_seconds=max(0.0, float(data.get("settle_seconds", 60.0))),
+            max_wait_minutes=max(0, int(data.get("max_wait_minutes", 60))),
+            page_size=max(1, int(data.get("page_size", 100))),
+            max_pages=max(1, int(data.get("max_pages", 50))),
         )
 
 
@@ -205,6 +237,7 @@ class AppContext:
     llm: LlmConfig = field(default_factory=LlmConfig)
     metadata_output: MetadataOutputConfig = field(default_factory=MetadataOutputConfig)
     cloud_library_output: CloudLibraryOutputConfig = field(default_factory=CloudLibraryOutputConfig)
+    clouddrive2: CloudDrive2Config = field(default_factory=CloudDrive2Config)
     report: ReportConfig = field(default_factory=ReportConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -224,6 +257,7 @@ class AppContext:
             llm=LlmConfig.from_dict(data.get("llm")),
             metadata_output=MetadataOutputConfig.from_dict(data.get("metadata_output")),
             cloud_library_output=CloudLibraryOutputConfig.from_dict(data.get("cloud_library_output")),
+            clouddrive2=CloudDrive2Config.from_dict(data.get("clouddrive2")),
             report=ReportConfig.from_dict(data.get("report")),
             logging=LoggingConfig.from_dict(data.get("logging")),
             raw=dict(data),

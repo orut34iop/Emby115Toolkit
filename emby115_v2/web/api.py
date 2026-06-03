@@ -23,6 +23,7 @@ V2_ACTIONS = [
     "test_llm_config",
     "scrape_metadata",
     "build_cloud_scraped_library",
+    "test_clouddrive2_upload_wait",
 ]
 
 

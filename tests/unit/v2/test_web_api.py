@@ -159,6 +159,7 @@ def test_actions_require_token_when_configured():
     assert "test_llm_config" in authorized.json()["actions"]
     assert "scrape_metadata" in authorized.json()["actions"]
     assert "build_cloud_scraped_library" in authorized.json()["actions"]
+    assert "test_clouddrive2_upload_wait" in authorized.json()["actions"]
 
 
 def test_metadata_config_api_loads_and_saves(tmp_path, monkeypatch):
