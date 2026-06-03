@@ -357,13 +357,19 @@ class CloudScrapedLibraryService:
             logger.error("CloudDrive2 上传任务探测初始化失败: %s", exc)
             return "failed"
 
+        record_status = result.status
+        record_reason = result.reason
+        if result.status == "not_observed":
+            record_status = "success"
+            record_reason = "静默窗口内没有匹配上传任务，视为 CloudDrive2 上传队列已静默"
         records.append(
             OperationRecord(
                 action="wait_for_cloud_upload",
-                status=result.status,
-                reason=result.reason,
+                status=record_status,
+                reason=record_reason,
                 extra={
                     "strategy": context.cloud_library_output.upload_wait_strategy,
+                    "raw_status": result.status,
                     "observed": result.observed,
                     "waited_seconds": round(result.waited_seconds, 2),
                     "watched_roots": list(result.watched_roots),

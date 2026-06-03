@@ -140,7 +140,12 @@ def test_cloud_library_clouddrive2_or_fixed_treats_not_observed_as_settled(
 
     assert result.status == "success"
     assert (target / "Movie (2026)" / "movie.mkv").exists()
-    assert any(record.action == "wait_for_cloud_upload" and record.status == "not_observed" for record in result.records)
+    assert any(
+        record.action == "wait_for_cloud_upload"
+        and record.status == "success"
+        and record.extra.get("raw_status") == "not_observed"
+        for record in result.records
+    )
     assert not any(record.action == "wait_for_cloud_upload" and record.status == "fallback" for record in result.records)
 
 
