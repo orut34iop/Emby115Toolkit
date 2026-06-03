@@ -29,6 +29,12 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
                 "download_season_posters": True,
                 "auto_rename": True,
             },
+            "cloud_library_output": {
+                "wait_minutes": 0,
+                "move_videos_after_wait": False,
+                "overwrite_metadata": True,
+                "overwrite_videos": False,
+            },
             "report": {"output_dir": str(tmp_path / "reports")},
             "logging": {"log_dir": str(tmp_path / "logs"), "log_level": "debug"},
         }
@@ -47,6 +53,10 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
     assert context.metadata_output.library_path == tmp_path / "library"
     assert context.metadata_output.download_season_posters is True
     assert context.metadata_output.auto_rename is True
+    assert context.cloud_library_output.wait_minutes == 0
+    assert context.cloud_library_output.move_videos_after_wait is False
+    assert context.cloud_library_output.overwrite_metadata is True
+    assert context.cloud_library_output.overwrite_videos is False
     assert context.report.output_dir == tmp_path / "reports"
     assert context.logging.log_level == "DEBUG"
 
@@ -67,3 +77,4 @@ def test_context_to_dict_serializes_paths(tmp_path):
     assert data["path_pairs"][0]["target"] == str(Path(tmp_path / "t"))
     assert data["metadata_output"]["library_path"] == "."
     assert data["metadata_output"]["auto_rename"] is True
+    assert data["cloud_library_output"]["wait_minutes"] == 60

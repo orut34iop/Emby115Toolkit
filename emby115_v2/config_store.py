@@ -59,6 +59,12 @@ def default_metadata_config() -> dict[str, Any]:
             {"enabled": True, "media_type": "movies", "library_path": "C:\\working-emby\\movies"},
             {"enabled": True, "media_type": "tvshows", "library_path": "C:\\working-emby\\tvshows"},
         ],
+        "cloud_library_output": {
+            "wait_minutes": 60,
+            "move_videos_after_wait": True,
+            "overwrite_metadata": False,
+            "overwrite_videos": False,
+        },
         "report": {"output_dir": "reports"},
         "logging": {"log_dir": "logs", "log_level": "INFO"},
     }

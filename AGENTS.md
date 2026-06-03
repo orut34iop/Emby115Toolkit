@@ -101,6 +101,14 @@ Current V2 action names:
   - Optional `metadata_output.auto_rename` defaults to true. Movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`; TV first-level folders are renamed from `tvshow.nfo` `title` and `year`. When the target folder already exists, merge non-conflicting files into it, skip conflicting filenames, remove the emptied source folder, and report the result.
   - The WebUI can submit checked movie and TV metadata libraries sequentially; each submission still uses the existing single-library `metadata_output` Context Object. CLI remains single-library through `metadata_output`.
   - LLM arbitration between multiple returned TMDB candidates and richer scoring are next-stage work.
+- `build_cloud_scraped_library` — Build a cloud-side scraped library from the local symlink workspace.
+  - `path_pairs[].source` is the local C-drive symlink workspace; `path_pairs[].target` is the new D-drive organized cloud library directory.
+  - Stage A mirrors the whole workspace directory tree to the target and copies every non-symlink file while excluding symlink files/directories.
+  - After Stage A, the service waits `cloud_library_output.wait_minutes` minutes, default `60`, to allow CloudDrive2/115 asynchronous upload cache to flush before moving videos.
+  - Stage B walks the original workspace symlinks, resolves each real video target, and moves that real D-drive video into the same relative path under the new cloud library target.
+  - Dry-run must not create directories, copy files, wait, or move videos; it only reports the planned copy/move operations.
+  - Existing metadata and video targets are skipped by default. `overwrite_metadata` and `overwrite_videos` are separate explicit options.
+  - This is a high-risk final migration/archive step because moving real videos makes the original symlink workspace links stale.
 
 ### Legacy Dual GUI Frontends
 

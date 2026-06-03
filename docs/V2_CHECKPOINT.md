@@ -43,6 +43,7 @@ Metadata foundation actions:
 python main.py --action test_tmdb_config --config emby115_v2.config.json
 python main.py --action test_llm_config --config emby115_v2.config.json
 python main.py --action scrape_metadata --config emby115_v2.config.json --dry-run
+python main.py --action build_cloud_scraped_library --config emby115_v2.config.json --dry-run
 ```
 
 CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs. While this standalone metadata queue is active, the metadata button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later checked libraries.
@@ -87,6 +88,18 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - default `auto_rename=true`; after successful NFO metadata, movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`, while TV first-level folders are renamed from `tvshow.nfo` `title` and `year`;
 - auto rename uses `title (year)`; when the target folder already exists, it merges non-conflicting files into that folder, skips conflicting filenames, removes the emptied source folder, and records the result in the report;
 - current implementation provides the Context Object contract, WebUI/CLI actions, config testing, config persistence APIs, movie and TV TMDB matching, movie/TV LLM alias retry for no-candidate cases, movie NFO, `tvshow.nfo`, episode NFO, poster/fanart downloading, season poster downloading, and episode thumbnail downloading. LLM arbitration between multiple returned TMDB candidates and richer scoring are next-stage work.
+
+`build_cloud_scraped_library` maps to the confirmed workflow step "构建网盘已刮削媒体库":
+
+- input `path_pairs` map local symlink workspaces to new cloud-side organized library roots. `source` is the C-drive symlink workspace and `target` is the new D-drive CloudDrive2/115 library directory;
+- Stage A mirrors the whole local workspace directory tree and copies every non-symlink file to the target while excluding symlink files and symlink directories. This preserves the already-scraped folder structure exactly and carries future metadata file types without special-case extension lists;
+- Stage A does not move real videos;
+- after Stage A, non-dry-run execution waits `cloud_library_output.wait_minutes` minutes, default `60`, so CloudDrive2/115 has time to upload copied metadata from its local cache before videos are moved;
+- Stage B resolves each video symlink in the local workspace and moves the real video file into the same relative path under the new cloud target directory;
+- dry-run only generates the copy/move plan and report. It does not create target folders, copy metadata, wait, or move videos;
+- existing metadata targets and video targets are skipped by default. `cloud_library_output.overwrite_metadata` and `cloud_library_output.overwrite_videos` are explicit separate options;
+- the CLI supports `--cloud-wait-minutes`, `--cloud-metadata-only`, `--overwrite-metadata`, and `--overwrite-videos`;
+- this step is a final migration/archive operation: moving real videos makes the original C-drive symlink workspace stale and requires rebuilding symlinks if the workflow needs to run again against the moved library.
 
 ## Current WebUI Status
 

@@ -22,6 +22,7 @@ V2_ACTIONS = [
     "test_tmdb_config",
     "test_llm_config",
     "scrape_metadata",
+    "build_cloud_scraped_library",
 ]
 
 

@@ -172,6 +172,25 @@ class MetadataOutputConfig:
 
 
 @dataclass(frozen=True)
+class CloudLibraryOutputConfig:
+    wait_minutes: int = 60
+    move_videos_after_wait: bool = True
+    overwrite_metadata: bool = False
+    overwrite_videos: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "CloudLibraryOutputConfig":
+        if not data:
+            return cls()
+        return cls(
+            wait_minutes=max(0, int(data.get("wait_minutes", 60))),
+            move_videos_after_wait=bool(data.get("move_videos_after_wait", True)),
+            overwrite_metadata=bool(data.get("overwrite_metadata", False)),
+            overwrite_videos=bool(data.get("overwrite_videos", False)),
+        )
+
+
+@dataclass(frozen=True)
 class AppContext:
     """Unified context object consumed by V2 core services."""
 
@@ -185,6 +204,7 @@ class AppContext:
     tmdb: TmdbConfig = field(default_factory=TmdbConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     metadata_output: MetadataOutputConfig = field(default_factory=MetadataOutputConfig)
+    cloud_library_output: CloudLibraryOutputConfig = field(default_factory=CloudLibraryOutputConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -203,6 +223,7 @@ class AppContext:
             tmdb=TmdbConfig.from_dict(data.get("tmdb")),
             llm=LlmConfig.from_dict(data.get("llm")),
             metadata_output=MetadataOutputConfig.from_dict(data.get("metadata_output")),
+            cloud_library_output=CloudLibraryOutputConfig.from_dict(data.get("cloud_library_output")),
             report=ReportConfig.from_dict(data.get("report")),
             logging=LoggingConfig.from_dict(data.get("logging")),
             raw=dict(data),

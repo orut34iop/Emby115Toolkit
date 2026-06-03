@@ -91,3 +91,32 @@ def test_cli_runs_scrape_metadata_dry_run_from_config(tmp_path, capsys):
     assert code == 0
     assert output["action"] == "scrape_metadata"
     assert (report_dir / output["run_id"] / "report.json").exists()
+
+
+def test_cli_runs_build_cloud_scraped_library_dry_run_from_config(tmp_path, capsys):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    report_dir = tmp_path / "reports"
+    workspace.mkdir()
+    (workspace / "movie.nfo").write_text("nfo", encoding="utf-8")
+    config = tmp_path / "cloud-library.json"
+    config.write_text(
+        json.dumps(
+            {
+                "action": "build_cloud_scraped_library",
+                "dry_run": True,
+                "path_pairs": [{"name": "movies", "source": str(workspace), "target": str(target)}],
+                "cloud_library_output": {"wait_minutes": 0},
+                "report": {"output_dir": str(report_dir)},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    code = run_cli(["--config", str(config), "--json"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert output["action"] == "build_cloud_scraped_library"
+    assert (report_dir / output["run_id"] / "report.json").exists()

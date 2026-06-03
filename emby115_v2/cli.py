@@ -28,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pair-name", action="append", help="路径对名称，可与 --source/--target 一起重复使用")
     parser.add_argument("--source", action="append", help="源目录，可重复")
     parser.add_argument("--target", action="append", help="目标工作区目录，可重复")
+    parser.add_argument("--cloud-wait-minutes", type=int, help="构建网盘已刮削媒体库时阶段 A 后等待分钟数")
+    parser.add_argument("--cloud-metadata-only", action="store_true", help="构建网盘已刮削媒体库时只复制非 symlink 文件，不移动真实视频")
+    parser.add_argument("--overwrite-metadata", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的元数据文件")
+    parser.add_argument("--overwrite-videos", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的视频文件")
     parser.add_argument("--serve-web", action="store_true", help="启动 V2 WebUI 后端服务")
     parser.add_argument("--host", default="127.0.0.1", help="Web 服务监听地址")
     parser.add_argument("--port", type=int, default=8765, help="Web 服务端口")
@@ -55,6 +59,14 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
         cli_overrides.setdefault("logging", {})["log_level"] = args.log_level
     if args.thread_count is not None:
         cli_overrides.setdefault("symlink", {})["thread_count"] = args.thread_count
+    if args.cloud_wait_minutes is not None:
+        cli_overrides.setdefault("cloud_library_output", {})["wait_minutes"] = args.cloud_wait_minutes
+    if args.cloud_metadata_only:
+        cli_overrides.setdefault("cloud_library_output", {})["move_videos_after_wait"] = False
+    if args.overwrite_metadata:
+        cli_overrides.setdefault("cloud_library_output", {})["overwrite_metadata"] = True
+    if args.overwrite_videos:
+        cli_overrides.setdefault("cloud_library_output", {})["overwrite_videos"] = True
 
     if args.source or args.target:
         sources = args.source or []
