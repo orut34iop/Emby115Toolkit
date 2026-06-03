@@ -207,6 +207,7 @@ class CloudScrapedLibraryService:
                             extra={
                                 "path_pair": pair.name,
                                 "real_video_path": str(move_plan.real_video_path) if move_plan and move_plan.real_video_path else "",
+                                "real_video_resolve_reason": move_plan.reason if move_plan else "",
                             },
                         )
                     )
@@ -296,13 +297,36 @@ class CloudScrapedLibraryService:
     ) -> VideoMovePlan | None:
         if workspace_symlink_path.suffix.lower() not in context.symlink.video_extensions:
             return None
-        try:
-            real_video_path = workspace_symlink_path.resolve(strict=True)
-            reason = "已解析 symlink 指向的真实视频"
-        except OSError as exc:
-            real_video_path = None
-            reason = f"无法解析 symlink 指向的真实视频: {exc}"
+        real_video_path, reason = self._resolve_symlink_target(workspace_symlink_path)
         return VideoMovePlan(pair.name, workspace_symlink_path, real_video_path, target_video_path, media_type, reason)
+
+    def _resolve_symlink_target(self, workspace_symlink_path: Path) -> tuple[Path | None, str]:
+        try:
+            raw_target = os.readlink(workspace_symlink_path)
+            real_video_path = self._normalize_readlink_target(raw_target, workspace_symlink_path)
+        except OSError as readlink_exc:
+            try:
+                real_video_path = workspace_symlink_path.resolve(strict=True)
+            except OSError as resolve_exc:
+                return None, f"无法解析 symlink 指向的真实视频: readlink={readlink_exc}; resolve={resolve_exc}"
+            return real_video_path, "已通过 Path.resolve 解析 symlink 指向的真实视频"
+
+        try:
+            real_video_path.stat()
+        except OSError as exc:
+            return None, f"symlink 指向的真实视频不可访问: {real_video_path}: {exc}"
+        return real_video_path, "已通过 os.readlink 解析 symlink 指向的真实视频"
+
+    def _normalize_readlink_target(self, raw_target: str, workspace_symlink_path: Path) -> Path:
+        target = raw_target
+        if target.startswith("\\\\?\\UNC\\"):
+            target = "\\\\" + target[8:]
+        elif target.startswith("\\\\?\\") or target.startswith("\\??\\"):
+            target = target[4:]
+        target_path = Path(target)
+        if not target_path.is_absolute():
+            target_path = workspace_symlink_path.parent / target_path
+        return target_path
 
     def _wait_before_move(
         self,

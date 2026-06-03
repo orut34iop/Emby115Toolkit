@@ -80,6 +80,49 @@ def test_cloud_library_copies_non_symlink_files_and_moves_real_video(tmp_path, m
     assert result.summary["videos_moved"] == 1
 
 
+def test_cloud_library_uses_readlink_when_resolve_fails_on_virtual_drive(tmp_path, mock_logger, monkeypatch):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+
+    original_readlink = os.readlink
+    raw_target = "\\\\?\\" + str(real_video)
+
+    def fake_readlink(path):
+        if os.fspath(path) == os.fspath(link):
+            return raw_target
+        return original_readlink(path)
+
+    def fake_resolve(self, strict=False):
+        if os.fspath(self) == os.fspath(link):
+            exc = OSError("The volume does not contain a recognized file system")
+            exc.winerror = 1005
+            raise exc
+        return self
+
+    monkeypatch.setattr("emby115_v2.services.cloud_library_service.os.readlink", fake_readlink)
+    monkeypatch.setattr("emby115_v2.services.cloud_library_service.Path.resolve", fake_resolve)
+
+    result = CloudScrapedLibraryService().run(_context(workspace, target), mock_logger)
+
+    assert result.status == "success"
+    assert (target / "Movie (2026)" / "movie.mkv").read_text(encoding="utf-8") == "video"
+    assert not real_video.exists()
+    assert result.summary["videos_moved"] == 1
+    assert any(
+        record.action == "skip_symlink_copy"
+        and "os.readlink" in record.extra.get("real_video_resolve_reason", "")
+        for record in result.records
+    )
+
+
 def test_cloud_library_skips_existing_video_by_default(tmp_path, mock_logger):
     workspace = tmp_path / "workspace"
     target = tmp_path / "organized"
