@@ -64,12 +64,25 @@ class MovieMetadata:
     title: str
     original_title: str = ""
     year: str = ""
+    release_date: str = ""
     overview: str = ""
     runtime: int = 0
     genres: tuple[str, ...] = ()
     rating: float = 0.0
     certification: str = ""
     actors: tuple[ActorMetadata, ...] = ()
+    directors: tuple[str, ...] = ()
+    writers: tuple[str, ...] = ()
+    producers: tuple[str, ...] = ()
+    imdb_id: str = ""
+    tvdb_id: str = ""
+    wikidata_id: str = ""
+    collection_name: str = ""
+    collection_tmdb_id: str = ""
+    production_companies: tuple[str, ...] = ()
+    production_countries: tuple[str, ...] = ()
+    spoken_languages: tuple[str, ...] = ()
+    original_language: str = ""
     poster_path: str = ""
     backdrop_path: str = ""
     language: str = ""
@@ -82,11 +95,22 @@ class TvShowMetadata:
     title: str
     original_title: str = ""
     year: str = ""
+    first_air_date: str = ""
     overview: str = ""
     genres: tuple[str, ...] = ()
     rating: float = 0.0
     certification: str = ""
     actors: tuple[ActorMetadata, ...] = ()
+    directors: tuple[str, ...] = ()
+    writers: tuple[str, ...] = ()
+    producers: tuple[str, ...] = ()
+    imdb_id: str = ""
+    tvdb_id: str = ""
+    wikidata_id: str = ""
+    production_companies: tuple[str, ...] = ()
+    production_countries: tuple[str, ...] = ()
+    spoken_languages: tuple[str, ...] = ()
+    original_language: str = ""
     poster_path: str = ""
     backdrop_path: str = ""
     language: str = ""
@@ -277,7 +301,7 @@ class TmdbClient:
             {
                 "api_key": self.api_key,
                 "language": language,
-                "append_to_response": "credits,release_dates",
+                "append_to_response": "credits,release_dates,external_ids",
             },
         )
 
@@ -299,7 +323,7 @@ class TmdbClient:
             {
                 "api_key": self.api_key,
                 "language": language,
-                "append_to_response": "credits,aggregate_credits,content_ratings",
+                "append_to_response": "credits,aggregate_credits,content_ratings,external_ids",
             },
         )
 
@@ -705,6 +729,19 @@ class MetadataScraperService:
                 "rating": metadata.rating,
                 "certification": metadata.certification,
                 "actor_count": len(metadata.actors),
+                "directors": list(metadata.directors),
+                "writers": list(metadata.writers),
+                "producers": list(metadata.producers),
+                "external_ids": {
+                    "imdb_id": metadata.imdb_id,
+                    "tvdb_id": metadata.tvdb_id,
+                    "wikidata_id": metadata.wikidata_id,
+                },
+                "production_companies": list(metadata.production_companies),
+                "production_countries": list(metadata.production_countries),
+                "spoken_languages": list(metadata.spoken_languages),
+                "original_language": metadata.original_language,
+                "release_date": metadata.first_air_date,
                 "candidates": candidates,
                 "poster_path": str(show_dir / "poster.jpg"),
                 "fanart_path": str(show_dir / "fanart.jpg"),
@@ -880,10 +917,27 @@ class MetadataScraperService:
                     "tmdb_id": metadata.tmdb_id,
                     "tmdb_language": metadata.language,
                     "fallback_used": metadata.fallback_used,
-                    "rating": metadata.rating,
-                    "certification": metadata.certification,
-                    "actor_count": len(metadata.actors),
-                    "candidates": candidates,
+                "rating": metadata.rating,
+                "certification": metadata.certification,
+                "actor_count": len(metadata.actors),
+                "directors": list(metadata.directors),
+                "writers": list(metadata.writers),
+                "producers": list(metadata.producers),
+                "external_ids": {
+                    "imdb_id": metadata.imdb_id,
+                    "tvdb_id": metadata.tvdb_id,
+                    "wikidata_id": metadata.wikidata_id,
+                },
+                "collection": {
+                    "name": metadata.collection_name,
+                    "tmdb_id": metadata.collection_tmdb_id,
+                },
+                "production_companies": list(metadata.production_companies),
+                "production_countries": list(metadata.production_countries),
+                "spoken_languages": list(metadata.spoken_languages),
+                "original_language": metadata.original_language,
+                "release_date": metadata.release_date,
+                "candidates": candidates,
                     "poster_path": str(poster_path),
                     "fanart_path": str(fanart_path),
                     "poster_status": poster_status,
@@ -1272,6 +1326,83 @@ def actor_role_from_cast_item(item: dict[str, Any]) -> str:
     return " / ".join(names)
 
 
+def extract_people_by_jobs(
+    details: dict[str, Any],
+    fallback: dict[str, Any],
+    jobs: set[str],
+    departments: set[str] | None = None,
+) -> tuple[str, ...]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in iter_tmdb_crew_entries(details):
+        append_crew_name_if_matches(names, seen, item, jobs, departments)
+    for item in iter_tmdb_crew_entries(fallback):
+        append_crew_name_if_matches(names, seen, item, jobs, departments)
+    return tuple(names)
+
+
+def iter_tmdb_crew_entries(payload: dict[str, Any]):
+    for item in (payload.get("credits") or {}).get("crew") or []:
+        yield item
+    for item in (payload.get("aggregate_credits") or {}).get("crew") or []:
+        yield item
+
+
+def append_crew_name_if_matches(
+    names: list[str],
+    seen: set[str],
+    item: dict[str, Any],
+    jobs: set[str],
+    departments: set[str] | None,
+) -> None:
+    name = str(item.get("name") or "").strip()
+    if not name or name in seen:
+        return
+    if crew_item_matches(item, jobs, departments):
+        seen.add(name)
+        names.append(name)
+
+
+def crew_item_matches(item: dict[str, Any], jobs: set[str], departments: set[str] | None) -> bool:
+    job = str(item.get("job") or "").strip()
+    department = str(item.get("department") or "").strip()
+    if job in jobs or (departments and department in departments):
+        return True
+    for entry in item.get("jobs") or []:
+        entry_job = str(entry.get("job") or "").strip()
+        if entry_job in jobs:
+            return True
+    return False
+
+
+def extract_external_ids(details: dict[str, Any], fallback: dict[str, Any]) -> dict[str, str]:
+    external = details.get("external_ids") or fallback.get("external_ids") or {}
+    return {
+        "imdb_id": str(external.get("imdb_id") or "").strip(),
+        "tvdb_id": str(external.get("tvdb_id") or "").strip(),
+        "wikidata_id": str(external.get("wikidata_id") or "").strip(),
+    }
+
+
+def extract_collection(details: dict[str, Any], fallback: dict[str, Any]) -> tuple[str, str]:
+    collection = details.get("belongs_to_collection") or fallback.get("belongs_to_collection") or {}
+    if not isinstance(collection, dict):
+        return "", ""
+    return str(collection.get("name") or "").strip(), str(collection.get("id") or "").strip()
+
+
+def extract_named_values(details: dict[str, Any], fallback: dict[str, Any], key: str) -> tuple[str, ...]:
+    values = details.get(key) or fallback.get(key) or []
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        name = str(item.get("name") or item.get("english_name") or item.get("iso_3166_1") or item.get("iso_639_1") or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return tuple(names)
+
+
 def extract_movie_certification(details: dict[str, Any], fallback: dict[str, Any]) -> str:
     release_dates = (details.get("release_dates") or {}).get("results") or (
         fallback.get("release_dates") or {}
@@ -1319,17 +1450,32 @@ def movie_metadata_from_details(
     fallback_used: bool,
 ) -> MovieMetadata:
     release_date = str(details.get("release_date") or fallback.get("release_date") or "")
+    external_ids = extract_external_ids(details, fallback)
+    collection_name, collection_tmdb_id = extract_collection(details, fallback)
     return MovieMetadata(
         tmdb_id=int(details.get("id") or fallback.get("id")),
         title=str(details.get("title") or fallback.get("title") or ""),
         original_title=str(details.get("original_title") or fallback.get("original_title") or ""),
         year=release_date[:4],
+        release_date=release_date,
         overview=str(details.get("overview") or fallback.get("overview") or ""),
         runtime=int(details.get("runtime") or fallback.get("runtime") or 0),
         genres=tuple(str(item.get("name")) for item in details.get("genres") or fallback.get("genres") or []),
         rating=normalize_rating(details.get("vote_average") or fallback.get("vote_average")),
         certification=extract_movie_certification(details, fallback),
         actors=extract_actors(details, fallback),
+        directors=extract_people_by_jobs(details, fallback, {"Director"}, {"Directing"}),
+        writers=extract_people_by_jobs(details, fallback, {"Writer", "Screenplay", "Story", "Author"}, {"Writing"}),
+        producers=extract_people_by_jobs(details, fallback, {"Producer", "Executive Producer"}, {"Production"}),
+        imdb_id=external_ids["imdb_id"],
+        tvdb_id=external_ids["tvdb_id"],
+        wikidata_id=external_ids["wikidata_id"],
+        collection_name=collection_name,
+        collection_tmdb_id=collection_tmdb_id,
+        production_companies=extract_named_values(details, fallback, "production_companies"),
+        production_countries=extract_named_values(details, fallback, "production_countries"),
+        spoken_languages=extract_named_values(details, fallback, "spoken_languages"),
+        original_language=str(details.get("original_language") or fallback.get("original_language") or ""),
         poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
         backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
         language=language,
@@ -1344,16 +1490,28 @@ def tvshow_metadata_from_details(
     fallback_used: bool,
 ) -> TvShowMetadata:
     first_air_date = str(details.get("first_air_date") or fallback.get("first_air_date") or "")
+    external_ids = extract_external_ids(details, fallback)
     return TvShowMetadata(
         tmdb_id=int(details.get("id") or fallback.get("id")),
         title=str(details.get("name") or fallback.get("name") or ""),
         original_title=str(details.get("original_name") or fallback.get("original_name") or ""),
         year=first_air_date[:4],
+        first_air_date=first_air_date,
         overview=str(details.get("overview") or fallback.get("overview") or ""),
         genres=tuple(str(item.get("name")) for item in details.get("genres") or fallback.get("genres") or []),
         rating=normalize_rating(details.get("vote_average") or fallback.get("vote_average")),
         certification=extract_tv_certification(details, fallback),
         actors=extract_actors(details, fallback),
+        directors=extract_people_by_jobs(details, fallback, {"Director"}, {"Directing"}),
+        writers=extract_people_by_jobs(details, fallback, {"Writer", "Screenplay", "Story", "Author"}, {"Writing"}),
+        producers=extract_people_by_jobs(details, fallback, {"Producer", "Executive Producer"}, {"Production"}),
+        imdb_id=external_ids["imdb_id"],
+        tvdb_id=external_ids["tvdb_id"],
+        wikidata_id=external_ids["wikidata_id"],
+        production_companies=extract_named_values(details, fallback, "production_companies"),
+        production_countries=extract_named_values(details, fallback, "production_countries"),
+        spoken_languages=extract_named_values(details, fallback, "spoken_languages"),
+        original_language=str(details.get("original_language") or fallback.get("original_language") or ""),
         poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
         backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
         language=language,
@@ -1445,18 +1603,39 @@ def render_movie_nfo(metadata: MovieMetadata) -> str:
         "title": metadata.title,
         "originaltitle": metadata.original_title,
         "year": metadata.year,
+        "premiered": metadata.release_date,
+        "releasedate": metadata.release_date,
         "plot": metadata.overview,
         "runtime": str(metadata.runtime) if metadata.runtime else "",
         "rating": format_nfo_rating(metadata.rating),
         "mpaa": metadata.certification,
         "tmdbid": str(metadata.tmdb_id),
+        "imdbid": metadata.imdb_id,
+        "original_language": metadata.original_language,
     }
     for key, value in fields.items():
         child = ET.SubElement(movie, key)
         child.text = value
+    append_uniqueid_elements(
+        movie,
+        {
+            "tmdb": str(metadata.tmdb_id),
+            "imdb": metadata.imdb_id,
+            "tvdb": metadata.tvdb_id,
+            "wikidata": metadata.wikidata_id,
+        },
+        default_type="tmdb",
+    )
+    append_repeated_text(movie, "director", metadata.directors)
+    append_repeated_text(movie, "credits", metadata.writers)
+    append_repeated_text(movie, "producer", metadata.producers)
     for genre in metadata.genres:
         child = ET.SubElement(movie, "genre")
         child.text = genre
+    append_movie_set(movie, metadata.collection_name, metadata.collection_tmdb_id)
+    append_repeated_text(movie, "studio", metadata.production_companies)
+    append_repeated_text(movie, "country", metadata.production_countries)
+    append_repeated_text(movie, "language", metadata.spoken_languages)
     append_actor_elements(movie, metadata.actors)
     ET.indent(movie, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
@@ -1471,17 +1650,37 @@ def render_tvshow_nfo(metadata: TvShowMetadata) -> str:
         "title": metadata.title,
         "originaltitle": metadata.original_title,
         "year": metadata.year,
+        "premiered": metadata.first_air_date,
+        "releasedate": metadata.first_air_date,
         "plot": metadata.overview,
         "rating": format_nfo_rating(metadata.rating),
         "mpaa": metadata.certification,
         "tmdbid": str(metadata.tmdb_id),
+        "imdbid": metadata.imdb_id,
+        "original_language": metadata.original_language,
     }
     for key, value in fields.items():
         child = ET.SubElement(tvshow, key)
         child.text = value
+    append_uniqueid_elements(
+        tvshow,
+        {
+            "tmdb": str(metadata.tmdb_id),
+            "imdb": metadata.imdb_id,
+            "tvdb": metadata.tvdb_id,
+            "wikidata": metadata.wikidata_id,
+        },
+        default_type="tmdb",
+    )
+    append_repeated_text(tvshow, "director", metadata.directors)
+    append_repeated_text(tvshow, "credits", metadata.writers)
+    append_repeated_text(tvshow, "producer", metadata.producers)
     for genre in metadata.genres:
         child = ET.SubElement(tvshow, "genre")
         child.text = genre
+    append_repeated_text(tvshow, "studio", metadata.production_companies)
+    append_repeated_text(tvshow, "country", metadata.production_countries)
+    append_repeated_text(tvshow, "language", metadata.spoken_languages)
     append_actor_elements(tvshow, metadata.actors)
     ET.indent(tvshow, space="  ")
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>\n' + ET.tostring(
@@ -1499,6 +1698,7 @@ def render_episode_nfo(show_metadata: TvShowMetadata, episode_metadata: EpisodeM
         "episode": str(episode_metadata.episode),
         "plot": episode_metadata.overview,
         "aired": episode_metadata.air_date,
+        "premiered": episode_metadata.air_date,
         "rating": format_nfo_rating(episode_metadata.rating),
         "tmdbid": str(show_metadata.tmdb_id),
     }
@@ -1529,6 +1729,33 @@ def append_actor_elements(parent: ET.Element, actors: tuple[ActorMetadata, ...])
         if actor.profile_path:
             thumb = ET.SubElement(actor_node, "thumb")
             thumb.text = TMDB_IMAGE_BASE + actor.profile_path
+
+
+def append_repeated_text(parent: ET.Element, tag: str, values: tuple[str, ...]) -> None:
+    for value in values:
+        if not value:
+            continue
+        child = ET.SubElement(parent, tag)
+        child.text = value
+
+
+def append_uniqueid_elements(parent: ET.Element, ids: dict[str, str], default_type: str = "tmdb") -> None:
+    for id_type, value in ids.items():
+        if not value:
+            continue
+        child = ET.SubElement(parent, "uniqueid", {"type": id_type, "default": str(id_type == default_type).lower()})
+        child.text = value
+
+
+def append_movie_set(parent: ET.Element, collection_name: str, collection_tmdb_id: str = "") -> None:
+    if not collection_name:
+        return
+    set_node = ET.SubElement(parent, "set")
+    name = ET.SubElement(set_node, "name")
+    name.text = collection_name
+    if collection_tmdb_id:
+        tmdbid = ET.SubElement(set_node, "tmdbid")
+        tmdbid.text = collection_tmdb_id
 
 
 def auto_rename_from_movie_records(

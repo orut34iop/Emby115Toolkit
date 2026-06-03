@@ -69,7 +69,17 @@ class FakeTmdbClient:
                 "overview": "",
                 "runtime": 98,
                 "genres": [{"name": "爱情"}],
+                "original_language": "en",
                 "vote_average": 7.6,
+                "belongs_to_collection": {"id": 100, "name": "Sausalito Collection"},
+                "production_companies": [{"name": "Film Workshop"}],
+                "production_countries": [{"name": "Hong Kong", "iso_3166_1": "HK"}],
+                "spoken_languages": [{"english_name": "English", "iso_639_1": "en"}],
+                "external_ids": {
+                    "imdb_id": "tt0184030",
+                    "tvdb_id": "12345",
+                    "wikidata_id": "Q123",
+                },
                 "release_dates": {
                     "results": [
                         {
@@ -79,7 +89,12 @@ class FakeTmdbClient:
                     ]
                 },
                 "credits": {
-                    "cast": cast
+                    "cast": cast,
+                    "crew": [
+                        {"name": "Andrew Lau", "job": "Director", "department": "Directing"},
+                        {"name": "Writer A", "job": "Screenplay", "department": "Writing"},
+                        {"name": "Producer A", "job": "Producer", "department": "Production"},
+                    ],
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
@@ -92,7 +107,17 @@ class FakeTmdbClient:
             "overview": "Fallback overview",
                 "runtime": 98,
                 "genres": [{"name": "Romance"}],
+                "original_language": "en",
                 "vote_average": 7.6,
+                "belongs_to_collection": {"id": 100, "name": "Sausalito Collection"},
+                "production_companies": [{"name": "Film Workshop"}],
+                "production_countries": [{"name": "Hong Kong", "iso_3166_1": "HK"}],
+                "spoken_languages": [{"english_name": "English", "iso_639_1": "en"}],
+                "external_ids": {
+                    "imdb_id": "tt0184030",
+                    "tvdb_id": "12345",
+                    "wikidata_id": "Q123",
+                },
                 "release_dates": {
                     "results": [
                         {
@@ -102,7 +127,12 @@ class FakeTmdbClient:
                     ]
                 },
                 "credits": {
-                    "cast": cast
+                    "cast": cast,
+                    "crew": [
+                        {"name": "Andrew Lau", "job": "Director", "department": "Directing"},
+                        {"name": "Writer A", "job": "Screenplay", "department": "Writing"},
+                        {"name": "Producer A", "job": "Producer", "department": "Production"},
+                    ],
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
@@ -129,8 +159,17 @@ class FakeTmdbClient:
                 "first_air_date": "2014-02-05",
                 "overview": "",
                 "genres": [{"name": "喜剧"}, {"name": "悬疑"}],
+                "original_language": "en",
                 "vote_average": 8.5,
                 "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
+                "production_companies": [{"name": "BBC"}],
+                "production_countries": [{"name": "United Kingdom", "iso_3166_1": "GB"}],
+                "spoken_languages": [{"english_name": "English", "iso_639_1": "en"}],
+                "external_ids": {
+                    "imdb_id": "tt2674806",
+                    "tvdb_id": "278260",
+                    "wikidata_id": "Q16906266",
+                },
                 "aggregate_credits": {
                     "cast": [
                         {
@@ -139,7 +178,24 @@ class FakeTmdbClient:
                             "order": 0,
                             "profile_path": "/reece.jpg",
                         }
-                    ]
+                    ],
+                    "crew": [
+                        {
+                            "name": "Director B",
+                            "jobs": [{"job": "Director"}],
+                            "department": "Directing",
+                        },
+                        {
+                            "name": "Writer B",
+                            "jobs": [{"job": "Writer"}],
+                            "department": "Writing",
+                        },
+                        {
+                            "name": "Producer B",
+                            "jobs": [{"job": "Producer"}],
+                            "department": "Production",
+                        },
+                    ],
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
@@ -151,8 +207,17 @@ class FakeTmdbClient:
             "first_air_date": "2014-02-05",
                 "overview": "Fallback show overview",
                 "genres": [{"name": "Comedy"}],
+                "original_language": "en",
                 "vote_average": 8.5,
                 "content_ratings": {"results": [{"iso_3166_1": "US", "rating": "TV-MA"}]},
+                "production_companies": [{"name": "BBC"}],
+                "production_countries": [{"name": "United Kingdom", "iso_3166_1": "GB"}],
+                "spoken_languages": [{"english_name": "English", "iso_639_1": "en"}],
+                "external_ids": {
+                    "imdb_id": "tt2674806",
+                    "tvdb_id": "278260",
+                    "wikidata_id": "Q16906266",
+                },
                 "aggregate_credits": {
                     "cast": [
                         {
@@ -161,7 +226,24 @@ class FakeTmdbClient:
                             "order": 0,
                             "profile_path": "/reece.jpg",
                         }
-                    ]
+                    ],
+                    "crew": [
+                        {
+                            "name": "Director B",
+                            "jobs": [{"job": "Director"}],
+                            "department": "Directing",
+                        },
+                        {
+                            "name": "Writer B",
+                            "jobs": [{"job": "Writer"}],
+                            "department": "Writing",
+                        },
+                        {
+                            "name": "Producer B",
+                            "jobs": [{"job": "Producer"}],
+                            "department": "Production",
+                        },
+                    ],
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
@@ -447,12 +529,35 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert result.records[0].extra["rating"] == 7.6
     assert result.records[0].extra["certification"] == "PG-13"
     assert result.records[0].extra["actor_count"] == 25
+    assert result.records[0].extra["directors"] == ["Andrew Lau"]
+    assert result.records[0].extra["writers"] == ["Writer A"]
+    assert result.records[0].extra["producers"] == ["Producer A"]
+    assert result.records[0].extra["external_ids"]["imdb_id"] == "tt0184030"
+    assert result.records[0].extra["collection"]["name"] == "Sausalito Collection"
+    assert result.records[0].extra["production_companies"] == ["Film Workshop"]
+    assert result.records[0].extra["production_countries"] == ["Hong Kong"]
+    assert result.records[0].extra["spoken_languages"] == ["English"]
+    assert result.records[0].extra["original_language"] == "en"
+    assert result.records[0].extra["release_date"] == "2000-04-20"
     assert nfo.exists()
     nfo_text = nfo.read_text(encoding="utf-8")
     assert "<title>一见钟情</title>" in nfo_text
+    assert "<premiered>2000-04-20</premiered>" in nfo_text
+    assert "<releasedate>2000-04-20</releasedate>" in nfo_text
     assert "<plot>Fallback overview</plot>" in nfo_text
     assert "<rating>7.6</rating>" in nfo_text
     assert "<mpaa>PG-13</mpaa>" in nfo_text
+    assert '<uniqueid type="imdb" default="false">tt0184030</uniqueid>' in nfo_text
+    assert '<uniqueid type="tvdb" default="false">12345</uniqueid>' in nfo_text
+    assert '<uniqueid type="wikidata" default="false">Q123</uniqueid>' in nfo_text
+    assert "<director>Andrew Lau</director>" in nfo_text
+    assert "<credits>Writer A</credits>" in nfo_text
+    assert "<producer>Producer A</producer>" in nfo_text
+    assert "<name>Sausalito Collection</name>" in nfo_text
+    assert "<studio>Film Workshop</studio>" in nfo_text
+    assert "<country>Hong Kong</country>" in nfo_text
+    assert "<language>English</language>" in nfo_text
+    assert "<original_language>en</original_language>" in nfo_text
     assert "<name>Maggie Cheung</name>" in nfo_text
     assert "<role>Ellen</role>" in nfo_text
     assert "<name>Actor 24</name>" in nfo_text
@@ -587,6 +692,17 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     episode_text = episode_nfo.read_text(encoding="utf-8")
     assert "<title>9号秘事</title>" in tvshow_text
     assert "<plot>Fallback show overview</plot>" in tvshow_text
+    assert "<premiered>2014-02-05</premiered>" in tvshow_text
+    assert '<uniqueid type="imdb" default="false">tt2674806</uniqueid>' in tvshow_text
+    assert '<uniqueid type="tvdb" default="false">278260</uniqueid>' in tvshow_text
+    assert '<uniqueid type="wikidata" default="false">Q16906266</uniqueid>' in tvshow_text
+    assert "<director>Director B</director>" in tvshow_text
+    assert "<credits>Writer B</credits>" in tvshow_text
+    assert "<producer>Producer B</producer>" in tvshow_text
+    assert "<studio>BBC</studio>" in tvshow_text
+    assert "<country>United Kingdom</country>" in tvshow_text
+    assert "<language>English</language>" in tvshow_text
+    assert "<original_language>en</original_language>" in tvshow_text
     assert "<rating>8.5</rating>" in tvshow_text
     assert "<mpaa>TV-MA</mpaa>" in tvshow_text
     assert "<name>Reece Shearsmith</name>" in tvshow_text
