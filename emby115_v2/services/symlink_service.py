@@ -290,7 +290,7 @@ class ScanAndLinkService:
         if not CJK_RE.search(parent_title) or not LATIN_RE.search(stem_title):
             return ""
         if self._normalized_title_token(stem_title) in self._normalized_title_token(parent_title):
-            return ""
+            return parent_title
         return f"{parent_title}.{stem_title}"
 
     def _normalized_title_token(self, title: str) -> str:

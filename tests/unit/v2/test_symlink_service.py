@@ -170,6 +170,35 @@ def test_movie_combines_chinese_parent_title_with_english_filename_title(tmp_pat
     assert record.year == "2026"
 
 
+def test_movie_preserves_parent_title_when_it_already_contains_english_filename_title(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    release = (
+        source
+        / "莎拉·丝沃曼：生离笑别[简繁英字幕].Sarah.Silverman.PostMortem.2025.2160p.NF.WEB-DL"
+    )
+    release.mkdir(parents=True)
+    video = release / "Sarah.Silverman.PostMortem.2025.2160p.NF.WEB-DL.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(
+        os.path.join("target", "莎拉·丝沃曼：生离笑别.Sarah.Silverman.PostMortem (2025)", video.name)
+    )
+    assert record.title == "莎拉·丝沃曼：生离笑别.Sarah.Silverman.PostMortem"
+    assert record.year == "2025"
+
+
 def test_tvshow_standardizes_under_series_and_season(tmp_path, mock_logger):
     source = tmp_path / "source"
     target = tmp_path / "target"

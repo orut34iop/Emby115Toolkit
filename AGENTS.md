@@ -80,7 +80,7 @@ Current V2 action names:
 - `build_symlink_workspace` — Build the local symlink workspace from mounted CloudDrive2 source folders.
   - This action must standardize symlink target paths by media type. Movies go under a movie title folder; TV shows go under a show title folder plus a season/version second-level folder.
   - Movie title parsing must prefer a parent folder that contains both a usable title and a year over short release filenames, so files such as `eb-1080p-fap.mkv` inside `东方男孩Eastern.Boys.2013...` group under `东方男孩Eastern.Boys (2013)`.
-  - When a movie parent folder has a Chinese title/year and the video filename has a different same-year English title, preserve both as `Chinese.English (year)` to improve downstream metadata matching.
+  - When a movie parent folder has a Chinese title/year and the video filename has a same-year English title, preserve both as `Chinese.English (year)` to improve downstream metadata matching; if the parent folder already contains the English title, keep the parent title intact.
   - TV second-level folder priority is an existing source folder that contains a season marker, then a release folder derived from the episode filename, then `Season NN`.
   - TV title parsing must treat `SxxEyy` and other season markers as structural metadata, not part of the show title, so episode filenames like `小镇疑云.S02E01...` must still group under `小镇疑云`.
   - It must preserve original video filenames and mark uncertain items for manual review instead of inventing missing metadata.
