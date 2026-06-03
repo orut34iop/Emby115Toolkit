@@ -233,6 +233,110 @@
           </div>
         </form>
       </div>
+
+      <div class="subsection">
+        <div class="section-title">
+          <h2>构建网盘已刮削媒体库</h2>
+          <div class="button-row">
+            <button type="button" class="secondary" id="testCloudDrive2Button">测试 CloudDrive2 上传探测</button>
+          </div>
+        </div>
+
+        <form id="cloudLibraryForm">
+          <div class="cloud-library-table" aria-label="网盘已刮削媒体库列表">
+            <div class="cloud-library-head">
+              <span>启用</span>
+              <span>媒体类型</span>
+              <span>本地 symlink 工作区</span>
+              <span>网盘新媒体库目录</span>
+            </div>
+            <div class="cloud-library-row" data-media-type="movies">
+              <label class="checkline compact-check">
+                <input id="cloudMoviesEnabled" class="cloud-library-enabled" type="checkbox" checked>
+                导入
+              </label>
+              <span class="media-label">电影</span>
+              <input id="cloudMoviesSource" class="cloud-library-source" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+              <input id="cloudMoviesTarget" class="cloud-library-target" value="D:\115open\tmp\organized\movies" placeholder="D:\115open\tmp\organized\movies">
+            </div>
+            <div class="cloud-library-row" data-media-type="tvshows">
+              <label class="checkline compact-check">
+                <input id="cloudTvshowsEnabled" class="cloud-library-enabled" type="checkbox" checked>
+                导入
+              </label>
+              <span class="media-label">电视剧</span>
+              <input id="cloudTvshowsSource" class="cloud-library-source" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+              <input id="cloudTvshowsTarget" class="cloud-library-target" value="D:\115open\tmp\organized\tvshows" placeholder="D:\115open\tmp\organized\tvshows">
+            </div>
+          </div>
+
+          <div class="grid two">
+            <label>
+              上传等待策略
+              <select id="cloudWaitStrategy">
+                <option value="fixed">固定等待</option>
+                <option value="clouddrive2_or_fixed">CloudDrive2 探测，失败回退固定等待</option>
+                <option value="clouddrive2">CloudDrive2 严格探测</option>
+              </select>
+            </label>
+            <label>
+              固定等待分钟数
+              <input id="cloudWaitMinutes" type="number" min="0" value="60">
+            </label>
+          </div>
+
+          <div class="grid two">
+            <label>
+              CloudDrive2 gRPC 地址
+              <input id="cd2Endpoint" value="127.0.0.1:19798" placeholder="127.0.0.1:19798">
+            </label>
+            <label>
+              CloudDrive2 API Token
+              <input id="cd2ApiToken" type="password" autocomplete="off">
+            </label>
+            <label>
+              轮询间隔秒数
+              <input id="cd2PollInterval" type="number" min="0.5" step="0.5" value="5">
+            </label>
+            <label>
+              未观测静默秒数
+              <input id="cd2SettleSeconds" type="number" min="0" value="60">
+            </label>
+            <label>
+              CloudDrive2 最长等待分钟数
+              <input id="cd2MaxWaitMinutes" type="number" min="0" value="60">
+            </label>
+            <label>
+              gRPC 超时秒数
+              <input id="cd2Timeout" type="number" min="1" value="10">
+            </label>
+          </div>
+
+          <div class="grid two">
+            <label class="checkline">
+              <input id="cloudDryRun" type="checkbox" checked>
+              dry-run 仅生成复制/移动计划
+            </label>
+            <label class="checkline">
+              <input id="cloudMetadataOnly" type="checkbox" checked>
+              metadata-only 只复制元数据，不移动真实视频
+            </label>
+            <label class="checkline">
+              <input id="cloudOverwriteMetadata" type="checkbox">
+              覆盖已存在元数据
+            </label>
+            <label class="checkline">
+              <input id="cloudOverwriteVideos" type="checkbox">
+              覆盖已存在视频
+            </label>
+          </div>
+
+          <div class="actions">
+            <span class="muted-text">真实移动视频前请先完成 CloudDrive2 上传探测和 metadata-only 测试</span>
+            <button type="submit" id="cloudRunButton">执行网盘导入</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <aside class="run-panel">
@@ -253,6 +357,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260603-metadata-cancel"></script>
+  <script src="/static/app.js?v=20260603-cloud-library-ui"></script>
 </body>
 </html>

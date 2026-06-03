@@ -14,6 +14,7 @@ const DEFAULT_PATH_PAIRS = [
 ];
 const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
 const METADATA_FORM_STORAGE_KEY = "emby115_v2.webui.metadata.form.v1";
+const CLOUD_FORM_STORAGE_KEY = "emby115_v2.webui.cloud.form.v1";
 const SYMLINK_ACTIONS = new Set(["build_symlink_workspace", "scan_and_link"]);
 const DEFAULT_METADATA_LIBRARIES = [
   { enabled: true, media_type: "movies", library_path: "C:\\working-emby\\movies" },
@@ -23,6 +24,20 @@ const MEDIA_TYPE_LABELS = {
   movies: "电影",
   tvshows: "电视剧",
 };
+const DEFAULT_CLOUD_LIBRARIES = [
+  {
+    enabled: true,
+    media_type: "movies",
+    source: "C:\\working-emby\\movies",
+    target: "D:\\115open\\tmp\\organized\\movies",
+  },
+  {
+    enabled: true,
+    media_type: "tvshows",
+    source: "C:\\working-emby\\tvshows",
+    target: "D:\\115open\\tmp\\organized\\tvshows",
+  },
+];
 
 const state = {
   busy: false,
@@ -31,6 +46,8 @@ const state = {
   fullWorkflowCancelRequested: false,
   metadataWorkflowActive: false,
   metadataCancelRequested: false,
+  cloudWorkflowActive: false,
+  cloudCancelRequested: false,
   activeRunId: "",
 };
 
@@ -39,6 +56,8 @@ const outputLog = document.querySelector("#outputLog");
 const runButton = document.querySelector("#runButton");
 const fullRunButton = document.querySelector("#fullRunButton");
 const metadataRunButton = document.querySelector("#metadataRunButton");
+const cloudRunButton = document.querySelector("#cloudRunButton");
+const testCloudDrive2Button = document.querySelector("#testCloudDrive2Button");
 const reportLinks = document.querySelector("#reportLinks");
 
 function tokenHeaders() {
@@ -61,9 +80,9 @@ function appendLog(message) {
 
 function setBusy(busy) {
   state.busy = busy;
-  const actionLocked = busy || state.fullWorkflowActive || state.metadataWorkflowActive;
+  const actionLocked = busy || state.fullWorkflowActive || state.metadataWorkflowActive || state.cloudWorkflowActive;
   runButton.disabled = actionLocked;
-  runButton.textContent = busy && !state.fullWorkflowActive && !state.metadataWorkflowActive ? "执行中" : "执行";
+  runButton.textContent = busy && !state.fullWorkflowActive && !state.metadataWorkflowActive && !state.cloudWorkflowActive ? "执行中" : "执行";
   if (state.metadataWorkflowActive) {
     metadataRunButton.disabled = state.metadataCancelRequested;
     metadataRunButton.textContent = state.metadataCancelRequested ? "正在取消" : "取消执行";
@@ -71,12 +90,20 @@ function setBusy(busy) {
     metadataRunButton.disabled = actionLocked;
     metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
   }
+  if (state.cloudWorkflowActive) {
+    cloudRunButton.disabled = state.cloudCancelRequested;
+    cloudRunButton.textContent = state.cloudCancelRequested ? "正在取消" : "取消执行";
+  } else {
+    cloudRunButton.disabled = actionLocked;
+    cloudRunButton.textContent = busy ? "执行中" : "执行网盘导入";
+  }
+  testCloudDrive2Button.disabled = actionLocked;
   if (state.fullWorkflowActive) {
     fullRunButton.disabled = state.fullWorkflowCancelRequested;
     fullRunButton.textContent = state.fullWorkflowCancelRequested ? "正在取消" : "取消执行";
   } else {
-    fullRunButton.disabled = busy || state.metadataWorkflowActive;
-    fullRunButton.textContent = busy && !state.metadataWorkflowActive ? "执行中" : "执行完整流程";
+    fullRunButton.disabled = busy || state.metadataWorkflowActive || state.cloudWorkflowActive;
+    fullRunButton.textContent = busy && !state.metadataWorkflowActive && !state.cloudWorkflowActive ? "执行中" : "执行完整流程";
   }
 }
 
@@ -92,6 +119,14 @@ function requestMetadataCancel() {
   if (!state.metadataWorkflowActive || state.metadataCancelRequested) return;
   state.metadataCancelRequested = true;
   appendLog("已请求取消元数据刮削；当前后台任务将安全停止，后续媒体库不会再启动。");
+  setBusy(state.busy);
+  cancelActiveRun();
+}
+
+function requestCloudCancel() {
+  if (!state.cloudWorkflowActive || state.cloudCancelRequested) return;
+  state.cloudCancelRequested = true;
+  appendLog("已请求取消网盘导入；当前后台任务将安全停止。");
   setBusy(state.busy);
   cancelActiveRun();
 }
@@ -330,9 +365,133 @@ function applyMetadataConfig(config = {}) {
   document.querySelector("#metadataAutoRename").checked = output.auto_rename ?? true;
 }
 
+function readSavedCloudForm() {
+  try {
+    const raw = localStorage.getItem(CLOUD_FORM_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function collectCloudLibraries() {
+  return [...document.querySelectorAll(".cloud-library-row")].map((row) => ({
+    enabled: row.querySelector(".cloud-library-enabled").checked,
+    media_type: row.dataset.mediaType,
+    source: row.querySelector(".cloud-library-source").value.trim(),
+    target: row.querySelector(".cloud-library-target").value.trim(),
+  }));
+}
+
+function normalizeCloudLibraries(config = {}) {
+  const libraries = DEFAULT_CLOUD_LIBRARIES.map((library) => ({ ...library }));
+  const sourceRows = Array.isArray(config.cloud_libraries) ? config.cloud_libraries : config.path_pairs || [];
+  const seen = new Set();
+  for (const item of sourceRows) {
+    const mediaType = item?.media_type === "tvshows" ? "tvshows" : mediaTypeFromPairName(item?.name || item?.media_type);
+    if (seen.has(mediaType)) continue;
+    const library = libraries.find((entry) => entry.media_type === mediaType);
+    if (!library) continue;
+    seen.add(mediaType);
+    library.enabled = item.enabled ?? true;
+    library.source = typeof item.source === "string" ? item.source : library.source;
+    library.target = typeof item.target === "string" ? item.target : library.target;
+  }
+  return libraries;
+}
+
+function applyCloudConfig(config = {}) {
+  const output = config.cloud_library_output || {};
+  const cd2 = config.clouddrive2 || {};
+  for (const library of normalizeCloudLibraries(config)) {
+    const row = document.querySelector(`.cloud-library-row[data-media-type="${library.media_type}"]`);
+    if (!row) continue;
+    row.querySelector(".cloud-library-enabled").checked = library.enabled ?? true;
+    row.querySelector(".cloud-library-source").value = library.source || "";
+    row.querySelector(".cloud-library-target").value = library.target || "";
+  }
+  document.querySelector("#cloudWaitStrategy").value = output.upload_wait_strategy || "fixed";
+  document.querySelector("#cloudWaitMinutes").value = output.wait_minutes ?? 60;
+  document.querySelector("#cloudMetadataOnly").checked = !(output.move_videos_after_wait ?? false);
+  document.querySelector("#cloudOverwriteMetadata").checked = output.overwrite_metadata ?? false;
+  document.querySelector("#cloudOverwriteVideos").checked = output.overwrite_videos ?? false;
+  document.querySelector("#cloudDryRun").checked = config.dry_run ?? true;
+  document.querySelector("#cd2Endpoint").value = cd2.endpoint || "127.0.0.1:19798";
+  document.querySelector("#cd2ApiToken").value = cd2.api_token || "";
+  document.querySelector("#cd2PollInterval").value = cd2.poll_interval_seconds ?? 5;
+  document.querySelector("#cd2SettleSeconds").value = cd2.settle_seconds ?? 60;
+  document.querySelector("#cd2MaxWaitMinutes").value = cd2.max_wait_minutes ?? 60;
+  document.querySelector("#cd2Timeout").value = cd2.timeout ?? 10;
+}
+
+function cloudConfigFromForm() {
+  return {
+    cloud_form_version: 1,
+    dry_run: document.querySelector("#cloudDryRun").checked,
+    cloud_libraries: collectCloudLibraries(),
+    cloud_library_output: {
+      wait_minutes: Number(document.querySelector("#cloudWaitMinutes").value || 0),
+      move_videos_after_wait: !document.querySelector("#cloudMetadataOnly").checked,
+      overwrite_metadata: document.querySelector("#cloudOverwriteMetadata").checked,
+      overwrite_videos: document.querySelector("#cloudOverwriteVideos").checked,
+      upload_wait_strategy: document.querySelector("#cloudWaitStrategy").value,
+    },
+    clouddrive2: {
+      endpoint: document.querySelector("#cd2Endpoint").value.trim() || "127.0.0.1:19798",
+      api_token: document.querySelector("#cd2ApiToken").value,
+      timeout: Number(document.querySelector("#cd2Timeout").value || 10),
+      poll_interval_seconds: Number(document.querySelector("#cd2PollInterval").value || 5),
+      settle_seconds: Number(document.querySelector("#cd2SettleSeconds").value || 60),
+      max_wait_minutes: Number(document.querySelector("#cd2MaxWaitMinutes").value || 60),
+    },
+    report: {
+      output_dir: document.querySelector("#reportDir").value.trim() || "reports",
+    },
+    logging: {
+      log_dir: document.querySelector("#logDir").value.trim() || "logs",
+      log_level: "INFO",
+    },
+  };
+}
+
+function saveCloudFormConfig() {
+  if (state.restoring) return;
+  localStorage.setItem(CLOUD_FORM_STORAGE_KEY, JSON.stringify(cloudConfigFromForm()));
+}
+
+function selectedCloudLibraries() {
+  return collectCloudLibraries().filter((library) => library.enabled && library.source && library.target);
+}
+
+function buildCloudPayload(action = "build_cloud_scraped_library", libraries = null, dryRunOverride = null) {
+  const config = cloudConfigFromForm();
+  const selected = libraries || selectedCloudLibraries();
+  return {
+    action,
+    dry_run: dryRunOverride ?? config.dry_run,
+    path_pairs: selected.map((library) => ({
+      name: library.media_type,
+      source: library.source,
+      target: library.target,
+    })),
+    symlink: {
+      video_extensions: document
+        .querySelector("#extensions")
+        .value.split(";")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    },
+    cloud_library_output: config.cloud_library_output,
+    clouddrive2: config.clouddrive2,
+    report: config.report,
+    logging: config.logging,
+  };
+}
+
 function restoreFormConfig() {
   const saved = readSavedForm();
   const savedMetadata = readSavedMetadataForm();
+  const savedCloud = readSavedCloudForm();
   state.restoring = true;
   try {
     document.querySelector("#threadCount").value = saved?.thread_count || 4;
@@ -344,12 +503,14 @@ function restoreFormConfig() {
     document.querySelector("#dryRun").checked = saved?.dry_run ?? true;
     applyPathPairs(saved || {});
     applyMetadataConfig(savedMetadata || {});
+    applyCloudConfig(savedCloud || {});
     document.querySelector("#metadataDryRun").checked = savedMetadata?.dry_run ?? true;
   } finally {
     state.restoring = false;
   }
   saveFormConfig();
   saveMetadataFormConfig();
+  saveCloudFormConfig();
 }
 
 function collectPairs() {
@@ -684,6 +845,74 @@ async function runMetadataWorkflow(event) {
   }
 }
 
+async function runCloudLibraryWorkflow(event) {
+  event.preventDefault();
+  if (state.cloudWorkflowActive) {
+    requestCloudCancel();
+    return;
+  }
+  const libraries = selectedCloudLibraries();
+  if (!libraries.length) {
+    appendLog("请至少勾选一个本地 symlink 工作区和网盘目标目录都有效的媒体库。");
+    return;
+  }
+
+  state.cloudWorkflowActive = true;
+  state.cloudCancelRequested = false;
+  setBusy(false);
+  try {
+    const result = await executePayload(buildCloudPayload("build_cloud_scraped_library", libraries), {
+      clearReports: true,
+      reportLabel: "网盘已刮削媒体库",
+    });
+    if (state.cloudCancelRequested) {
+      appendLog("网盘导入已取消。");
+    } else if (result.ok) {
+      appendLog("网盘导入完成。");
+    } else {
+      appendLog("网盘导入未成功完成，请打开报告审核。");
+    }
+  } finally {
+    state.cloudWorkflowActive = false;
+    state.cloudCancelRequested = false;
+    setBusy(false);
+  }
+}
+
+async function runCloudDrive2Probe() {
+  if (state.cloudWorkflowActive) {
+    requestCloudCancel();
+    return;
+  }
+  const libraries = selectedCloudLibraries();
+  if (!libraries.length) {
+    appendLog("请至少勾选一个本地 symlink 工作区和网盘目标目录都有效的媒体库。");
+    return;
+  }
+
+  state.cloudWorkflowActive = true;
+  state.cloudCancelRequested = false;
+  setBusy(false);
+  try {
+    appendLog("开始 CloudDrive2 上传探测：将写入一个小探测文件并观察挂载上传任务。");
+    const result = await executePayload(buildCloudPayload("test_clouddrive2_upload_wait", [libraries[0]], false), {
+      clearReports: true,
+      reportLabel: "CloudDrive2 上传探测",
+    });
+    if (state.cloudCancelRequested) {
+      appendLog("CloudDrive2 上传探测已取消。");
+    } else if (result.ok) {
+      appendLog("CloudDrive2 上传探测成功：可以考虑使用 clouddrive2_or_fixed 等待策略。");
+    } else {
+      appendLog("CloudDrive2 上传探测未成功，请打开报告查看是否未观测到 Mount 上传任务。");
+    }
+  } finally {
+    state.cloudWorkflowActive = false;
+    state.cloudCancelRequested = false;
+    setBusy(false);
+  }
+}
+
 async function runFullWorkflow(event) {
   event.preventDefault();
   if (state.fullWorkflowActive) {
@@ -767,11 +996,13 @@ async function loadMetadataConfigFromServer() {
     state.restoring = true;
     try {
       applyMetadataConfig(data.config);
+      applyCloudConfig(data.config);
       document.querySelector("#metadataDryRun").checked = true;
     } finally {
       state.restoring = false;
     }
     saveMetadataFormConfig();
+    saveCloudFormConfig();
     appendLog(`已从本地配置加载: ${data.path}`);
   } catch (error) {
     appendLog(`加载本地配置失败: ${error.message}`);
@@ -786,11 +1017,12 @@ async function saveMetadataConfigToServer() {
         "Content-Type": "application/json",
         ...tokenHeaders(),
       },
-      body: JSON.stringify({ config: metadataConfigFromForm() }),
+      body: JSON.stringify({ config: { ...metadataConfigFromForm(), ...cloudConfigFromForm() } }),
     });
     const data = await parseJson(response);
     if (!response.ok) throw new Error(data.detail || response.statusText);
     saveMetadataFormConfig();
+    saveCloudFormConfig();
     appendLog(`已保存到本地配置: ${data.path}`);
   } catch (error) {
     appendLog(`保存本地配置失败: ${error.message}`);
@@ -801,6 +1033,8 @@ document.querySelector("#runForm").addEventListener("input", saveFormConfig);
 document.querySelector("#runForm").addEventListener("change", saveFormConfig);
 document.querySelector("#metadataForm").addEventListener("input", saveMetadataFormConfig);
 document.querySelector("#metadataForm").addEventListener("change", saveMetadataFormConfig);
+document.querySelector("#cloudLibraryForm").addEventListener("input", saveCloudFormConfig);
+document.querySelector("#cloudLibraryForm").addEventListener("change", saveCloudFormConfig);
 
 document.querySelector("#clearButton").addEventListener("click", () => {
   outputLog.textContent = "";
@@ -812,7 +1046,9 @@ document.querySelector("#clearButton").addEventListener("click", () => {
 
 document.querySelector("#runForm").addEventListener("submit", runWorkflow);
 document.querySelector("#metadataForm").addEventListener("submit", runMetadataWorkflow);
+document.querySelector("#cloudLibraryForm").addEventListener("submit", runCloudLibraryWorkflow);
 fullRunButton.addEventListener("click", runFullWorkflow);
+testCloudDrive2Button.addEventListener("click", runCloudDrive2Probe);
 document.querySelector("#testTmdbButton").addEventListener("click", () => testMetadataProvider("test_tmdb_config"));
 document.querySelector("#testLlmButton").addEventListener("click", () => testMetadataProvider("test_llm_config"));
 document.querySelector("#loadMetadataConfigButton").addEventListener("click", loadMetadataConfigFromServer);

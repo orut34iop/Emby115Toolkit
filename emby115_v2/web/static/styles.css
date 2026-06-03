@@ -204,6 +204,10 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
+.cloud-library-table {
+  border: 1px solid var(--line);
+}
+
 .path-head,
 .path-row {
   display: grid;
@@ -237,6 +241,26 @@ button:disabled {
 }
 
 .metadata-library-row + .metadata-library-row {
+  border-top: 1px solid var(--line);
+}
+
+.cloud-library-head,
+.cloud-library-row {
+  display: grid;
+  grid-template-columns: 92px 120px minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+}
+
+.cloud-library-head {
+  background: #f3f5f8;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cloud-library-row + .cloud-library-row {
   border-top: 1px solid var(--line);
 }
 
@@ -393,11 +417,19 @@ button:disabled {
     display: none;
   }
 
+  .cloud-library-head {
+    display: none;
+  }
+
   .path-row {
     grid-template-columns: 1fr;
   }
 
   .metadata-library-row {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-library-row {
     grid-template-columns: 1fr;
   }
 

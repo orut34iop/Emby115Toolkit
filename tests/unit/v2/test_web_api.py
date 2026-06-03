@@ -28,6 +28,11 @@ def test_webui_serves_index():
     assert "symlinkMoviesSource" in response.text
     assert "symlinkTvshowsTarget" in response.text
     assert "执行完整流程" in response.text
+    assert "构建网盘已刮削媒体库" in response.text
+    assert "cloudMoviesEnabled" in response.text
+    assert "cloudTvshowsEnabled" in response.text
+    assert "cloudWaitStrategy" in response.text
+    assert "testCloudDrive2Button" in response.text
     assert "需要管理员权限" not in response.text
 
 
@@ -78,6 +83,32 @@ def test_webui_metadata_uses_fixed_library_checklist():
     assert "元数据刮削队列已取消" in script
     assert "}元数据" in script
     assert "MEDIA_TYPE_LABELS" in script
+
+
+def test_webui_cloud_library_card_uses_fixed_checklist_and_probe():
+    client = TestClient(create_app())
+
+    html = client.get("/").text
+    script = client.get("/static/app.js").text
+
+    assert "构建网盘已刮削媒体库" in html
+    assert "cloudMoviesEnabled" in html
+    assert "cloudTvshowsEnabled" in html
+    assert "cloudMoviesSource" in html
+    assert "cloudTvshowsTarget" in html
+    assert "cloudWaitStrategy" in html
+    assert "clouddrive2_or_fixed" in html
+    assert "cloudMetadataOnly" in html
+    assert "testCloudDrive2Button" in html
+    assert "emby115_v2.webui.cloud.form.v1" in script
+    assert "collectCloudLibraries()" in script
+    assert "normalizeCloudLibraries" in script
+    assert "build_cloud_scraped_library" in script
+    assert "test_clouddrive2_upload_wait" in script
+    assert "cloud_library_output" in script
+    assert "clouddrive2" in script
+    assert "requestCloudCancel" in script
+    assert "CloudDrive2 上传探测" in script
 
 
 def test_webui_uses_background_runs_and_sse():

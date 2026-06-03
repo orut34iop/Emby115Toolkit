@@ -29,6 +29,9 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
   - Metadata scraping media libraries are shown as a fixed WebUI checklist for `movies` and `tvshows`; checked rows run sequentially as separate `scrape_metadata` requests and generate separate reports. While the standalone metadata queue is active, its button becomes `取消执行`; cancellation must request cancellation for the currently running backend run and stop launching later checked libraries.
+  - The cloud scraped library card is shown as a fixed WebUI checklist for `movies` and `tvshows`. Each row maps a local symlink workspace to a new cloud-side target directory. The card defaults to dry-run plus metadata-only so first clicks do not move real videos. While this task or its CloudDrive2 probe is active, the button becomes `取消执行` and cancellation must request cancellation for the active backend run.
+  - The cloud scraped library card exposes CloudDrive2 upload wait settings and a `测试 CloudDrive2 上传探测` button. The probe submits `test_clouddrive2_upload_wait` with the first checked row and writes a small probe file in non-dry-run mode.
+  - Saving WebUI configuration to the V2 JSON config includes metadata provider settings and cloud library/CloudDrive2 settings. Browser localStorage remains the primary page-state restore mechanism.
   - Non-dry-run symlink creation on Windows must check whether the current process can actually create symlinks. If it cannot, WebUI must tell the user to enable Windows Developer Mode; WebUI must not start a UAC Administrator restart flow.
   - Non-localhost listening requires `--access-token`.
 
