@@ -111,6 +111,7 @@ Current V2 action names:
   - `cloud_library_output.upload_wait_strategy=clouddrive2` uses CloudDrive2 gRPC upload task polling instead of fixed waiting. It monitors mounted-filesystem upload tasks (`UploadFileInfo.operatorType=Mount`) under the target path and only continues when matching tasks complete; if it cannot confirm completion, the workflow fails before moving videos.
   - `cloud_library_output.upload_wait_strategy=clouddrive2_or_fixed` is the recommended real-world transition mode: it first tries CloudDrive2 upload task polling and falls back to the fixed minute wait when tasks are not observable or the API is unavailable.
   - Stage B walks the original workspace symlinks, resolves each real video target, and moves that real D-drive video into the same relative path under the new cloud library target.
+  - Cloud-side target directory creation must tolerate CloudDrive2/WinFSP transient unsupported-operation errors. Retry directory creation and record unrecoverable `create_directory` failures in the report instead of letting the background run crash without a report.
   - Dry-run must not create directories, copy files, wait, or move videos; it only reports the planned copy/move operations.
   - Existing metadata and video targets are skipped by default. `overwrite_metadata` and `overwrite_videos` are separate explicit options.
   - This is a high-risk final migration/archive step because moving real videos makes the original symlink workspace links stale.

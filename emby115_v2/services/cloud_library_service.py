@@ -14,6 +14,10 @@ from emby115_v2.reports.writer import OperationRecord, StepResult
 from emby115_v2.services.clouddrive2 import CloudDrive2UploadWaiter
 
 
+VIRTUAL_DRIVE_MKDIR_RETRIES = 8
+VIRTUAL_DRIVE_MKDIR_RETRY_SECONDS = 0.75
+
+
 @dataclass(frozen=True)
 class VideoMovePlan:
     pair_name: str
@@ -120,7 +124,20 @@ class CloudScrapedLibraryService:
             return move_plans, records
 
         if not context.dry_run:
-            pair.target.mkdir(parents=True, exist_ok=True)
+            create_error = self._ensure_directory(pair.target, logger)
+            if create_error:
+                summary["metadata_failed"] += 1
+                records.append(
+                    OperationRecord(
+                        action="create_directory",
+                        status="failed",
+                        target_path=str(pair.target),
+                        media_type=self._media_type(pair),
+                        reason=create_error,
+                        extra={"path_pair": pair.name},
+                    )
+                )
+                return move_plans, records
 
         media_type = self._media_type(pair)
         for root, dirs, files in os.walk(pair.source, followlinks=False):
@@ -148,7 +165,22 @@ class CloudScrapedLibraryService:
                     )
 
             if not context.dry_run:
-                target_dir.mkdir(parents=True, exist_ok=True)
+                create_error = self._ensure_directory(target_dir, logger)
+                if create_error:
+                    summary["metadata_failed"] += 1
+                    records.append(
+                        OperationRecord(
+                            action="create_directory",
+                            status="failed",
+                            source_path=str(root_path),
+                            target_path=str(target_dir),
+                            media_type=media_type,
+                            reason=create_error,
+                            extra={"path_pair": pair.name},
+                        )
+                    )
+                    dirs.clear()
+                    continue
 
             for filename in files:
                 if cancellation.is_cancelled(context.run_id):
@@ -226,7 +258,9 @@ class CloudScrapedLibraryService:
                     reason="目标元数据已存在，默认跳过",
                     extra={"path_pair": pair_name},
                 )
-            target_file.parent.mkdir(parents=True, exist_ok=True)
+            create_error = self._ensure_directory(target_file.parent)
+            if create_error:
+                raise OSError(create_error)
             shutil.copy2(source_file, target_file)
             return OperationRecord(
                 action="copy_metadata",
@@ -374,7 +408,9 @@ class CloudScrapedLibraryService:
                 return self._record_video_plan(plan, "failed", "symlink 指向的真实视频不存在")
             if plan.target_video_path.exists() and not context.cloud_library_output.overwrite_videos:
                 return self._record_video_plan(plan, "skipped", "目标视频已存在，默认跳过")
-            plan.target_video_path.parent.mkdir(parents=True, exist_ok=True)
+            create_error = self._ensure_directory(plan.target_video_path.parent)
+            if create_error:
+                return self._record_video_plan(plan, "failed", create_error)
             if plan.target_video_path.exists() and context.cloud_library_output.overwrite_videos:
                 plan.target_video_path.unlink()
             shutil.move(str(plan.real_video_path), str(plan.target_video_path))
@@ -417,3 +453,55 @@ class CloudScrapedLibraryService:
 
     def _media_type(self, pair: PathPair) -> str:
         return "tvshows" if pair.name.lower() in {"tv", "tvshow", "tvshows", "series"} else "movies"
+
+    def _ensure_directory(self, path: Path, logger: logging.Logger | None = None) -> str:
+        try:
+            parts = path.parts
+            if not parts:
+                return ""
+            current = Path(parts[0])
+            for part in parts[1:]:
+                current = current / part
+                error = self._create_single_directory_with_retry(current, logger)
+                if error:
+                    return error
+            return ""
+        except Exception as exc:
+            return f"创建目标目录失败: {exc}"
+
+    def _create_single_directory_with_retry(self, path: Path, logger: logging.Logger | None = None) -> str:
+        for attempt in range(VIRTUAL_DRIVE_MKDIR_RETRIES):
+            try:
+                os.mkdir(path)
+                return ""
+            except FileExistsError:
+                return ""
+            except OSError as exc:
+                if self._directory_name_visible(path):
+                    return ""
+                if attempt + 1 < VIRTUAL_DRIVE_MKDIR_RETRIES and self._should_retry_directory_error(exc):
+                    if logger:
+                        logger.warning(
+                            "创建目录暂时失败，准备重试 attempt=%s path=%s error=%s",
+                            attempt + 1,
+                            path,
+                            exc,
+                        )
+                    time.sleep(VIRTUAL_DRIVE_MKDIR_RETRY_SECONDS)
+                    continue
+                return f"创建目标目录失败: {exc}"
+        return f"创建目标目录失败: 超过重试次数 path={path}"
+
+    def _directory_name_visible(self, path: Path) -> bool:
+        try:
+            parent = path.parent
+            name = path.name.casefold()
+            return any(child.casefold() == name for child in os.listdir(parent))
+        except OSError:
+            return False
+
+    def _should_retry_directory_error(self, exc: OSError) -> bool:
+        winerror = getattr(exc, "winerror", None)
+        if winerror in {50, 53, 64, 87, 123, 183}:
+            return True
+        return isinstance(exc, (FileNotFoundError, PermissionError))

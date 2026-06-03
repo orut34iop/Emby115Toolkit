@@ -3,6 +3,7 @@ import os
 import pytest
 
 from emby115_v2.context import AppContext
+from emby115_v2.context import PathPair
 from emby115_v2.services.cloud_library_service import CloudScrapedLibraryService
 from emby115_v2.services.clouddrive2 import CloudDrive2WaitResult
 
@@ -177,3 +178,60 @@ def test_cloud_library_clouddrive2_strict_blocks_move_when_not_observed(
     assert result.status == "failed"
     assert real_video.exists()
     assert not (target / "Movie (2026)" / "movie.mkv").exists()
+
+
+def test_cloud_library_directory_creation_retries_virtual_drive_winerror_50(mock_logger, monkeypatch):
+    service = CloudScrapedLibraryService()
+    attempts = {}
+
+    def fake_mkdir(path):
+        key = str(path)
+        attempts[key] = attempts.get(key, 0) + 1
+        if key.endswith("Season 01") and attempts[key] == 1:
+            exc = OSError("The request is not supported")
+            exc.winerror = 50
+            raise exc
+
+    monkeypatch.setattr("emby115_v2.services.cloud_library_service.os.mkdir", fake_mkdir)
+    monkeypatch.setattr("emby115_v2.services.cloud_library_service.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(service, "_directory_name_visible", lambda _path: False)
+
+    error = service._ensure_directory(PathPair.from_dict({
+        "name": "tvshows",
+        "source": "C:\\working-emby\\tvshows",
+        "target": "D:\\115open\\tmp\\organized\\tvshows\\证词 (2026)\\Season 01",
+    }).target, mock_logger)
+
+    assert error == ""
+    assert attempts["D:\\115open\\tmp\\organized\\tvshows\\证词 (2026)\\Season 01"] == 2
+
+
+def test_cloud_library_records_directory_creation_failure_without_crashing(tmp_path, mock_logger, monkeypatch):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    show_dir = workspace / "证词 (2026)" / "Season 01"
+    show_dir.mkdir(parents=True)
+    (show_dir / "episode.nfo").write_text("nfo", encoding="utf-8")
+
+    def fake_ensure_directory(path, logger=None):
+        if str(path).endswith("Season 01"):
+            return "创建目标目录失败: [WinError 50] The request is not supported"
+        path.mkdir(parents=True, exist_ok=True)
+        return ""
+
+    service = CloudScrapedLibraryService()
+    monkeypatch.setattr(service, "_ensure_directory", fake_ensure_directory)
+
+    result = service.run(
+        AppContext.from_dict(
+            {
+                "action": "build_cloud_scraped_library",
+                "path_pairs": [{"name": "tvshows", "source": str(workspace), "target": str(target)}],
+                "cloud_library_output": {"wait_minutes": 0},
+            }
+        ),
+        mock_logger,
+    )
+
+    assert result.status == "failed"
+    assert any(record.action == "create_directory" and record.status == "failed" for record in result.records)
