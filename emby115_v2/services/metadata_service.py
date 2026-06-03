@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from emby115_v2 import cancellation
 from emby115_v2.context import AppContext
 from emby115_v2.reports.writer import OperationRecord, StepResult
 
@@ -548,18 +549,24 @@ class MetadataScraperService:
         video_paths = list(iter_video_files(library_path, extensions))
         logger.info("开始电影元数据刮削 library=%s videos=%s", library_path, len(video_paths))
         for index, video_path in enumerate(video_paths, start=1):
+            if cancellation.is_cancelled(context.run_id):
+                logger.info("电影元数据刮削收到取消请求，停止启动后续电影处理")
+                break
             logger.info("正在刮削电影元数据 [%s/%s] %s", index, len(video_paths), video_path)
             records.append(self._process_movie(context, video_path, logger))
             logger.info("完成电影元数据 [%s/%s] %s status=%s", index, len(video_paths), video_path.name, records[-1].status)
-        rename_summary = auto_rename_from_movie_records(context, records, logger)
+        canceled = cancellation.is_cancelled(context.run_id)
+        rename_summary = {"skipped": "canceled"} if canceled else auto_rename_from_movie_records(context, records, logger)
 
         matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
         manual_review = sum(1 for record in records if record.status == "manual_review")
         failed = sum(1 for record in records if record.status == "failed") + rename_summary.get("failed", 0)
         logger.info("电影元数据刮削完成 library=%s matched=%s manual_review=%s", library_path, matched, manual_review)
+        if canceled:
+            records.append(OperationRecord(action="cancel", status="canceled", media_type="movies", reason="电影元数据刮削收到取消请求"))
         return StepResult(
             step_id="scrape_metadata",
-            status="success" if failed == 0 else "partial",
+            status="canceled" if canceled else "success" if failed == 0 else "partial",
             summary={
                 "media_type": "movies",
                 "library_path": str(library_path),
@@ -572,6 +579,7 @@ class MetadataScraperService:
                 "tmdb_fallback_language": context.tmdb.fallback_language,
                 "llm_enabled": context.llm.enabled,
                 "auto_rename": rename_summary,
+                "canceled": canceled,
             },
             records=records,
         )
@@ -581,6 +589,9 @@ class MetadataScraperService:
         show_dirs = list(direct_child_dirs(library_path))
         logger.info("开始电视剧元数据刮削 library=%s shows=%s", library_path, len(show_dirs))
         for index, show_dir in enumerate(show_dirs, start=1):
+            if cancellation.is_cancelled(context.run_id):
+                logger.info("电视剧元数据刮削收到取消请求，停止启动后续电视剧处理")
+                break
             logger.info("正在刮削电视剧元数据 [%s/%s] %s", index, len(show_dirs), show_dir)
             show_records = self._process_tvshow(context, show_dir, logger)
             records.extend(show_records)
@@ -596,14 +607,17 @@ class MetadataScraperService:
                 show_manual,
                 show_failed,
             )
-        rename_summary = auto_rename_tvshow_folders(context, library_path, records, logger)
+        canceled = cancellation.is_cancelled(context.run_id)
+        rename_summary = {"skipped": "canceled"} if canceled else auto_rename_tvshow_folders(context, library_path, records, logger)
         matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
         manual_review = sum(1 for record in records if record.status == "manual_review")
         failed = sum(1 for record in records if record.status == "failed") + rename_summary.get("failed", 0)
         logger.info("电视剧元数据刮削完成 library=%s matched=%s manual_review=%s", library_path, matched, manual_review)
+        if canceled:
+            records.append(OperationRecord(action="cancel", status="canceled", media_type="tvshows", reason="电视剧元数据刮削收到取消请求"))
         return StepResult(
             step_id="scrape_metadata",
-            status="success" if failed == 0 else "partial",
+            status="canceled" if canceled else "success" if failed == 0 else "partial",
             summary={
                 "media_type": "tvshows",
                 "library_path": str(library_path),
@@ -616,6 +630,7 @@ class MetadataScraperService:
                 "tmdb_fallback_language": context.tmdb.fallback_language,
                 "llm_enabled": context.llm.enabled,
                 "auto_rename": rename_summary,
+                "canceled": canceled,
             },
             records=records,
         )
@@ -623,6 +638,17 @@ class MetadataScraperService:
     def _process_tvshow(self, context: AppContext, show_dir: Path, logger: logging.Logger) -> list[OperationRecord]:
         query = infer_tvshow_query(show_dir)
         tvshow_nfo = show_dir / "tvshow.nfo"
+        if cancellation.is_cancelled(context.run_id):
+            return [
+                OperationRecord(
+                    action="cancel",
+                    status="canceled",
+                    source_path=str(show_dir),
+                    target_path=str(tvshow_nfo),
+                    media_type="tvshows",
+                    reason="处理电视剧前收到取消请求",
+                )
+            ]
         if not context.tmdb.api_key and self.tmdb_client is None:
             return [
                 OperationRecord(
@@ -648,6 +674,8 @@ class MetadataScraperService:
             if show_metadata is None:
                 llm_resolution = infer_tvshow_queries_with_llm(context, self.llm_client, show_dir, query, logger)
                 for llm_query in llm_resolution.get("queries", []):
+                    if cancellation.is_cancelled(context.run_id):
+                        break
                     show_metadata, candidates = fetch_tvshow_metadata(
                         client,
                         llm_query,
@@ -700,6 +728,19 @@ class MetadataScraperService:
                 len(video_paths),
             )
             for index, video_path in enumerate(video_paths, start=1):
+                if cancellation.is_cancelled(context.run_id):
+                    records.append(
+                        OperationRecord(
+                            action="cancel",
+                            status="canceled",
+                            source_path=str(show_dir),
+                            media_type="tvshows",
+                            title=show_metadata.title,
+                            year=show_metadata.year,
+                            reason="单集元数据刮削收到取消请求",
+                        )
+                    )
+                    break
                 if index == 1 or index == len(video_paths) or index % 10 == 0:
                     logger.info("正在刮削单集元数据 show=%s [%s/%s] %s", show_dir.name, index, len(video_paths), video_path.name)
                 records.append(self._process_episode(context, client, video_path, show_metadata, logger))
@@ -888,6 +929,17 @@ class MetadataScraperService:
         nfo_path = video_path.with_suffix(".nfo")
         poster_path = video_path.with_name(f"{video_path.stem}-poster.jpg")
         fanart_path = video_path.with_name(f"{video_path.stem}-fanart.jpg")
+        if cancellation.is_cancelled(context.run_id):
+            return OperationRecord(
+                action="cancel",
+                status="canceled",
+                source_path=str(video_path),
+                target_path=str(nfo_path),
+                media_type="movies",
+                title=query.title,
+                year=query.year,
+                reason="处理电影前收到取消请求",
+            )
         if not context.tmdb.api_key and self.tmdb_client is None:
             return OperationRecord(
                 action="scrape_metadata",
@@ -906,6 +958,8 @@ class MetadataScraperService:
             if metadata is None:
                 llm_resolution = infer_movie_queries_with_llm(context, self.llm_client, video_path, query, logger)
                 for llm_query in llm_resolution.get("queries", []):
+                    if cancellation.is_cancelled(context.run_id):
+                        break
                     metadata, candidates = fetch_movie_metadata(
                         client,
                         llm_query,
@@ -916,6 +970,18 @@ class MetadataScraperService:
                     if metadata is not None:
                         query = llm_query
                         break
+
+            if cancellation.is_cancelled(context.run_id):
+                return OperationRecord(
+                    action="cancel",
+                    status="canceled",
+                    source_path=str(video_path),
+                    target_path=str(nfo_path),
+                    media_type="movies",
+                    title=query.title,
+                    year=query.year,
+                    reason="电影元数据匹配后收到取消请求",
+                )
 
             if metadata is None:
                 return OperationRecord(

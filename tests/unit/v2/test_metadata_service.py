@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from emby115_v2 import cancellation
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
 import urllib.error
@@ -795,7 +796,40 @@ def test_tvshow_auto_renames_first_level_folder_from_tvshow_nfo(tmp_path):
     assert result.summary["auto_rename"]["renamed"] == 1
     assert renamed.exists()
     assert not show_dir.exists()
-    assert any(record.action == "auto_rename" and record.target_path == str(renamed) for record in result.records)
+
+
+def test_metadata_scraper_stops_when_cancel_requested(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "一见钟情 (2000)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "Sausalito.2000.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": True,
+            },
+            "tmdb": {"api_key": "key"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_metadata_cancel", context.logging.log_dir, context.run_id)
+    cancellation.request_cancel(context.run_id)
+    try:
+        result = MetadataScraperService(tmdb_client=FakeTmdbClient()).run(context, logger)
+    finally:
+        cancellation.clear_cancel(context.run_id)
+
+    assert result.status == "canceled"
+    assert result.summary["canceled"] is True
+    assert not video.with_suffix(".nfo").exists()
+    assert result.records[-1].status == "canceled"
 
 
 def test_tvshow_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):

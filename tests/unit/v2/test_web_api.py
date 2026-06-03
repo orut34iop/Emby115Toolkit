@@ -2,7 +2,7 @@ import time
 
 from fastapi.testclient import TestClient
 
-from emby115_v2 import windows_admin
+from emby115_v2 import cancellation, windows_admin
 from emby115_v2.web.api import create_app
 
 
@@ -91,6 +91,8 @@ def test_webui_uses_background_runs_and_sse():
     assert "fullWorkflowCancelRequested" in script
     assert "requestFullWorkflowCancel" in script
     assert "取消执行" in script
+    assert "/cancel" in script
+    assert "canceled" in script
     assert "result-status" in script
     assert "部分成功" in script
     assert "updateLastReportStatus" in script
@@ -292,6 +294,22 @@ def test_background_run_lock_rejects_concurrent_run():
         app.state.run_lock.release()
 
     assert response.status_code == 409
+
+
+def test_cancel_background_run_sets_cancel_flag():
+    app = create_app()
+    client = TestClient(app)
+    run_id = "cancel-test-run"
+    app.state.runs[run_id] = {"run_id": run_id, "status": "running"}
+    cancellation.clear_cancel(run_id)
+
+    response = client.post(f"/v1/runs/{run_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["cancel_requested"] is True
+    assert cancellation.is_cancelled(run_id) is True
+    assert app.state.runs[run_id]["cancel_requested"] is True
+    cancellation.clear_cancel(run_id)
 
 
 def test_symlink_capability_reports_developer_mode_requirement(monkeypatch):

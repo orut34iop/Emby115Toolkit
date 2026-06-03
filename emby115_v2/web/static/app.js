@@ -29,6 +29,7 @@ const state = {
   restoring: false,
   fullWorkflowActive: false,
   fullWorkflowCancelRequested: false,
+  activeRunId: "",
 };
 
 const pathPairs = document.querySelector("#pathPairs");
@@ -77,6 +78,26 @@ function requestFullWorkflowCancel() {
   state.fullWorkflowCancelRequested = true;
   appendLog("已请求取消完整流程；当前步骤将安全结束，后续步骤不会再启动。");
   setBusy(state.busy);
+  cancelActiveRun();
+}
+
+async function cancelActiveRun() {
+  if (!state.activeRunId) return;
+  try {
+    const response = await fetch(`/v1/runs/${state.activeRunId}/cancel`, {
+      method: "POST",
+      headers: tokenHeaders(),
+    });
+    const data = await parseJson(response);
+    if (!response.ok) {
+      throw new Error(data.detail || response.statusText);
+    }
+    if (data.cancel_requested) {
+      appendLog(`已通知后台任务取消 run_id=${state.activeRunId}`);
+    }
+  } catch (error) {
+    appendLog(`取消后台任务失败: ${error.message}`);
+  }
 }
 
 async function parseJson(response) {
@@ -437,13 +458,20 @@ async function executePayload(payload, options = {}) {
     document.querySelector("#runId").textContent = data.run_id;
     document.querySelector("#actionName").textContent = data.action;
     document.querySelector("#runMode").textContent = data.dry_run ? "dry-run" : "run";
+    state.activeRunId = data.run_id;
+    if (state.fullWorkflowCancelRequested) {
+      await cancelActiveRun();
+    }
     const result = await streamRunEvents(data, { clearReports, reportLabel });
     appendLog(`执行结束${labelText} run_id=${data.run_id} status=${result.status}`);
-    return { ok: result.status !== "failed", data: { ...data, ...result } };
+    return { ok: !["failed", "canceled"].includes(result.status), data: { ...data, ...result } };
   } catch (error) {
     appendLog(`执行失败${labelText}: ${error.message}`);
     return { ok: false, error: error.message };
   } finally {
+    if (state.activeRunId) {
+      state.activeRunId = "";
+    }
     setBusy(false);
   }
 }
@@ -452,6 +480,7 @@ function statusDisplay(status) {
   if (status === "success") return { className: "success", text: "成功" };
   if (status === "partial") return { className: "partial", text: "部分成功" };
   if (status === "failed") return { className: "failed", text: "失败" };
+  if (status === "canceled") return { className: "partial", text: "已取消" };
   return { className: "running", text: "执行中" };
 }
 
@@ -515,7 +544,7 @@ function streamRunEvents(run, options = {}) {
         appendLog(`后台任务错误: ${data.error}`);
         return;
       }
-      if (!reportRendered && finalStatus !== "success" && finalStatus !== "partial" && finalStatus !== "failed") {
+      if (!reportRendered && !["success", "partial", "failed", "canceled"].includes(finalStatus)) {
         source.close();
         reject(new Error("实时日志连接中断"));
       }
@@ -550,7 +579,7 @@ async function pollRunStatus(run, options = {}) {
     });
     const data = await parseJson(response);
     if (!response.ok) throw new Error(data.detail || response.statusText);
-    if (data.status === "success" || data.status === "partial" || data.status === "failed") {
+    if (data.status === "success" || data.status === "partial" || data.status === "failed" || data.status === "canceled") {
       if (data.reports?.html_url) {
         appendReportLinks(data.reports, options.reportLabel, options.clearReports, data.status);
       }
@@ -610,6 +639,10 @@ async function runMetadataWorkflow(event) {
       successCount += 1;
     } else {
       failedCount += 1;
+    }
+    if (state.fullWorkflowCancelRequested) {
+      appendLog("完整流程已取消：当前后台任务已停止，后续媒体库任务不会启动。");
+      break;
     }
   }
   appendLog(`元数据刮削队列完成：成功 ${successCount}，失败 ${failedCount}`);

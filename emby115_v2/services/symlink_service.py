@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from emby115_v2 import cancellation
 from emby115_v2.context import AppContext, PathPair
 from emby115_v2.reports.writer import OperationRecord, StepResult
 
@@ -60,6 +61,8 @@ class ScanAndLinkService:
 
         plans: list[LinkPlan] = []
         for pair in context.path_pairs:
+            if cancellation.is_cancelled(context.run_id):
+                return self._canceled_result(summary, records, "扫描源目录前收到取消请求")
             logger.info("扫描源目录: %s -> %s", pair.source, pair.target)
             pair_plans, pair_records = self._build_plans(pair, context)
             plans.extend(pair_plans)
@@ -84,13 +87,19 @@ class ScanAndLinkService:
         summary["manual_review"] = len([plan for plan in plans if plan.confidence == "low"])
         if context.dry_run:
             for plan in plans:
+                if cancellation.is_cancelled(context.run_id):
+                    return self._canceled_result(summary, records, "dry-run 生成计划时收到取消请求")
                 status = "manual_review" if plan.confidence == "low" else "planned"
                 reason = plan.reason or "dry-run 仅生成计划"
                 records.append(self._record_plan(plan, status=status, reason=reason))
             return StepResult(self.step_id, "success", summary, records)
 
         with ThreadPoolExecutor(max_workers=context.symlink.thread_count) as executor:
-            futures = [executor.submit(self._create_link, plan) for plan in plans]
+            futures = []
+            for plan in plans:
+                if cancellation.is_cancelled(context.run_id):
+                    break
+                futures.append(executor.submit(self._create_link, plan))
             for future in as_completed(futures):
                 record = future.result()
                 records.append(record)
@@ -102,9 +111,16 @@ class ScanAndLinkService:
                     summary["failed"] += 1
                 elif record.status == "manual_review":
                     summary["manual_review"] += 1
+                if cancellation.is_cancelled(context.run_id):
+                    return self._canceled_result(summary, records, "创建 symlink 时收到取消请求")
 
-        status = "failed" if summary["failed"] else "success"
+        status = "canceled" if cancellation.is_cancelled(context.run_id) else "failed" if summary["failed"] else "success"
         return StepResult(self.step_id, status, summary, records)
+
+    def _canceled_result(self, summary: dict[str, int | bool], records: list[OperationRecord], reason: str) -> StepResult:
+        summary["canceled"] = True
+        records.append(OperationRecord(action="cancel", status="canceled", reason=reason))
+        return StepResult(self.step_id, "canceled", summary, records)
 
     def _build_plans(
         self,
@@ -131,8 +147,12 @@ class ScanAndLinkService:
             pair.target.mkdir(parents=True, exist_ok=True)
         extensions = context.symlink.video_extensions
         for root, _, files in os.walk(pair.source):
+            if cancellation.is_cancelled(context.run_id):
+                break
             root_path = Path(root)
             for filename in files:
+                if cancellation.is_cancelled(context.run_id):
+                    break
                 source_path = root_path / filename
                 if source_path.suffix.lower() not in extensions:
                     continue

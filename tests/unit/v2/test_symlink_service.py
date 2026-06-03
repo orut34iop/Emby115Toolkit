@@ -1,6 +1,7 @@
 import os
 from unittest.mock import patch
 
+from emby115_v2 import cancellation
 from emby115_v2.context import AppContext
 from emby115_v2.services.symlink_service import ScanAndLinkService
 
@@ -32,6 +33,19 @@ def test_dry_run_plans_without_creating_links(tmp_path, mock_logger):
     assert result.records[-1].status == "planned"
     assert not (tmp_path / "target").exists()
     assert not (tmp_path / "target" / "Movie" / "movie.mkv").exists()
+
+
+def test_symlink_workspace_stops_when_cancel_requested(tmp_path, mock_logger):
+    context = _context(tmp_path, dry_run=True)
+    cancellation.request_cancel(context.run_id)
+    try:
+        result = ScanAndLinkService().run(context, mock_logger)
+    finally:
+        cancellation.clear_cancel(context.run_id)
+
+    assert result.status == "canceled"
+    assert result.summary["canceled"] is True
+    assert result.records[-1].status == "canceled"
 
 
 def test_run_creates_symlink_for_video_files(tmp_path, mock_logger):

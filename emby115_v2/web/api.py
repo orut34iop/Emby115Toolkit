@@ -8,7 +8,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from emby115_v2 import windows_admin
+from emby115_v2 import cancellation, windows_admin
 from emby115_v2.app import run_context
 from emby115_v2.config_store import default_config_path, load_metadata_config, save_metadata_config
 from emby115_v2.context import AppContext
@@ -121,7 +121,7 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
         if not report.steps:
             return "success"
         status = report.steps[-1].status
-        return status if status in {"success", "partial", "failed"} else "success"
+        return status if status in {"success", "partial", "failed", "canceled"} else "success"
 
     def _run_state(run_id: str) -> dict[str, Any]:
         with app.state.runs_lock:
@@ -231,7 +231,9 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
             log_path=log_path,
             reports={},
             error="",
+            cancel_requested=False,
         )
+        cancellation.clear_cancel(context.run_id)
         thread = threading.Thread(target=_background_run, args=(context,), daemon=True)
         thread.start()
         return {
@@ -246,6 +248,18 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
     @app.get("/v1/runs/{run_id}", dependencies=[Depends(require_token)])
     def get_run(run_id: str) -> dict[str, Any]:
         return _public_run_state(run_id)
+
+    @app.post("/v1/runs/{run_id}/cancel", dependencies=[Depends(require_token)])
+    def cancel_run(run_id: str) -> dict[str, Any]:
+        state = _run_state(run_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="运行记录不存在或服务已重启")
+        status = state.get("status", "queued")
+        if status in {"success", "partial", "failed", "canceled"}:
+            return {"run_id": run_id, "status": status, "cancel_requested": False}
+        cancellation.request_cancel(run_id)
+        _update_run_state(run_id, cancel_requested=True)
+        return {"run_id": run_id, "status": status, "cancel_requested": True}
 
     @app.get("/v1/runs/{run_id}/events", dependencies=[Depends(require_token)])
     def run_events(run_id: str):
@@ -277,7 +291,7 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
                             yield _sse("log", {"line": line.rstrip("\n")})
                         offset = handle.tell()
 
-                if status in {"success", "partial", "failed"}:
+                if status in {"success", "partial", "failed", "canceled"}:
                     if state.get("reports") and not sent_report:
                         yield _sse("report", {"reports": state["reports"]})
                         sent_report = True
