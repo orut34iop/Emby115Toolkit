@@ -142,6 +142,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "cloudLibrariesFromPathPairs" in script
     assert "完整流程开始网盘导入" in script
     assert "网盘已刮削媒体库" in script
+    assert "软链接工作区步骤未成功完成，完整流程已停止" in script
     assert "confirmCloudMoveIfNeeded" in script
     assert "window.confirm" in script
     assert "当前 C 盘 symlink 工作区中的链接变成过期链接" in script

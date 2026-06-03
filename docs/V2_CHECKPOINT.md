@@ -48,13 +48,14 @@ python main.py --action build_cloud_scraped_library --config emby115_v2.config.j
 
 CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs. While this standalone metadata queue is active, the metadata button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later checked libraries.
 
-WebUI also provides a one-click full flow. This is front-end orchestration only, not a new backend workflow action: it runs one `build_symlink_workspace` request first, then derives metadata libraries from the checked symlink target directories and submits one `scrape_metadata` request per media type. While the full flow is active, the same button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later steps. CLI does not yet expose a one-click full-flow action.
+WebUI also provides a one-click full flow. This is front-end orchestration only, not a new backend workflow action: it runs one `build_symlink_workspace` request first, then derives metadata libraries from the checked symlink target directories and submits one `scrape_metadata` request per media type, then submits `build_cloud_scraped_library` with the symlink target directories as cloud-import sources. While the full flow is active, the same button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later steps. CLI does not yet expose a one-click full-flow action.
 
 `build_symlink_workspace` maps to the confirmed workflow step "构建本地软链接工作区":
 
 - scan mounted CloudDrive2 source folders;
 - WebUI presents a fixed checked list for movies and TV shows; checked rows with non-empty source/target paths are submitted together as one `build_symlink_workspace` request;
 - CLI and the core Context Object continue to accept a `path_pairs` array, including multiple pairs when supplied outside the WebUI;
+- each local symlink workspace target must be missing or an existing empty directory before execution. If it already contains files or folders, the action fails and reports `validate_target_workspace` instead of deleting, merging, or incrementally adding links;
 - filter video files;
 - build standardized local library paths instead of blindly mirroring the source tree;
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;
@@ -67,7 +68,6 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - keep original video filenames unchanged;
 - keep uncertain TV/movie items in their original relative path and mark them for manual review;
 - create Windows symlinks;
-- skip existing targets for incremental sync;
 - report broken local symlinks without deleting them.
 
 `scrape_metadata` maps to the confirmed workflow step "刮削媒体元数据":

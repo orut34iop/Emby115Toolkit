@@ -58,6 +58,7 @@ class ScanAndLinkService:
             "failed": 0,
             "broken_links": 0,
             "manual_review": 0,
+            "workspace_precheck_failed": 0,
             "dry_run": context.dry_run,
         }
 
@@ -69,6 +70,13 @@ class ScanAndLinkService:
             pair_plans, pair_records = self._build_plans(pair, context)
             plans.extend(pair_plans)
             records.extend(pair_records)
+            failed_records = [record for record in pair_records if record.status == "failed"]
+            summary["failed"] += len(failed_records)
+            summary["workspace_precheck_failed"] += len(
+                [record for record in failed_records if record.action == "validate_target_workspace"]
+            )
+            if failed_records:
+                continue
 
             if context.symlink.report_broken_links:
                 broken = self._find_broken_links(pair.target)
@@ -94,7 +102,7 @@ class ScanAndLinkService:
                 status = "manual_review" if plan.confidence == "low" else "planned"
                 reason = plan.reason or "dry-run 仅生成计划"
                 records.append(self._record_plan(plan, status=status, reason=reason))
-            return StepResult(self.step_id, "success", summary, records)
+            return StepResult(self.step_id, "failed" if summary["failed"] else "success", summary, records)
 
         with ThreadPoolExecutor(max_workers=context.symlink.thread_count) as executor:
             futures = []
@@ -145,6 +153,11 @@ class ScanAndLinkService:
             )
             return plans, records
 
+        target_precheck = self._validate_empty_target_workspace(pair)
+        if target_precheck:
+            records.append(target_precheck)
+            return plans, records
+
         if not context.dry_run:
             pair.target.mkdir(parents=True, exist_ok=True)
         extensions = context.symlink.video_extensions
@@ -161,6 +174,42 @@ class ScanAndLinkService:
                 plans.append(self._build_plan(pair, source_path))
 
         return plans, records
+
+    def _validate_empty_target_workspace(self, pair: PathPair) -> OperationRecord | None:
+        try:
+            if not pair.target.exists():
+                return None
+            if not pair.target.is_dir():
+                return OperationRecord(
+                    action="validate_target_workspace",
+                    status="failed",
+                    source_path=str(pair.source),
+                    target_path=str(pair.target),
+                    confidence="high",
+                    reason="本地 symlink 工作区路径已存在但不是目录；请更换为空目录后重试。",
+                    extra={"path_pair": pair.name},
+                )
+            if any(pair.target.iterdir()):
+                return OperationRecord(
+                    action="validate_target_workspace",
+                    status="failed",
+                    source_path=str(pair.source),
+                    target_path=str(pair.target),
+                    confidence="high",
+                    reason="本地 symlink 工作区必须是空文件夹；请先清空或更换目录，避免旧 symlink/元数据污染本轮流程。",
+                    extra={"path_pair": pair.name},
+                )
+        except OSError as exc:
+            return OperationRecord(
+                action="validate_target_workspace",
+                status="failed",
+                source_path=str(pair.source),
+                target_path=str(pair.target),
+                confidence="high",
+                reason=f"无法检查本地 symlink 工作区是否为空: {exc}",
+                extra={"path_pair": pair.name},
+            )
+        return None
 
     def _build_plan(self, pair: PathPair, source_path: Path) -> LinkPlan:
         media_type = self._media_type(pair)

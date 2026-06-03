@@ -62,7 +62,20 @@ def test_run_creates_symlink_for_video_files(tmp_path, mock_logger):
     assert called_target.endswith(os.path.join("target", "Movie", "movie.mkv"))
 
 
-def test_existing_target_is_skipped(tmp_path, mock_logger):
+def test_run_allows_existing_empty_target_workspace(tmp_path, mock_logger):
+    context = _context(tmp_path)
+    (tmp_path / "target").mkdir()
+
+    with patch("os.symlink") as mock_symlink:
+        result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "success"
+    assert result.summary["created"] == 1
+    assert result.summary["workspace_precheck_failed"] == 0
+    mock_symlink.assert_called_once()
+
+
+def test_non_empty_target_workspace_fails_before_scan_plan(tmp_path, mock_logger):
     context = _context(tmp_path)
     existing = tmp_path / "target" / "Movie"
     existing.mkdir(parents=True)
@@ -70,9 +83,27 @@ def test_existing_target_is_skipped(tmp_path, mock_logger):
 
     result = ScanAndLinkService().run(context, mock_logger)
 
-    assert result.status == "success"
-    assert result.summary["skipped_existing"] == 1
+    assert result.status == "failed"
+    assert result.summary["workspace_precheck_failed"] == 1
+    assert result.summary["failed"] == 1
+    assert result.summary["planned"] == 0
     assert result.summary["created"] == 0
+    assert result.records[0].action == "validate_target_workspace"
+    assert result.records[0].status == "failed"
+    assert "必须是空文件夹" in result.records[0].reason
+
+
+def test_target_workspace_file_path_fails_precheck(tmp_path, mock_logger):
+    context = _context(tmp_path)
+    (tmp_path / "target").write_text("not a directory", encoding="utf-8")
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "failed"
+    assert result.summary["workspace_precheck_failed"] == 1
+    assert result.summary["created"] == 0
+    assert result.records[0].action == "validate_target_workspace"
+    assert "不是目录" in result.records[0].reason
 
 
 def test_movie_standardizes_to_title_year_folder(tmp_path, mock_logger):

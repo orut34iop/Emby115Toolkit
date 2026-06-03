@@ -995,7 +995,8 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
   if (!symlinkResult.ok) {
-    appendLog("软链接工作区步骤未成功完成，将继续尝试刮削已勾选目标目录。");
+    appendLog("软链接工作区步骤未成功完成，完整流程已停止；请先处理报告中的前置条件问题。");
+    return;
   }
 
   let successCount = symlinkResult.ok ? 1 : 0;
