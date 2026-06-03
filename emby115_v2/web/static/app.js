@@ -140,7 +140,16 @@ function applyPathPairs(config = {}) {
 function readSavedMetadataForm() {
   try {
     const raw = localStorage.getItem(METADATA_FORM_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const config = JSON.parse(raw);
+    if (Number(config.metadata_form_version || 1) < 2) {
+      config.metadata_output = {
+        ...(config.metadata_output || {}),
+        download_season_posters: true,
+      };
+      config.metadata_form_version = 2;
+    }
+    return config;
   } catch (error) {
     return null;
   }
@@ -193,7 +202,7 @@ function metadataOutputOptionsFromForm(primaryLibrary) {
     write_nfo: true,
     download_images: document.querySelector("#metadataDownloadImages").checked,
     download_episode_thumbs: document.querySelector("#metadataDownloadEpisodeThumbs").checked,
-    download_season_posters: false,
+    download_season_posters: document.querySelector("#metadataDownloadSeasonPosters").checked,
     overwrite_existing: document.querySelector("#metadataOverwrite").checked,
     auto_rename: document.querySelector("#metadataAutoRename").checked,
   };
@@ -203,6 +212,7 @@ function metadataConfigFromForm() {
   const libraries = collectMetadataLibraries();
   const primaryLibrary = libraries.find((library) => library.enabled && library.library_path) || libraries[0];
   return {
+    metadata_form_version: 2,
     dry_run: document.querySelector("#metadataDryRun").checked,
     tmdb: {
       api_key: document.querySelector("#tmdbApiKey").value,
@@ -264,6 +274,7 @@ function applyMetadataConfig(config = {}) {
   applyMetadataLibraries(config);
   document.querySelector("#metadataDownloadImages").checked = output.download_images ?? true;
   document.querySelector("#metadataDownloadEpisodeThumbs").checked = output.download_episode_thumbs ?? true;
+  document.querySelector("#metadataDownloadSeasonPosters").checked = output.download_season_posters ?? true;
   document.querySelector("#metadataOverwrite").checked = output.overwrite_existing ?? false;
   document.querySelector("#metadataAutoRename").checked = output.auto_rename ?? true;
 }

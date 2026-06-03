@@ -94,10 +94,10 @@ Current V2 action names:
   - Matching strategy is rules first, TMDB search second, and LLM-assisted title expansion for movie/TV no-candidate cases. LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage.
   - Dry-run may call providers and generate a full report but must not write NFO files or download images.
   - Movie scraping currently supports TMDB search/details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no movie candidates, video-stem NFO writing, and poster/fanart downloading.
-  - TV scraping currently supports TMDB search/details, episode details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no TV candidates, `tvshow.nfo`, episode NFO, show poster/fanart downloading, and episode thumbnail downloading.
+  - TV scraping currently supports TMDB search/details, episode details, `zh-CN` metadata with `en-US` fallback for missing core fields, LLM-generated alias/original-title retry when TMDB returns no TV candidates, `tvshow.nfo`, episode NFO, show poster/fanart downloading, season poster downloading, and episode thumbnail downloading.
   - Optional `metadata_output.auto_rename` defaults to true. Movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`; TV first-level folders are renamed from `tvshow.nfo` `title` and `year`. When the target folder already exists, merge non-conflicting files into it, skip conflicting filenames, remove the emptied source folder, and report the result.
   - The WebUI can submit checked movie and TV metadata libraries sequentially; each submission still uses the existing single-library `metadata_output` Context Object. CLI remains single-library through `metadata_output`.
-  - Season posters, LLM arbitration between multiple returned TMDB candidates, and richer scoring are next-stage work.
+  - LLM arbitration between multiple returned TMDB candidates and richer scoring are next-stage work.
 
 ### Legacy Dual GUI Frontends
 

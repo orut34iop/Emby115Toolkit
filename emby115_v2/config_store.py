@@ -51,7 +51,7 @@ def default_metadata_config() -> dict[str, Any]:
             "write_nfo": True,
             "download_images": True,
             "download_episode_thumbs": True,
-            "download_season_posters": False,
+            "download_season_posters": True,
             "overwrite_existing": False,
             "auto_rename": True,
         },

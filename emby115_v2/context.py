@@ -148,7 +148,7 @@ class MetadataOutputConfig:
     write_nfo: bool = True
     download_images: bool = True
     download_episode_thumbs: bool = True
-    download_season_posters: bool = False
+    download_season_posters: bool = True
     overwrite_existing: bool = False
     auto_rename: bool = True
 
@@ -165,7 +165,7 @@ class MetadataOutputConfig:
             write_nfo=bool(data.get("write_nfo", True)),
             download_images=bool(data.get("download_images", True)),
             download_episode_thumbs=bool(data.get("download_episode_thumbs", True)),
-            download_season_posters=bool(data.get("download_season_posters", False)),
+            download_season_posters=bool(data.get("download_season_posters", True)),
             overwrite_existing=bool(data.get("overwrite_existing", False)),
             auto_rename=bool(data.get("auto_rename", True)),
         )

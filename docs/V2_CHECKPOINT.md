@@ -74,7 +74,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - movie TMDB search/details are implemented; movie NFO and image filenames follow each video file stem, not the first-level folder name;
 - movie details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;
 - non-dry-run movie scraping writes Emby-compatible movie NFO with TMDB actors as completely as available, optional rating/certification/MPAA, directors, writers, producers, IMDb/TVDB/Wikidata IDs, movie collection, production companies/countries, spoken languages, original language, release date, genres, plot, and TMDB ID, and downloads poster/fanart when TMDB image paths are available;
-- TV TMDB search/details and episode details are implemented; TV output uses `tvshow.nfo`, show poster/fanart, and per-episode NFO/thumb filenames following each episode video stem;
+- TV TMDB search/details and episode details are implemented; TV output uses `tvshow.nfo`, show poster/fanart, season posters, and per-episode NFO/thumb filenames following each episode video stem;
 - TV details and episode details use `zh-CN` first and fetch `en-US` details to fill missing title/overview fields when needed;
 - TV `tvshow.nfo` includes TMDB actors as completely as available, including aggregate credits when present, optional rating/certification/MPAA, directors, writers, producers, IMDb/TVDB/Wikidata IDs, production companies/countries, spoken languages, original language, first-air date, genres, plot, and TMDB ID; episode NFO includes optional episode rating and inherits show actors when available;
 - when movie or TV TMDB search returns no candidates and LLM config is enabled and complete, the scraper asks the configured OpenAI-compatible LLM for alias/original-title candidates, retries TMDB with those candidates, and records the LLM suggestion and retry queries in the report;
@@ -82,7 +82,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - default `overwrite_existing=false`; existing NFO/images are skipped unless overwrite is enabled;
 - default `auto_rename=true`; after successful NFO metadata, movie first-level folders are renamed from the generated/existing `movie` NFO `title` and `year`, while TV first-level folders are renamed from `tvshow.nfo` `title` and `year`;
 - auto rename uses `title (year)`; when the target folder already exists, it merges non-conflicting files into that folder, skips conflicting filenames, removes the emptied source folder, and records the result in the report;
-- current implementation provides the Context Object contract, WebUI/CLI actions, config testing, config persistence APIs, movie and TV TMDB matching, movie/TV LLM alias retry for no-candidate cases, movie NFO, `tvshow.nfo`, episode NFO, poster/fanart downloading, and episode thumbnail downloading. Season posters, LLM arbitration between multiple returned TMDB candidates, and richer scoring are next-stage work.
+- current implementation provides the Context Object contract, WebUI/CLI actions, config testing, config persistence APIs, movie and TV TMDB matching, movie/TV LLM alias retry for no-candidate cases, movie NFO, `tvshow.nfo`, episode NFO, poster/fanart downloading, season poster downloading, and episode thumbnail downloading. LLM arbitration between multiple returned TMDB candidates and richer scoring are next-stage work.
 
 ## Current WebUI Status
 

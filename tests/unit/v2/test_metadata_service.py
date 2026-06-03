@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
 import urllib.error
@@ -199,6 +201,10 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
+                "seasons": [
+                    {"season_number": 0, "poster_path": "/specials-poster.jpg"},
+                    {"season_number": 1, "poster_path": "/season-1-poster.jpg"},
+                ],
             }
         return {
             "id": tmdb_id,
@@ -247,6 +253,9 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
+                "seasons": [
+                    {"season_number": 1, "poster_path": "/fallback-season-1-poster.jpg"},
+                ],
             }
 
     def tv_episode_details(self, tmdb_id, season, episode, language):
@@ -665,6 +674,7 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
                 "library_path": str(library),
                 "download_images": True,
                 "download_episode_thumbs": True,
+                "download_season_posters": True,
                 "auto_rename": True,
             },
             "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
@@ -682,12 +692,16 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     tvshow_nfo = renamed / "tvshow.nfo"
     episode_nfo = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p.nfo"
     thumb = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p-thumb.jpg"
+    season_poster = renamed / "season01-poster.jpg"
+    specials_poster = renamed / "season-specials-poster.jpg"
     assert result.status == "success"
     assert result.summary["matched"] == 2
     assert result.summary["auto_rename"]["renamed"] == 1
     assert tvshow_nfo.exists()
     assert episode_nfo.exists()
     assert thumb.exists()
+    assert season_poster.exists()
+    assert specials_poster.exists()
     tvshow_text = tvshow_nfo.read_text(encoding="utf-8")
     episode_text = episode_nfo.read_text(encoding="utf-8")
     assert "<title>9号秘事</title>" in tvshow_text
@@ -714,6 +728,29 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     episode_record = next(record for record in result.records if record.target_path.endswith(episode_nfo.name))
     assert episode_record.extra["rating"] == 8.7
     assert episode_record.extra["actor_count"] == 1
+    show_record = next(record for record in result.records if record.target_path.endswith("tvshow.nfo"))
+    assert [
+        {
+            "season_number": item["season_number"],
+            "status": item["status"],
+            "tmdb_image_path": item["tmdb_image_path"],
+            "target_name": Path(item["target_path"]).name,
+        }
+        for item in show_record.extra["season_posters"]
+    ] == [
+        {
+            "season_number": 0,
+            "status": "downloaded",
+            "tmdb_image_path": "/specials-poster.jpg",
+            "target_name": "season-specials-poster.jpg",
+        },
+        {
+            "season_number": 1,
+            "status": "downloaded",
+            "tmdb_image_path": "/season-1-poster.jpg",
+            "target_name": "season01-poster.jpg",
+        },
+    ]
     log_text = (context.logging.log_dir / f"{context.run_id}.log").read_text(encoding="utf-8")
     assert "开始电视剧元数据刮削" in log_text
     assert "正在刮削电视剧元数据 [1/1]" in log_text

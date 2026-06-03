@@ -18,6 +18,7 @@ def test_webui_serves_index():
     assert "测试 TMDB 配置" in response.text
     assert "测试 LLM 配置" in response.text
     assert "metadataAutoRename" in response.text
+    assert "metadataDownloadSeasonPosters" in response.text
     assert "metadataMoviesEnabled" in response.text
     assert "metadataTvshowsEnabled" in response.text
     assert "metadataMoviesPath" in response.text
@@ -126,10 +127,12 @@ def test_webui_includes_metadata_config_controls():
 
     assert response.status_code == 200
     assert "emby115_v2.webui.metadata.form.v1" in response.text
+    assert "metadata_form_version: 2" in response.text
     assert "test_tmdb_config" in response.text
     assert "test_llm_config" in response.text
     assert "scrape_metadata" in response.text
     assert "auto_rename" in response.text
+    assert "download_season_posters" in response.text
     assert "/v1/config/metadata" in response.text
 
 
