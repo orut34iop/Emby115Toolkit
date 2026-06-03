@@ -61,6 +61,7 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 - when a movie parent folder has a Chinese title/year and the video filename has a same-year English title, the standardized first-level folder preserves both as `Chinese.English (year)`, for example `惊蛰无声.Scare Out (2026)`; if the parent folder already contains the English title, the parent title is kept intact, for example `莎拉·丝沃曼：生离笑别.Sarah.Silverman.PostMortem (2025)`;
 - for TV shows, place symlinks under a show title folder and a season/version second-level folder;
 - TV second-level folder priority is: existing source folder that contains a season marker, then release folder derived from episode filename, then `Season NN`;
+- pure TV season folders such as `S01`, `Season 1`, or `第一季` are normalized to `Season 01` for Emby/Kodi compatibility; release/version folders that include season plus quality/version text may keep their original names;
 - TV show title parsing treats `SxxEyy` and season markers as structural metadata rather than title text, so files such as `小镇疑云.S02E01...` are grouped under the show folder `小镇疑云` instead of one first-level folder per episode;
 - keep original video filenames unchanged;
 - keep uncertain TV/movie items in their original relative path and mark them for manual review;

@@ -316,8 +316,32 @@ def test_tvshow_preserves_version_season_folder(tmp_path, mock_logger):
     result = ScanAndLinkService().run(context, mock_logger)
 
     assert result.records[-1].target_path.endswith(
-        os.path.join("target", "柏林：抱银貂的女子 (2026)", "Season 1", video.name)
+        os.path.join("target", "柏林：抱银貂的女子 (2026)", "Season 01", video.name)
     )
+
+
+def test_tvshow_normalizes_chinese_season_folder_to_english_season(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    season_dir = source / "tvshow" / "失踪 (2014)" / "第一季"
+    season_dir.mkdir(parents=True)
+    video = season_dir / "失踪.S01E07.Return.to.Eden.BluRay.1080i.DTS-HD.MA.2.0.AVC.REMUX-FraMeSToR.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "dry_run": True,
+            "path_pairs": [{"name": "tvshows", "source": str(source), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    record = result.records[-1]
+    assert record.target_path.endswith(os.path.join("target", "失踪 (2014)", "Season 01", video.name))
+    assert record.season == "01"
+    assert record.episode == "07"
 
 
 def test_tvshow_episode_filename_does_not_become_series_folder(tmp_path, mock_logger):
@@ -339,7 +363,7 @@ def test_tvshow_episode_filename_does_not_become_series_folder(tmp_path, mock_lo
     result = ScanAndLinkService().run(context, mock_logger)
 
     record = result.records[-1]
-    assert record.target_path.endswith(os.path.join("target", "小镇疑云", "S02", video.name))
+    assert record.target_path.endswith(os.path.join("target", "小镇疑云", "Season 02", video.name))
     assert record.title == "小镇疑云"
     assert record.season == "02"
     assert record.episode == "01"
