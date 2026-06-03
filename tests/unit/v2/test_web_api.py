@@ -111,6 +111,21 @@ def test_webui_cloud_library_card_uses_fixed_checklist_and_probe():
     assert "CloudDrive2 上传探测" in script
 
 
+def test_webui_layout_css_prevents_horizontal_overflow():
+    client = TestClient(create_app())
+
+    html = client.get("/").text
+    css = client.get("/static/styles.css").text
+
+    assert "responsive-workflow-layout" in html
+    assert "overflow-x: hidden" in css
+    assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
+    assert "overflow-wrap: anywhere" in css
+    assert "@media (max-width: 1280px)" in css
+    assert ".run-panel" in css
+    assert "position: sticky" in css
+
+
 def test_webui_uses_background_runs_and_sse():
     client = TestClient(create_app())
 

@@ -17,6 +17,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
@@ -30,6 +31,10 @@ body {
   padding: 14px 20px;
   border-bottom: 1px solid var(--line);
   background: #ffffff;
+}
+
+.topbar > div:first-child {
+  min-width: 0;
 }
 
 h1,
@@ -81,9 +86,12 @@ p {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   gap: 16px;
   padding: 16px;
+  max-width: 1920px;
+  margin: 0 auto;
+  align-items: start;
 }
 
 .workspace,
@@ -92,6 +100,13 @@ p {
   border: 1px solid var(--line);
   background: var(--panel);
   padding: 14px;
+}
+
+.run-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 
 .section-title {
@@ -152,6 +167,7 @@ label {
 input,
 select {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -198,23 +214,27 @@ button:disabled {
 
 .path-table {
   border: 1px solid var(--line);
+  min-width: 0;
 }
 
 .metadata-library-table {
   border: 1px solid var(--line);
+  min-width: 0;
 }
 
 .cloud-library-table {
   border: 1px solid var(--line);
+  min-width: 0;
 }
 
 .path-head,
 .path-row {
   display: grid;
-  grid-template-columns: 92px 120px minmax(220px, 1fr) minmax(220px, 1fr);
+  grid-template-columns: 76px 88px minmax(150px, 1fr) minmax(150px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
+  min-width: 0;
 }
 
 .path-head {
@@ -227,10 +247,11 @@ button:disabled {
 .metadata-library-head,
 .metadata-library-row {
   display: grid;
-  grid-template-columns: 92px 120px minmax(260px, 1fr);
+  grid-template-columns: 76px 88px minmax(180px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
+  min-width: 0;
 }
 
 .metadata-library-head {
@@ -247,10 +268,11 @@ button:disabled {
 .cloud-library-head,
 .cloud-library-row {
   display: grid;
-  grid-template-columns: 92px 120px minmax(220px, 1fr) minmax(220px, 1fr);
+  grid-template-columns: 76px 88px minmax(150px, 1fr) minmax(150px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
+  min-width: 0;
 }
 
 .cloud-library-head {
@@ -303,6 +325,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .muted-text {
@@ -348,6 +371,7 @@ button:disabled {
   display: grid;
   gap: 8px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 
 .report-link-group {
@@ -355,6 +379,7 @@ button:disabled {
   gap: 4px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--line);
+  min-width: 0;
 }
 
 .report-link-title {
@@ -362,9 +387,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .result-status {
+  flex: 0 0 auto;
   font-weight: 800;
   font-size: 15px;
 }
@@ -390,7 +417,14 @@ button:disabled {
   word-break: break-all;
 }
 
+.report-link-group span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .output {
+  max-width: 100%;
   min-height: 320px;
   max-height: 60vh;
   overflow: auto;
@@ -404,11 +438,18 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1280px) {
   .shell {
     grid-template-columns: 1fr;
   }
 
+  .run-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
   .path-head {
     display: none;
   }
