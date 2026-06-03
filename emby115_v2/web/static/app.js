@@ -573,6 +573,44 @@ function metadataLibrariesFromPathPairs(pathPairs) {
     }));
 }
 
+function cloudLibrariesFromPathPairs(pathPairs) {
+  const cloudTargetsByType = new Map(
+    collectCloudLibraries()
+      .filter((library) => library.enabled && library.target)
+      .map((library) => [library.media_type, library.target])
+  );
+  return (pathPairs || [])
+    .filter((pair) => pair.name && pair.target && cloudTargetsByType.has(pair.name))
+    .map((pair) => ({
+      enabled: true,
+      media_type: pair.name,
+      source: pair.target,
+      target: cloudTargetsByType.get(pair.name),
+    }))
+    .filter((library) => library.source && library.target);
+}
+
+function cloudMoveNeedsConfirmation(payload) {
+  return Boolean(
+    payload
+      && payload.action === "build_cloud_scraped_library"
+      && !payload.dry_run
+      && payload.cloud_library_output?.move_videos_after_wait
+      && payload.path_pairs?.length
+  );
+}
+
+function confirmCloudMoveIfNeeded(payload, libraries, source = "full-flow") {
+  if (!cloudMoveNeedsConfirmation(payload)) return true;
+  const lines = (libraries || [])
+    .map((library) => `${MEDIA_TYPE_LABELS[library.media_type] || library.media_type}: ${library.source} -> ${library.target}`)
+    .join("\n");
+  const prefix = source === "full-flow" ? "完整流程即将进入第三阶段" : "网盘导入即将开始";
+  return window.confirm(
+    `${prefix}，将把 symlink 指向的真实视频移动到网盘新媒体库目录。\n\n${lines}\n\n该操作会让当前 C 盘 symlink 工作区中的链接变成过期链接。确认继续吗？`
+  );
+}
+
 async function needsDeveloperMode(payload) {
   if (!SYMLINK_ACTIONS.has(payload.action)) return false;
   if (payload.dry_run) return false;
@@ -856,12 +894,17 @@ async function runCloudLibraryWorkflow(event) {
     appendLog("请至少勾选一个本地 symlink 工作区和网盘目标目录都有效的媒体库。");
     return;
   }
+  const payload = buildCloudPayload("build_cloud_scraped_library", libraries);
+  if (!confirmCloudMoveIfNeeded(payload, libraries, "cloud-card")) {
+    appendLog("网盘导入已取消：用户未确认移动真实视频。");
+    return;
+  }
 
   state.cloudWorkflowActive = true;
   state.cloudCancelRequested = false;
   setBusy(false);
   try {
-    const result = await executePayload(buildCloudPayload("build_cloud_scraped_library", libraries), {
+    const result = await executePayload(payload, {
       clearReports: true,
       reportLabel: "网盘已刮削媒体库",
     });
@@ -938,7 +981,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
 
-  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据。");
+  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库。");
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
     reportLabel: "软链接工作区",
@@ -957,6 +1000,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
 
   let successCount = symlinkResult.ok ? 1 : 0;
   let failedCount = symlinkResult.ok ? 0 : 1;
+  let skippedCount = 0;
   const libraries = metadataLibraries || metadataLibrariesFromPathPairs(pairs);
 
   for (const library of libraries) {
@@ -977,10 +1021,37 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     }
   }
 
+  if (!state.fullWorkflowCancelRequested) {
+    const cloudLibraries = cloudLibrariesFromPathPairs(pairs);
+    if (!cloudLibraries.length) {
+      skippedCount += 1;
+      appendLog("完整流程跳过网盘导入：网盘导入卡片中没有勾选且目标路径有效的对应媒体库。");
+    } else {
+      const cloudPayload = buildCloudPayload("build_cloud_scraped_library", cloudLibraries);
+      if (!confirmCloudMoveIfNeeded(cloudPayload, cloudLibraries, "full-flow")) {
+        skippedCount += 1;
+        appendLog("完整流程已在网盘导入前停止：用户未确认移动真实视频。");
+      } else if (state.fullWorkflowCancelRequested) {
+        appendLog("完整流程已取消：已停止启动网盘导入。");
+      } else {
+        appendLog("完整流程开始网盘导入：复制已刮削元数据并移动真实视频。");
+        const result = await executePayload(cloudPayload, {
+          clearReports: false,
+          reportLabel: "网盘已刮削媒体库",
+        });
+        if (result.ok) {
+          successCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      }
+    }
+  }
+
   if (state.fullWorkflowCancelRequested) {
-    appendLog(`完整流程已取消：已完成步骤成功 ${successCount}，失败 ${failedCount}`);
+    appendLog(`完整流程已取消：已完成步骤成功 ${successCount}，失败 ${failedCount}，跳过 ${skippedCount}`);
   } else {
-    appendLog(`完整流程结束：成功 ${successCount}，失败 ${failedCount}`);
+    appendLog(`完整流程结束：成功 ${successCount}，失败 ${failedCount}，跳过 ${skippedCount}`);
   }
 }
 

@@ -121,7 +121,15 @@ def test_webui_uses_background_runs_and_sse():
     assert "streamRunEvents" in script
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
+    assert "构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库" in script
     assert "library_path: pair.target" in script
+    assert "source: pair.target" in script
+    assert "cloudLibrariesFromPathPairs" in script
+    assert "完整流程开始网盘导入" in script
+    assert "网盘已刮削媒体库" in script
+    assert "confirmCloudMoveIfNeeded" in script
+    assert "window.confirm" in script
+    assert "当前 C 盘 symlink 工作区中的链接变成过期链接" in script
     assert "runFullWorkflowPayload" in script
     assert "metadataLibrariesFromPathPairs" in script
     assert "fullWorkflowCancelRequested" in script
