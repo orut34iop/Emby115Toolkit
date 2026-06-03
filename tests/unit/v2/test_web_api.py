@@ -88,6 +88,9 @@ def test_webui_uses_background_runs_and_sse():
     assert "library_path: pair.target" in script
     assert "runFullWorkflowPayload" in script
     assert "metadataLibrariesFromPathPairs" in script
+    assert "fullWorkflowCancelRequested" in script
+    assert "requestFullWorkflowCancel" in script
+    assert "取消执行" in script
     assert "result-status" in script
     assert "部分成功" in script
     assert "updateLastReportStatus" in script

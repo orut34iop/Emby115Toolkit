@@ -27,6 +27,8 @@ const MEDIA_TYPE_LABELS = {
 const state = {
   busy: false,
   restoring: false,
+  fullWorkflowActive: false,
+  fullWorkflowCancelRequested: false,
 };
 
 const pathPairs = document.querySelector("#pathPairs");
@@ -56,12 +58,25 @@ function appendLog(message) {
 
 function setBusy(busy) {
   state.busy = busy;
-  runButton.disabled = busy;
-  fullRunButton.disabled = busy;
-  metadataRunButton.disabled = busy;
+  const workflowLocked = busy || state.fullWorkflowActive;
+  runButton.disabled = workflowLocked;
+  metadataRunButton.disabled = workflowLocked;
   runButton.textContent = busy ? "执行中" : "执行";
-  fullRunButton.textContent = busy ? "执行中" : "执行完整流程";
   metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
+  if (state.fullWorkflowActive) {
+    fullRunButton.disabled = state.fullWorkflowCancelRequested;
+    fullRunButton.textContent = state.fullWorkflowCancelRequested ? "正在取消" : "取消执行";
+  } else {
+    fullRunButton.disabled = busy;
+    fullRunButton.textContent = busy ? "执行中" : "执行完整流程";
+  }
+}
+
+function requestFullWorkflowCancel() {
+  if (!state.fullWorkflowActive || state.fullWorkflowCancelRequested) return;
+  state.fullWorkflowCancelRequested = true;
+  appendLog("已请求取消完整流程；当前步骤将安全结束，后续步骤不会再启动。");
+  setBusy(state.busy);
 }
 
 async function parseJson(response) {
@@ -602,7 +617,20 @@ async function runMetadataWorkflow(event) {
 
 async function runFullWorkflow(event) {
   event.preventDefault();
-  await runFullWorkflowPayload(buildPayload());
+  if (state.fullWorkflowActive) {
+    requestFullWorkflowCancel();
+    return;
+  }
+  state.fullWorkflowActive = true;
+  state.fullWorkflowCancelRequested = false;
+  setBusy(false);
+  try {
+    await runFullWorkflowPayload(buildPayload());
+  } finally {
+    state.fullWorkflowActive = false;
+    state.fullWorkflowCancelRequested = false;
+    setBusy(false);
+  }
 }
 
 async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) {
@@ -621,6 +649,10 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     appendLog("完整流程已暂停：请到系统设置中打开开发者模式后重新执行。");
     return;
   }
+  if (state.fullWorkflowCancelRequested) {
+    appendLog("完整流程已取消：已停止启动后续元数据刮削步骤。");
+    return;
+  }
   if (!symlinkResult.ok) {
     appendLog("软链接工作区步骤未成功完成，将继续尝试刮削已勾选目标目录。");
   }
@@ -630,6 +662,10 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
   const libraries = metadataLibraries || metadataLibrariesFromPathPairs(pairs);
 
   for (const library of libraries) {
+    if (state.fullWorkflowCancelRequested) {
+      appendLog("完整流程已取消：已停止启动后续媒体库任务。");
+      break;
+    }
     const label = `${MEDIA_TYPE_LABELS[library.media_type] || library.media_type}元数据`;
     appendLog(`完整流程开始${label}: ${library.library_path}`);
     const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
@@ -643,7 +679,11 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     }
   }
 
-  appendLog(`完整流程结束：成功 ${successCount}，失败 ${failedCount}`);
+  if (state.fullWorkflowCancelRequested) {
+    appendLog(`完整流程已取消：已完成步骤成功 ${successCount}，失败 ${failedCount}`);
+  } else {
+    appendLog(`完整流程结束：成功 ${successCount}，失败 ${failedCount}`);
+  }
 }
 
 async function testMetadataProvider(action) {
