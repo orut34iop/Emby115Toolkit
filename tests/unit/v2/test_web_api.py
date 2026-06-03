@@ -71,6 +71,11 @@ def test_webui_metadata_uses_fixed_library_checklist():
     assert "metadata_output: metadataOutput" in script
     assert "不存在已勾选且路径有效的媒体库" in script
     assert "元数据刮削队列完成" in script
+    assert "metadataWorkflowActive" in script
+    assert "metadataCancelRequested" in script
+    assert "requestMetadataCancel" in script
+    assert "已请求取消元数据刮削" in script
+    assert "元数据刮削队列已取消" in script
     assert "}元数据" in script
     assert "MEDIA_TYPE_LABELS" in script
 

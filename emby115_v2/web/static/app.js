@@ -29,6 +29,8 @@ const state = {
   restoring: false,
   fullWorkflowActive: false,
   fullWorkflowCancelRequested: false,
+  metadataWorkflowActive: false,
+  metadataCancelRequested: false,
   activeRunId: "",
 };
 
@@ -59,17 +61,22 @@ function appendLog(message) {
 
 function setBusy(busy) {
   state.busy = busy;
-  const workflowLocked = busy || state.fullWorkflowActive;
-  runButton.disabled = workflowLocked;
-  metadataRunButton.disabled = workflowLocked;
-  runButton.textContent = busy ? "执行中" : "执行";
-  metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
+  const actionLocked = busy || state.fullWorkflowActive || state.metadataWorkflowActive;
+  runButton.disabled = actionLocked;
+  runButton.textContent = busy && !state.fullWorkflowActive && !state.metadataWorkflowActive ? "执行中" : "执行";
+  if (state.metadataWorkflowActive) {
+    metadataRunButton.disabled = state.metadataCancelRequested;
+    metadataRunButton.textContent = state.metadataCancelRequested ? "正在取消" : "取消执行";
+  } else {
+    metadataRunButton.disabled = actionLocked;
+    metadataRunButton.textContent = busy ? "执行中" : "执行元数据刮削";
+  }
   if (state.fullWorkflowActive) {
     fullRunButton.disabled = state.fullWorkflowCancelRequested;
     fullRunButton.textContent = state.fullWorkflowCancelRequested ? "正在取消" : "取消执行";
   } else {
-    fullRunButton.disabled = busy;
-    fullRunButton.textContent = busy ? "执行中" : "执行完整流程";
+    fullRunButton.disabled = busy || state.metadataWorkflowActive;
+    fullRunButton.textContent = busy && !state.metadataWorkflowActive ? "执行中" : "执行完整流程";
   }
 }
 
@@ -77,6 +84,14 @@ function requestFullWorkflowCancel() {
   if (!state.fullWorkflowActive || state.fullWorkflowCancelRequested) return;
   state.fullWorkflowCancelRequested = true;
   appendLog("已请求取消完整流程；当前步骤将安全结束，后续步骤不会再启动。");
+  setBusy(state.busy);
+  cancelActiveRun();
+}
+
+function requestMetadataCancel() {
+  if (!state.metadataWorkflowActive || state.metadataCancelRequested) return;
+  state.metadataCancelRequested = true;
+  appendLog("已请求取消元数据刮削；当前后台任务将安全停止，后续媒体库不会再启动。");
   setBusy(state.busy);
   cancelActiveRun();
 }
@@ -459,7 +474,7 @@ async function executePayload(payload, options = {}) {
     document.querySelector("#actionName").textContent = data.action;
     document.querySelector("#runMode").textContent = data.dry_run ? "dry-run" : "run";
     state.activeRunId = data.run_id;
-    if (state.fullWorkflowCancelRequested) {
+    if (state.fullWorkflowCancelRequested || state.metadataCancelRequested) {
       await cancelActiveRun();
     }
     const result = await streamRunEvents(data, { clearReports, reportLabel });
@@ -620,32 +635,53 @@ function buildMetadataPayload(action = "scrape_metadata", library = null) {
 
 async function runMetadataWorkflow(event) {
   event.preventDefault();
+  if (state.metadataWorkflowActive) {
+    requestMetadataCancel();
+    return;
+  }
   const libraries = collectMetadataLibraries().filter((library) => library.enabled && library.library_path);
   if (!libraries.length) {
     appendLog("不存在已勾选且路径有效的媒体库。");
     return;
   }
 
+  state.metadataWorkflowActive = true;
+  state.metadataCancelRequested = false;
+  setBusy(false);
   let successCount = 0;
   let failedCount = 0;
-  for (const [index, library] of libraries.entries()) {
-    const label = MEDIA_TYPE_LABELS[library.media_type] || library.media_type;
-    appendLog(`开始刮削${label}: ${library.library_path}`);
-    const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
-      clearReports: index === 0,
-      reportLabel: label,
-    });
-    if (result.ok) {
-      successCount += 1;
+  try {
+    for (const [index, library] of libraries.entries()) {
+      if (state.metadataCancelRequested) {
+        appendLog("元数据刮削已取消：后续媒体库任务不会启动。");
+        break;
+      }
+      const label = MEDIA_TYPE_LABELS[library.media_type] || library.media_type;
+      appendLog(`开始刮削${label}: ${library.library_path}`);
+      const result = await executePayload(buildMetadataPayload("scrape_metadata", library), {
+        clearReports: index === 0,
+        reportLabel: label,
+      });
+      if (result.ok) {
+        successCount += 1;
+      } else {
+        failedCount += 1;
+      }
+      if (state.metadataCancelRequested) {
+        appendLog("元数据刮削已取消：当前后台任务已停止，后续媒体库任务不会启动。");
+        break;
+      }
+    }
+    if (state.metadataCancelRequested) {
+      appendLog(`元数据刮削队列已取消：已完成成功 ${successCount}，失败 ${failedCount}`);
     } else {
-      failedCount += 1;
+      appendLog(`元数据刮削队列完成：成功 ${successCount}，失败 ${failedCount}`);
     }
-    if (state.fullWorkflowCancelRequested) {
-      appendLog("完整流程已取消：当前后台任务已停止，后续媒体库任务不会启动。");
-      break;
-    }
+  } finally {
+    state.metadataWorkflowActive = false;
+    state.metadataCancelRequested = false;
+    setBusy(false);
   }
-  appendLog(`元数据刮削队列完成：成功 ${successCount}，失败 ${failedCount}`);
 }
 
 async function runFullWorkflow(event) {

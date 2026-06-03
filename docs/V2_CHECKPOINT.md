@@ -45,7 +45,7 @@ python main.py --action test_llm_config --config emby115_v2.config.json
 python main.py --action scrape_metadata --config emby115_v2.config.json --dry-run
 ```
 
-CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs.
+CLI `scrape_metadata` still consumes one `metadata_output.media_type/library_path` at a time. WebUI may submit the fixed movie/TV checklist sequentially as separate `scrape_metadata` runs. While this standalone metadata queue is active, the metadata button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later checked libraries.
 
 WebUI also provides a one-click full flow. This is front-end orchestration only, not a new backend workflow action: it runs one `build_symlink_workspace` request first, then derives metadata libraries from the checked symlink target directories and submits one `scrape_metadata` request per media type. While the full flow is active, the same button displays `取消执行`; cancellation is cooperative, requests cancellation for the current backend run, and stops launching later steps. CLI does not yet expose a one-click full-flow action.
 
@@ -93,7 +93,7 @@ Implemented:
 - symlink workspace media libraries use a fixed checked list for `movies` / `tvshows`;
 - WebUI form parameters are persisted in browser localStorage and restored on page load, excluding access token;
 - metadata provider settings are persisted in browser localStorage, including TMDB/LLM API keys by user request;
-- metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links;
+- metadata media libraries are displayed as a fixed checklist with movies and TV shows rows; checked rows with non-empty paths run sequentially as separate `scrape_metadata` requests and receive separate report links. During this standalone metadata queue, the execution button changes to `取消执行` and can cooperatively cancel the active backend run plus subsequent checked libraries;
 - one-click full flow executes `构建本地软链接工作区 -> 刮削媒体元数据` from WebUI. Metadata paths in this mode come from checked symlink target directories, not from the metadata card's manually entered paths. The full-flow button changes to `取消执行` during execution and can cooperatively cancel the active backend run plus subsequent steps;
 - WebUI single-step and full-flow execution use background run APIs with SSE logs/status while preserving `/v1/run` as a synchronous compatibility endpoint;
 - report link groups in the WebUI execution result panel show a bold colored final result label: green `成功`, orange `部分成功`, or red `失败`;
