@@ -27,7 +27,7 @@ def test_webui_serves_index():
     assert "symlinkMoviesSource" in response.text
     assert "symlinkTvshowsTarget" in response.text
     assert "执行完整流程" in response.text
-    assert "需要管理员权限" in response.text
+    assert "需要管理员权限" not in response.text
 
 
 def test_webui_symlink_uses_fixed_library_checklist():
@@ -92,21 +92,19 @@ def test_webui_uses_background_runs_and_sse():
     assert "updateLastReportStatus" in script
 
 
-def test_webui_includes_admin_elevation_flow():
+def test_webui_uses_symlink_capability_check_without_uac_restart():
     client = TestClient(create_app())
 
     response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert "/v1/admin/status" in response.text
-    assert "/v1/admin/restart-elevated" in response.text
-    assert "emby115_v2.webui.pending_elevated_run.v1" in response.text
-    assert "pendingSingleRun(payload)" in response.text
-    assert "pendingFullWorkflow" in response.text
-    assert "full_workflow" in response.text
-    assert "waitForElevatedRestart" in response.text
-    assert "resumePendingElevatedRun" in response.text
-    assert "sessionStorage.setItem" in response.text
+    assert "/v1/symlink/capability" in response.text
+    assert "needsDeveloperMode" in response.text
+    assert "requires_developer_mode" in response.text
+    assert "请到系统设置中打开开发者模式" in response.text
+    assert "/v1/admin/restart-elevated" not in response.text
+    assert "pending_elevated_run" not in response.text
+    assert "sessionStorage.setItem" not in response.text
 
 
 def test_webui_persists_form_without_access_token():
@@ -290,25 +288,25 @@ def test_background_run_lock_rejects_concurrent_run():
     assert response.status_code == 409
 
 
-def test_admin_status_reports_windows_permissions(monkeypatch):
+def test_symlink_capability_reports_developer_mode_requirement(monkeypatch):
     monkeypatch.setattr(windows_admin, "is_windows", lambda: True)
     monkeypatch.setattr(windows_admin, "is_admin", lambda: False)
-    monkeypatch.setattr(windows_admin, "requires_admin_for_symlink", lambda: True)
+    monkeypatch.setattr(windows_admin, "can_create_symlink", lambda: False)
     client = TestClient(create_app())
 
-    response = client.get("/v1/admin/status")
+    response = client.get("/v1/symlink/capability")
 
     assert response.status_code == 200
     assert response.json() == {
         "is_windows": True,
         "is_admin": False,
-        "requires_admin_for_symlink": True,
+        "can_create_symlink": False,
+        "requires_developer_mode": True,
     }
 
 
-def test_non_dry_run_symlink_requires_admin(tmp_path, monkeypatch):
-    monkeypatch.setattr(windows_admin, "is_admin", lambda: False)
-    monkeypatch.setattr(windows_admin, "requires_admin_for_symlink", lambda: True)
+def test_non_dry_run_symlink_requires_developer_mode_when_symlink_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setattr(windows_admin, "can_create_symlink", lambda: False)
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()
@@ -326,12 +324,12 @@ def test_non_dry_run_symlink_requires_admin(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 403
-    assert response.json()["requires_elevation"] is True
+    assert response.json()["requires_developer_mode"] is True
+    assert "打开开发者模式" in response.json()["detail"]
 
 
-def test_background_non_dry_run_symlink_requires_admin(tmp_path, monkeypatch):
-    monkeypatch.setattr(windows_admin, "is_admin", lambda: False)
-    monkeypatch.setattr(windows_admin, "requires_admin_for_symlink", lambda: True)
+def test_background_non_dry_run_symlink_requires_developer_mode_when_symlink_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setattr(windows_admin, "can_create_symlink", lambda: False)
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()
@@ -349,24 +347,7 @@ def test_background_non_dry_run_symlink_requires_admin(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 403
-    assert response.json()["requires_elevation"] is True
-
-
-def test_restart_elevated_calls_windows_helper(monkeypatch):
-    calls = []
-    monkeypatch.setattr(windows_admin, "is_admin", lambda: False)
-    monkeypatch.setattr(
-        windows_admin,
-        "restart_webui_as_admin",
-        lambda host, port, access_token, cwd: calls.append((host, port, access_token, cwd)),
-    )
-    client = TestClient(create_app(access_token="secret", host="127.0.0.1", port=8765, exit_after_elevation=False))
-
-    response = client.post("/v1/admin/restart-elevated", headers={"X-Access-Token": "secret"})
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "elevation_requested"
-    assert calls
+    assert response.json()["requires_developer_mode"] is True
 
 
 def test_run_lock_rejects_concurrent_run():

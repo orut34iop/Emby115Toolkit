@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import json
 import threading
 import time
@@ -26,7 +25,7 @@ V2_ACTIONS = [
 ]
 
 
-def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765, exit_after_elevation: bool = True):
+def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765):
     from fastapi import Depends, FastAPI, Header, HTTPException, Query
     from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
     from fastapi.staticfiles import StaticFiles
@@ -36,7 +35,6 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
     app.state.access_token = access_token
     app.state.host = host
     app.state.port = port
-    app.state.exit_after_elevation = exit_after_elevation
     app.state.run_lock = threading.Lock()
     app.state.report_dirs = {}
     app.state.runs = {}
@@ -86,45 +84,29 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
         path = save_metadata_config(config, default_config_path())
         return {"status": "saved", "path": str(path)}
 
-    @app.get("/v1/admin/status", dependencies=[Depends(require_token)])
-    def admin_status() -> dict[str, bool]:
+    @app.get("/v1/symlink/capability", dependencies=[Depends(require_token)])
+    def symlink_capability() -> dict[str, bool]:
+        can_create = windows_admin.can_create_symlink()
         return {
             "is_windows": windows_admin.is_windows(),
             "is_admin": windows_admin.is_admin(),
-            "requires_admin_for_symlink": windows_admin.requires_admin_for_symlink(),
+            "can_create_symlink": can_create,
+            "requires_developer_mode": windows_admin.is_windows() and not can_create,
         }
 
-    @app.post("/v1/admin/restart-elevated", dependencies=[Depends(require_token)])
-    def restart_elevated() -> dict[str, str | bool]:
-        if windows_admin.is_admin():
-            return {"status": "already_admin", "is_admin": True}
-        try:
-            windows_admin.restart_webui_as_admin(
-                app.state.host,
-                app.state.port,
-                app.state.access_token,
-                Path.cwd(),
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if app.state.exit_after_elevation:
-            threading.Timer(2.0, lambda: os._exit(0)).start()
-        return {"status": "elevation_requested", "is_admin": False}
-
-    def _requires_elevation(context: AppContext) -> bool:
+    def _requires_symlink_capability(context: AppContext) -> bool:
         return (
             context.action in SYMLINK_ACTIONS
             and not context.dry_run
-            and windows_admin.requires_admin_for_symlink()
-            and not windows_admin.is_admin()
+            and not windows_admin.can_create_symlink()
         )
 
-    def _elevation_response() -> JSONResponse:
+    def _symlink_capability_response() -> JSONResponse:
         return JSONResponse(
             status_code=403,
             content={
-                "detail": "创建 Windows 符号链接需要管理员权限，请以管理员方式重启 WebUI 后再执行。",
-                "requires_elevation": True,
+                "detail": "当前 Windows 用户无法创建符号链接。请到系统设置中打开开发者模式后重试。",
+                "requires_developer_mode": True,
             },
         )
 
@@ -217,8 +199,8 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
             context = AppContext.from_dict(payload)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if _requires_elevation(context):
-            return _elevation_response()
+        if _requires_symlink_capability(context):
+            return _symlink_capability_response()
         if not app.state.run_lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="已有工作流正在执行，请等待当前任务完成")
         try:
@@ -235,8 +217,8 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
             context = AppContext.from_dict(payload)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if _requires_elevation(context):
-            return _elevation_response()
+        if _requires_symlink_capability(context):
+            return _symlink_capability_response()
         if not app.state.run_lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="已有工作流正在执行，请等待当前任务完成")
 

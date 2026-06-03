@@ -16,7 +16,7 @@ class TestSymlinkDeleter:
         with open(regular, "w") as f:
             f.write("regular")
 
-        # 创建符号链接（Windows 需要管理员权限，跳过若失败）
+        # 创建符号链接（Windows 需要开发者模式或对应权限，跳过若失败）
         link = os.path.join(temp_dir, "link.txt")
         try:
             os.symlink(regular, link)

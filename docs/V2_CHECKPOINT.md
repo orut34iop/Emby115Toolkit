@@ -98,12 +98,10 @@ Implemented:
 - WebUI single-step and full-flow execution use background run APIs with SSE logs/status while preserving `/v1/run` as a synchronous compatibility endpoint;
 - report link groups in the WebUI execution result panel show a bold colored final result label: green `成功`, orange `部分成功`, or red `失败`;
 - metadata scraping emits progress logs for SSE, including current movie file, current TV first-level directory, matched show title/year, episode progress, and per-show summary;
-- pending non-dry-run requests that trigger UAC are saved in browser sessionStorage, excluding access token;
-- when one-click full flow triggers UAC elevation, WebUI persists the full-flow intent in sessionStorage and resumes `build_symlink_workspace` followed by metadata scraping after the elevated WebUI reloads;
+- non-dry-run symlink requests check actual symlink creation capability before running; when unavailable on Windows, WebUI tells the user to enable Developer Mode instead of starting UAC elevation;
 - `/health`;
 - `/v1/actions`;
-- `/v1/admin/status`;
-- `/v1/admin/restart-elevated`;
+- `/v1/symlink/capability`;
 - `/v1/config/metadata`;
 - `/v1/run`;
 - `/v1/runs`;
@@ -113,8 +111,7 @@ Implemented:
 - `/v1/reports/{run_id}/report.json`;
 - access token enforcement for `/v1/*` when configured;
 - single-run execution lock;
-- non-dry-run symlink creation is blocked unless the Windows process is running as Administrator;
-- WebUI can request an Administrator restart through Windows UAC after user confirmation, wait for the elevated WebUI to become ready, reload, and automatically resume the original request;
+- non-dry-run symlink creation is blocked unless the current process can create symlinks; on Windows, users should enable Developer Mode when capability is unavailable;
 - WebUI metadata section includes TMDB/LLM settings, test buttons, local config load/save buttons, fixed movie/TV metadata library checklist, auto rename, and a `scrape_metadata` dry-run entry;
 - `python main.py --serve-web` backend startup path.
 

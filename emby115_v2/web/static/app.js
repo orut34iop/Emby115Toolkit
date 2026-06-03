@@ -14,7 +14,6 @@ const DEFAULT_PATH_PAIRS = [
 ];
 const FORM_STORAGE_KEY = "emby115_v2.webui.form.v1";
 const METADATA_FORM_STORAGE_KEY = "emby115_v2.webui.metadata.form.v1";
-const PENDING_ELEVATED_RUN_KEY = "emby115_v2.webui.pending_elevated_run.v1";
 const SYMLINK_ACTIONS = new Set(["build_symlink_workspace", "scan_and_link"]);
 const DEFAULT_METADATA_LIBRARIES = [
   { enabled: true, media_type: "movies", library_path: "C:\\working-emby\\movies" },
@@ -36,9 +35,6 @@ const runButton = document.querySelector("#runButton");
 const fullRunButton = document.querySelector("#fullRunButton");
 const metadataRunButton = document.querySelector("#metadataRunButton");
 const reportLinks = document.querySelector("#reportLinks");
-const elevationModal = document.querySelector("#elevationModal");
-const restartElevatedButton = document.querySelector("#restartElevatedButton");
-const cancelElevationButton = document.querySelector("#cancelElevationButton");
 
 function tokenHeaders() {
   const token = document.querySelector("#accessToken").value.trim();
@@ -74,14 +70,6 @@ async function parseJson(response) {
   } catch (error) {
     return {};
   }
-}
-
-function showElevationPrompt() {
-  elevationModal.classList.remove("hidden");
-}
-
-function hideElevationPrompt() {
-  elevationModal.classList.add("hidden");
 }
 
 function readSavedForm() {
@@ -353,30 +341,6 @@ async function checkHealth() {
   }
 }
 
-async function waitForElevatedRestart(timeoutMs = 45000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`/v1/admin/status?ts=${Date.now()}`, {
-        cache: "no-store",
-        headers: tokenHeaders(),
-      });
-      const data = await parseJson(response);
-      if (response.ok && data.is_admin) {
-        return true;
-      }
-    } catch (error) {
-      // The old server exits before the elevated one binds the port.
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 1200));
-  }
-  return false;
-}
-
-function pendingSingleRun(payload) {
-  return { kind: "single", payload };
-}
-
 function metadataLibrariesFromPathPairs(pathPairs) {
   return (pathPairs || [])
     .filter((pair) => pair.name && pair.target)
@@ -386,98 +350,17 @@ function metadataLibrariesFromPathPairs(pathPairs) {
     }));
 }
 
-function pendingFullWorkflow(symlinkPayload) {
-  return {
-    kind: "full_workflow",
-    symlink_payload: symlinkPayload,
-    metadata_libraries: metadataLibrariesFromPathPairs(symlinkPayload.path_pairs),
-  };
-}
-
-function savePendingElevatedRun(run) {
-  try {
-    sessionStorage.setItem(
-      PENDING_ELEVATED_RUN_KEY,
-      JSON.stringify({
-        run,
-        created_at: Date.now(),
-      }),
-    );
-  } catch (error) {
-    appendLog("浏览器无法保存待恢复任务；管理员重启后请手动重新点击执行。");
-  }
-}
-
-function clearPendingElevatedRun() {
-  try {
-    sessionStorage.removeItem(PENDING_ELEVATED_RUN_KEY);
-  } catch (error) {
-    // Ignore storage cleanup failures in restricted browser contexts.
-  }
-}
-
-function readPendingElevatedRun() {
-  try {
-    const raw = sessionStorage.getItem(PENDING_ELEVATED_RUN_KEY);
-    if (!raw) return null;
-    const pending = JSON.parse(raw);
-    const run = pending?.run || (pending?.payload ? pendingSingleRun(pending.payload) : null);
-    if (!run || Date.now() - Number(pending.created_at || 0) > 10 * 60 * 1000) {
-      clearPendingElevatedRun();
-      return null;
-    }
-    return run;
-  } catch (error) {
-    clearPendingElevatedRun();
-    return null;
-  }
-}
-
-async function needsElevation(payload) {
+async function needsDeveloperMode(payload) {
   if (!SYMLINK_ACTIONS.has(payload.action)) return false;
   if (payload.dry_run) return false;
-  const response = await fetch("/v1/admin/status", {
+  const response = await fetch("/v1/symlink/capability", {
     headers: tokenHeaders(),
   });
   const data = await parseJson(response);
   if (!response.ok) {
     throw new Error(data.detail || response.statusText);
   }
-  return data.requires_admin_for_symlink && !data.is_admin;
-}
-
-async function restartElevated() {
-  restartElevatedButton.disabled = true;
-  cancelElevationButton.disabled = true;
-  appendLog("正在请求以管理员方式重启 WebUI，请在 Windows UAC 中选择同意。");
-  try {
-    const response = await fetch("/v1/admin/restart-elevated", {
-      method: "POST",
-      headers: tokenHeaders(),
-    });
-    const data = await parseJson(response);
-    if (!response.ok) {
-      throw new Error(data.detail || response.statusText);
-    }
-    if (data.status === "already_admin") {
-      appendLog("当前 WebUI 已经是管理员权限，可以直接执行。");
-      hideElevationPrompt();
-      await resumePendingElevatedRun();
-      return;
-    }
-    appendLog("已发起管理员重启，正在等待新服务上线。");
-    if (await waitForElevatedRestart()) {
-      appendLog("管理员 WebUI 已就绪，正在恢复执行。");
-      window.location.reload();
-      return;
-    }
-    appendLog("管理员 WebUI 未在预期时间内响应，请确认 UAC 已同意后手动刷新页面。");
-  } catch (error) {
-    appendLog(`管理员重启失败: ${error.message}`);
-  } finally {
-    restartElevatedButton.disabled = false;
-    cancelElevationButton.disabled = false;
-  }
+  return data.requires_developer_mode && !data.can_create_symlink;
 }
 
 async function executePayload(payload, options = {}) {
@@ -491,14 +374,12 @@ async function executePayload(payload, options = {}) {
   }
 
   try {
-    if (await needsElevation(payload)) {
-      appendLog("当前 WebUI 不是管理员权限，真实创建符号链接前需要提权。");
-      savePendingElevatedRun(options.pendingRun || pendingSingleRun(payload));
-      showElevationPrompt();
-      return { ok: false, requiresElevation: true };
+    if (await needsDeveloperMode(payload)) {
+      appendLog("当前 Windows 用户无法创建符号链接。请到系统设置中打开开发者模式后重试。");
+      return { ok: false, requiresDeveloperMode: true };
     }
   } catch (error) {
-    appendLog(`权限状态检查失败: ${error.message}`);
+    appendLog(`符号链接能力检查失败: ${error.message}`);
     return { ok: false, error: error.message };
   }
 
@@ -520,11 +401,9 @@ async function executePayload(payload, options = {}) {
     });
     const data = await parseJson(response);
     if (!response.ok) {
-      if (data.requires_elevation) {
-        appendLog(data.detail || "需要管理员权限。");
-        savePendingElevatedRun(options.pendingRun || pendingSingleRun(payload));
-        showElevationPrompt();
-        return { ok: false, requiresElevation: true };
+      if (data.requires_developer_mode) {
+        appendLog(data.detail || "请到系统设置中打开开发者模式后重试。");
+        return { ok: false, requiresDeveloperMode: true };
       }
       throw new Error(data.detail || response.statusText);
     }
@@ -534,7 +413,6 @@ async function executePayload(payload, options = {}) {
     document.querySelector("#runMode").textContent = data.dry_run ? "dry-run" : "run";
     const result = await streamRunEvents(data, { clearReports, reportLabel });
     appendLog(`执行结束${labelText} run_id=${data.run_id} status=${result.status}`);
-    clearPendingElevatedRun();
     return { ok: result.status !== "failed", data: { ...data, ...result } };
   } catch (error) {
     appendLog(`执行失败${labelText}: ${error.message}`);
@@ -727,10 +605,9 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
     reportLabel: "软链接工作区",
-    pendingRun: pendingFullWorkflow(symlinkPayload),
   });
-  if (symlinkResult.requiresElevation) {
-    appendLog("完整流程已暂停：等待管理员权限后恢复软链接步骤。");
+  if (symlinkResult.requiresDeveloperMode) {
+    appendLog("完整流程已暂停：请到系统设置中打开开发者模式后重新执行。");
     return;
   }
   if (!symlinkResult.ok) {
@@ -800,25 +677,6 @@ async function saveMetadataConfigToServer() {
   }
 }
 
-async function resumePendingElevatedRun() {
-  const pending = readPendingElevatedRun();
-  if (!pending) return;
-  const status = await fetch("/v1/admin/status", { headers: tokenHeaders() })
-    .then(parseJson)
-    .catch(() => ({}));
-  if (!status.is_admin) {
-    appendLog("检测到待恢复任务，但当前 WebUI 仍不是管理员权限。");
-    return;
-  }
-  if (pending.kind === "full_workflow") {
-    appendLog("检测到管理员重启前的完整流程任务，正在继续执行。");
-    await runFullWorkflowPayload(pending.symlink_payload, pending.metadata_libraries);
-    return;
-  }
-  appendLog("检测到管理员重启前的待执行任务，正在继续执行。");
-  await executePayload(pending.payload);
-}
-
 document.querySelector("#runForm").addEventListener("input", saveFormConfig);
 document.querySelector("#runForm").addEventListener("change", saveFormConfig);
 document.querySelector("#metadataForm").addEventListener("input", saveMetadataFormConfig);
@@ -839,9 +697,6 @@ document.querySelector("#testTmdbButton").addEventListener("click", () => testMe
 document.querySelector("#testLlmButton").addEventListener("click", () => testMetadataProvider("test_llm_config"));
 document.querySelector("#loadMetadataConfigButton").addEventListener("click", loadMetadataConfigFromServer);
 document.querySelector("#saveMetadataConfigButton").addEventListener("click", saveMetadataConfigToServer);
-restartElevatedButton.addEventListener("click", restartElevated);
-cancelElevationButton.addEventListener("click", hideElevationPrompt);
 
 restoreFormConfig();
 checkHealth();
-resumePendingElevatedRun();

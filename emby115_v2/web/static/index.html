@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260603-full-flow">
+  <link rel="stylesheet" href="/static/styles.css?v=20260603-symlink-dev-mode">
 </head>
 <body>
   <header class="topbar">
@@ -249,17 +249,6 @@
     </aside>
   </main>
 
-  <div class="modal-backdrop hidden" id="elevationModal" role="dialog" aria-modal="true" aria-labelledby="elevationTitle">
-    <div class="modal">
-      <h2 id="elevationTitle">需要管理员权限</h2>
-      <p>创建 Windows 符号链接需要管理员权限。点击重启后，请在 Windows UAC 中选择同意。</p>
-      <div class="modal-actions">
-        <button type="button" class="secondary" id="cancelElevationButton">取消</button>
-        <button type="button" id="restartElevatedButton">以管理员方式重启</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/static/app.js?v=20260603-full-flow-uac-resume"></script>
+  <script src="/static/app.js?v=20260603-symlink-dev-mode"></script>
 </body>
 </html>
