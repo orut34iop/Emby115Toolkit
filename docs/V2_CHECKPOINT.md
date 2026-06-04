@@ -2,6 +2,10 @@
 
 This document records the current V2 development baseline. Keep it updated whenever code changes affect architecture, commands, workflows, or user-visible behavior.
 
+## Latest Checkpoint
+
+- 2026-06-04: `v2.0-checkpoint-20260604-reviewed-movie-metadata` records the current baseline after the full workflow/cloud-import milestone and the latest manual-review movie metadata corrections. This checkpoint includes mixed-folder per-video scraping, CJK/bracket search cleanup, rule-based aliases, known TMDB-ID direct matches, the local title override for `96超级床上接班人`, and the WebUI full-flow/cloud-import behavior already documented below. Full test suite status at checkpoint creation: `python -m pytest -q` -> 182 passed.
+
 ## Confirmed Product Direction
 
 - First phase targets Windows only.
