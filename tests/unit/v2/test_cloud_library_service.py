@@ -15,7 +15,14 @@ def _make_symlink(link_path, target_path):
         pytest.skip(f"当前环境无法创建 symlink: {exc}")
 
 
-def _context(workspace, target, dry_run=False, wait_minutes=0, upload_wait_strategy="fixed"):
+def _context(
+    workspace,
+    target,
+    dry_run=False,
+    wait_minutes=0,
+    upload_wait_strategy="fixed",
+    move_videos_after_wait=True,
+):
     return AppContext.from_dict(
         {
             "action": "build_cloud_scraped_library",
@@ -25,6 +32,7 @@ def _context(workspace, target, dry_run=False, wait_minutes=0, upload_wait_strat
             "cloud_library_output": {
                 "wait_minutes": wait_minutes,
                 "upload_wait_strategy": upload_wait_strategy,
+                "move_videos_after_wait": move_videos_after_wait,
             },
         }
     )
@@ -91,6 +99,7 @@ def test_cloud_library_uses_readlink_when_resolve_fails_on_virtual_drive(tmp_pat
     real_video.write_text("video", encoding="utf-8")
     link = movie_dir / "movie.mkv"
     _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
 
     original_readlink = os.readlink
     raw_target = "\\\\?\\" + str(real_video)
@@ -134,6 +143,7 @@ def test_cloud_library_skips_existing_video_by_default(tmp_path, mock_logger):
     real_video.write_text("video", encoding="utf-8")
     link = movie_dir / "movie.mkv"
     _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
     existing_target = target / "Movie (2026)" / "movie.mkv"
     existing_target.parent.mkdir(parents=True)
     existing_target.write_text("existing", encoding="utf-8")
@@ -144,6 +154,45 @@ def test_cloud_library_skips_existing_video_by_default(tmp_path, mock_logger):
     assert existing_target.read_text(encoding="utf-8") == "existing"
     assert real_video.exists()
     assert result.summary["videos_skipped_existing"] == 1
+
+
+@pytest.mark.parametrize("move_videos_after_wait", [True, False])
+def test_cloud_library_does_not_plan_real_video_move_without_same_stem_nfo(
+    tmp_path,
+    mock_logger,
+    move_videos_after_wait,
+):
+    workspace = tmp_path / f"workspace-{move_videos_after_wait}"
+    target = tmp_path / f"organized-{move_videos_after_wait}"
+    origin = tmp_path / f"origin-{move_videos_after_wait}"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "other.nfo").write_text("unrelated", encoding="utf-8")
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, move_videos_after_wait=move_videos_after_wait),
+        mock_logger,
+    )
+
+    assert result.status == "partial"
+    assert result.summary["videos_planned"] == 0
+    assert result.summary["videos_moved"] == 0
+    assert result.summary["videos_skipped_missing_nfo"] == 1
+    assert real_video.exists()
+    assert not (target / "Movie (2026)" / "movie.mkv").exists()
+    assert not any(record.action == "move_real_video" for record in result.records)
+    assert any(
+        record.action == "skip_symlink_copy"
+        and record.status == "skipped"
+        and "同目录缺少同名 NFO" in record.reason
+        and record.extra.get("required_nfo_path", "").endswith("movie.nfo")
+        for record in result.records
+    )
 
 
 def test_cloud_library_clouddrive2_or_fixed_treats_not_observed_as_settled(

@@ -47,6 +47,7 @@ class CloudScrapedLibraryService:
             "videos_planned": 0,
             "videos_moved": 0,
             "videos_skipped_existing": 0,
+            "videos_skipped_missing_nfo": 0,
             "videos_skipped_wait_unconfirmed": 0,
             "videos_failed": 0,
             "cloud_upload_wait_unconfirmed": False,
@@ -193,9 +194,24 @@ class CloudScrapedLibraryService:
                 target_file = target_dir / filename
                 if source_file.is_symlink():
                     summary["symlinks_skipped_copy"] += 1
-                    move_plan = self._build_video_move_plan(pair, source_file, target_file, media_type, context)
+                    move_plan = None
+                    missing_nfo_path = None
+                    if source_file.suffix.lower() in context.symlink.video_extensions:
+                        required_nfo = self._matching_nfo_path(source_file)
+                        if required_nfo.exists():
+                            move_plan = self._build_video_move_plan(pair, source_file, target_file, media_type, context)
+                        else:
+                            missing_nfo_path = required_nfo
+                            summary["videos_skipped_missing_nfo"] += 1
                     if move_plan:
                         move_plans.append(move_plan)
+                    reason = (
+                        "阶段 A 排除 symlink 文件；真实视频将在阶段 B 移动"
+                        if move_plan
+                        else "阶段 A 排除 symlink 文件；同目录缺少同名 NFO，未创建真实视频移动计划"
+                        if missing_nfo_path
+                        else "阶段 A 排除 symlink 文件；不是配置的视频后缀"
+                    )
                     records.append(
                         OperationRecord(
                             action="skip_symlink_copy",
@@ -203,11 +219,12 @@ class CloudScrapedLibraryService:
                             source_path=str(source_file),
                             target_path=str(target_file),
                             media_type=media_type,
-                            reason="阶段 A 排除 symlink 文件；真实视频将在阶段 B 移动",
+                            reason=reason,
                             extra={
                                 "path_pair": pair.name,
                                 "real_video_path": str(move_plan.real_video_path) if move_plan and move_plan.real_video_path else "",
                                 "real_video_resolve_reason": move_plan.reason if move_plan else "",
+                                "required_nfo_path": str(missing_nfo_path) if missing_nfo_path else "",
                             },
                         )
                     )
@@ -299,6 +316,19 @@ class CloudScrapedLibraryService:
             return None
         real_video_path, reason = self._resolve_symlink_target(workspace_symlink_path)
         return VideoMovePlan(pair.name, workspace_symlink_path, real_video_path, target_video_path, media_type, reason)
+
+    def _matching_nfo_path(self, workspace_symlink_path: Path) -> Path:
+        expected_nfo = workspace_symlink_path.with_suffix(".nfo")
+        if expected_nfo.exists():
+            return expected_nfo
+        try:
+            expected_stem = workspace_symlink_path.stem.casefold()
+            for candidate in workspace_symlink_path.parent.iterdir():
+                if candidate.stem.casefold() == expected_stem and candidate.suffix.casefold() == ".nfo":
+                    return candidate
+        except OSError:
+            pass
+        return expected_nfo
 
     def _resolve_symlink_target(self, workspace_symlink_path: Path) -> tuple[Path | None, str]:
         try:
@@ -523,10 +553,13 @@ class CloudScrapedLibraryService:
     def _status(self, summary: dict[str, Any]) -> str:
         failures = int(summary.get("metadata_failed", 0)) + int(summary.get("videos_failed", 0))
         successes = int(summary.get("metadata_copied", 0)) + int(summary.get("videos_moved", 0))
-        if failures and successes:
+        missing_nfo = int(summary.get("videos_skipped_missing_nfo", 0))
+        if failures and (successes or missing_nfo):
             return "partial"
         if failures:
             return "failed"
+        if missing_nfo:
+            return "partial"
         return "success"
 
     def _media_type(self, pair: PathPair) -> str:
