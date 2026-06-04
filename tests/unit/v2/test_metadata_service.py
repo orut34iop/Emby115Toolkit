@@ -416,6 +416,10 @@ class QueryAwareMovieClient:
             return [{"id": 102, "title": "贝塔电影", "original_title": "Beta Movie", "release_date": "2025-01-01"}]
         if query.title == "聊斋艳谭之艳魔大战":
             return [{"id": 60898, "title": "聊斋艳谭之艳魔大战", "original_title": "聊齋艷譚", "release_date": "1990-05-19"}]
+        if query.title in {"GirlS", "Girls"}:
+            return [{"id": 44225, "title": "Boston Girls", "original_title": "Boston Girls", "release_date": "2010-01-01"}]
+        if query.title == "囡囡":
+            return [{"id": 47992, "title": "囡囡", "original_title": "囡囡", "release_date": "2010-09-02"}]
         return []
 
     def movie_details(self, tmdb_id, language):
@@ -438,6 +442,17 @@ class QueryAwareMovieClient:
                 "release_date": "1990-05-19",
                 "overview": "三名女子误入妖魔幻境。",
                 "external_ids": {"imdb_id": "tt0100014"},
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 47992:
+            return {
+                "id": 47992,
+                "title": "囡囡",
+                "original_title": "囡囡",
+                "release_date": "2010-09-02",
+                "overview": "少女们踏入成人世界。",
+                "external_ids": {"imdb_id": "tt1744668"},
                 "poster_path": "",
                 "backdrop_path": "",
             }
@@ -634,6 +649,41 @@ def test_movie_metadata_strips_actor_parentheses_from_search_query(tmp_path):
     assert movie_record.status == "written"
     assert movie_record.year == "1990"
     assert movie_record.extra["external_ids"]["imdb_id"] == "tt0100014"
+
+
+def test_movie_metadata_uses_known_stylized_alias_before_generic_candidates(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "GirlS (2010)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "GirlS2010Blu-ray1080pAVCTrueHD5.1.mkv"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": False,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_stylized_alias", context.logging.log_dir, context.run_id)
+    fake_tmdb = QueryAwareMovieClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    searched_titles = [query.title for query, _language in fake_tmdb.search_calls]
+    assert searched_titles[0] == "囡囡"
+    assert "GirlS" not in searched_titles
+    assert result.records[0].status == "written"
+    assert result.records[0].title == "囡囡"
+    assert result.records[0].year == "2010"
 
 
 def test_movie_auto_rename_moves_each_movie_out_of_category_folder(tmp_path):

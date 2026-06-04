@@ -22,6 +22,9 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
 TMDB_REQUEST_RETRIES = 3
 INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
+KNOWN_MOVIE_QUERY_ALIASES = {
+    ("girls", "2010"): ("囡囡", "Girl$"),
+}
 
 
 @dataclass(frozen=True)
@@ -1407,25 +1410,78 @@ def fetch_movie_metadata(
     language: str,
     fallback_language: str,
 ) -> tuple[MovieMetadata | None, list[dict[str, Any]]]:
-    candidates = client.search_movie(query, language)
-    used_language = language
-    fallback_used = False
-    if not candidates and fallback_language != language:
-        candidates = client.search_movie(query, fallback_language)
-        used_language = fallback_language
-        fallback_used = True
-    if not candidates:
-        return None, []
+    summarized_candidates: list[dict[str, Any]] = []
+    for search_query in movie_search_queries(query):
+        candidates = client.search_movie(search_query, language)
+        used_language = language
+        fallback_used = False
+        if not candidates and fallback_language != language:
+            candidates = client.search_movie(search_query, fallback_language)
+            used_language = fallback_language
+            fallback_used = True
+        if not candidates:
+            continue
 
-    selected = candidates[0]
-    tmdb_id = int(selected["id"])
-    details = client.movie_details(tmdb_id, used_language)
-    fallback_details = {}
-    if fallback_language != used_language and missing_core_fields(details):
-        fallback_details = client.movie_details(tmdb_id, fallback_language)
-        fallback_used = True
-    metadata = movie_metadata_from_details(details, fallback_details, used_language, fallback_used)
-    return metadata, summarize_candidates(candidates)
+        summarized_candidates = summarize_candidates(candidates)
+        selected = candidates[0]
+        tmdb_id = int(selected["id"])
+        details = client.movie_details(tmdb_id, used_language)
+        fallback_details = {}
+        if fallback_language != used_language and missing_core_fields(details):
+            fallback_details = client.movie_details(tmdb_id, fallback_language)
+            fallback_used = True
+        metadata = movie_metadata_from_details(details, fallback_details, used_language, fallback_used)
+        return metadata, summarized_candidates
+    return None, summarized_candidates
+
+
+def movie_search_queries(query: MovieQuery) -> list[MovieQuery]:
+    queries: list[MovieQuery] = []
+    for title in movie_search_title_variants(query.title, query.year):
+        append_unique_movie_query(queries, MovieQuery(title=title, year=query.year))
+    append_unique_movie_query(queries, query)
+    return queries
+
+
+def movie_search_title_variants(title: str, year: str) -> list[str]:
+    variants: list[str] = []
+    normalized = normalize_latin_key(title)
+    for alias in KNOWN_MOVIE_QUERY_ALIASES.get((normalized, year), ()):
+        append_unique_text(variants, alias)
+    for candidate in cjk_title_prefix_variants(title):
+        append_unique_text(variants, candidate)
+    return variants
+
+
+def cjk_title_prefix_variants(title: str) -> list[str]:
+    if not contains_cjk(title):
+        return []
+    variants: list[str] = []
+    for part in re.split(r"[-_/|]+", title):
+        cleaned = clean_movie_search_title(part)
+        if contains_cjk(cleaned) and len(cleaned) >= 2:
+            append_unique_text(variants, cleaned)
+    return variants
+
+
+def normalize_latin_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def contains_cjk(value: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", value))
+
+
+def append_unique_movie_query(queries: list[MovieQuery], query: MovieQuery) -> None:
+    key = (query.title.strip().casefold(), query.year)
+    if query.title and key not in {(item.title.strip().casefold(), item.year) for item in queries}:
+        queries.append(query)
+
+
+def append_unique_text(values: list[str], value: str) -> None:
+    normalized = value.strip()
+    if normalized and normalized.casefold() not in {item.casefold() for item in values}:
+        values.append(normalized)
 
 
 def fetch_tvshow_metadata(
