@@ -14,6 +14,7 @@ This document records the current V2 development baseline. Keep it updated whene
 - Qt/tkinter are legacy references and are not V2 feature targets.
 - WebUI and CLI are facade entrances. They must call the same core service layer through Context Objects.
 - Every run must produce auditable artifacts: HTML report, JSON report, and log file.
+- HTML reports include local operation-record filtering controls for status, action, media type, keyword search, and quick filters for `manual_review` and `failed`, so audit work can focus on rows that need review.
 
 ## Current Implemented Foundation
 
@@ -140,6 +141,7 @@ Implemented:
 - WebUI layout is optimized for 100% browser zoom on common desktop widths: the workflow area and execution result panel use a responsive two-column layout, collapse to one column below medium widths, and long report paths wrap inside the result panel instead of creating whole-page horizontal scrolling;
 - WebUI single-step and full-flow execution use background run APIs with SSE logs/status while preserving `/v1/run` as a synchronous compatibility endpoint;
 - report link groups in the WebUI execution result panel show a bold colored final result label: green `成功`, orange `部分成功`, or red `失败`;
+- generated HTML reports include a local filtering toolbar for operation records: status/action/media type selects, keyword search, and quick buttons for `待人工 review` and `失败`;
 - metadata scraping emits progress logs for SSE, including current movie file, current TV first-level directory, matched show title/year, episode progress, and per-show summary;
 - non-dry-run symlink requests check actual symlink creation capability before running; when unavailable on Windows, WebUI tells the user to enable Developer Mode instead of starting UAC elevation;
 - `/health`;

@@ -26,6 +26,7 @@ Version 2.0 is Windows-only in the first phase and has two official facades:
   - WebUI task execution uses `/v1/runs`, `/v1/runs/{run_id}`, `/v1/runs/{run_id}/cancel`, and `/v1/runs/{run_id}/events` for background runs plus SSE log/status streaming. `/v1/run` remains the synchronous compatibility API.
   - WebUI layout must remain usable at 100% browser zoom on common desktop widths: the workflow area and result panel use a responsive two-column layout, collapse to one column on narrower viewports, and long report paths/log lines must wrap inside their panels without creating whole-page horizontal scrolling.
   - WebUI report link groups must show a bold colored final result label: success, partial, or failed, so users can quickly audit each run without opening the report.
+  - Generated HTML reports must include local filtering controls for operation records: status, action, media type, keyword search, and quick filters for `manual_review` and `failed` records. JSON report shape remains unchanged.
   - Metadata scraping must log per-library progress frequently enough for SSE: current movie file, current TV first-level show directory, matched show title/year, episode progress, and per-show summary.
   - Form parameters are restored from browser localStorage on page load; do not persist access tokens.
   - Metadata provider settings are restored from browser localStorage and may include TMDB/LLM API keys by product decision; WebUI access tokens still must not be persisted.
