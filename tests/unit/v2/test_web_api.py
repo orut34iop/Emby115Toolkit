@@ -123,7 +123,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "full-flow-path-source" in html
+    assert "full-flow-no-confirm" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
     assert "overflow-wrap: anywhere" in css
@@ -151,12 +151,16 @@ def test_webui_uses_background_runs_and_sse():
     assert "library_path: pair.target" in script
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script
-    assert "完整流程开始网盘导入" in script
+    assert "完整流程开始网盘导入：自动进入第三阶段" in script
     assert "网盘已刮削媒体库" in script
     assert "软链接工作区步骤未成功完成，完整流程已停止" in script
     assert "confirmCloudMoveIfNeeded" in script
     assert "window.confirm" in script
+    assert "网盘导入即将开始" in script
     assert "当前 C 盘 symlink 工作区中的链接变成过期链接" in script
+    assert "完整流程即将进入第三阶段" not in script
+    assert "完整流程已在网盘导入前停止：用户未确认移动真实视频" not in script
+    assert 'confirmCloudMoveIfNeeded(cloudPayload' not in script
     assert "runFullWorkflowPayload" in script
     assert "metadataLibrariesFromPathPairs" in script
     assert "fullWorkflowCancelRequested" in script

@@ -632,14 +632,13 @@ function cloudMoveNeedsConfirmation(payload) {
   );
 }
 
-function confirmCloudMoveIfNeeded(payload, libraries, source = "full-flow") {
+function confirmCloudMoveIfNeeded(payload, libraries) {
   if (!cloudMoveNeedsConfirmation(payload)) return true;
   const lines = (libraries || [])
     .map((library) => `${MEDIA_TYPE_LABELS[library.media_type] || library.media_type}: ${library.source} -> ${library.target}`)
     .join("\n");
-  const prefix = source === "full-flow" ? "完整流程即将进入第三阶段" : "网盘导入即将开始";
   return window.confirm(
-    `${prefix}，将把 symlink 指向的真实视频移动到网盘新媒体库目录。\n\n${lines}\n\n该操作会让当前 C 盘 symlink 工作区中的链接变成过期链接。确认继续吗？`
+    `网盘导入即将开始，将把 symlink 指向的真实视频移动到网盘新媒体库目录。\n\n${lines}\n\n该操作会让当前 C 盘 symlink 工作区中的链接变成过期链接。确认继续吗？`
   );
 }
 
@@ -927,7 +926,7 @@ async function runCloudLibraryWorkflow(event) {
     return;
   }
   const payload = buildCloudPayload("build_cloud_scraped_library", libraries);
-  if (!confirmCloudMoveIfNeeded(payload, libraries, "cloud-card")) {
+  if (!confirmCloudMoveIfNeeded(payload, libraries)) {
     appendLog("网盘导入已取消：用户未确认移动真实视频。");
     return;
   }
@@ -1062,13 +1061,10 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
       appendLog("完整流程跳过网盘导入：网盘导入卡片中没有勾选且目标路径有效的对应媒体库。");
     } else {
       const cloudPayload = buildCloudPayload("build_cloud_scraped_library", cloudLibraries);
-      if (!confirmCloudMoveIfNeeded(cloudPayload, cloudLibraries, "full-flow")) {
-        skippedCount += 1;
-        appendLog("完整流程已在网盘导入前停止：用户未确认移动真实视频。");
-      } else if (state.fullWorkflowCancelRequested) {
+      if (state.fullWorkflowCancelRequested) {
         appendLog("完整流程已取消：已停止启动网盘导入。");
       } else {
-        appendLog("完整流程开始网盘导入：复制已刮削元数据并移动真实视频。");
+        appendLog("完整流程开始网盘导入：自动进入第三阶段，复制已刮削元数据并移动真实视频。");
         const result = await executePayload(cloudPayload, {
           clearReports: false,
           reportLabel: "网盘已刮削媒体库",
