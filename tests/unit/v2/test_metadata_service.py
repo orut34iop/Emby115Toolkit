@@ -101,6 +101,22 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
+                "images": {
+                    "logos": [
+                        {
+                            "file_path": "/movie-logo-en.png",
+                            "iso_639_1": "en",
+                            "vote_average": 9.0,
+                            "vote_count": 5,
+                        },
+                        {
+                            "file_path": "/movie-logo-zh.png",
+                            "iso_639_1": "zh",
+                            "vote_average": 8.0,
+                            "vote_count": 1,
+                        },
+                    ]
+                },
             }
         return {
             "id": tmdb_id,
@@ -139,6 +155,16 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/fanart.jpg",
+                "images": {
+                    "logos": [
+                        {
+                            "file_path": "/movie-logo-fallback.png",
+                            "iso_639_1": "en",
+                            "vote_average": 10.0,
+                            "vote_count": 10,
+                        }
+                    ]
+                },
             }
 
     def search_tv(self, query, language):
@@ -202,6 +228,22 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
+                "images": {
+                    "logos": [
+                        {
+                            "file_path": "/tv-logo-en.png",
+                            "iso_639_1": "en",
+                            "vote_average": 9.0,
+                            "vote_count": 3,
+                        },
+                        {
+                            "file_path": "/tv-logo-zh.png",
+                            "iso_639_1": "zh",
+                            "vote_average": 7.0,
+                            "vote_count": 1,
+                        },
+                    ]
+                },
                 "seasons": [
                     {"season_number": 0, "poster_path": "/specials-poster.jpg"},
                     {"season_number": 1, "poster_path": "/season-1-poster.jpg"},
@@ -254,6 +296,16 @@ class FakeTmdbClient:
                 },
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
+                "images": {
+                    "logos": [
+                        {
+                            "file_path": "/tv-logo-fallback.png",
+                            "iso_639_1": "en",
+                            "vote_average": 10.0,
+                            "vote_count": 10,
+                        }
+                    ]
+                },
                 "seasons": [
                     {"season_number": 1, "poster_path": "/fallback-season-1-poster.jpg"},
                 ],
@@ -997,6 +1049,8 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert result.records[0].extra["spoken_languages"] == ["English"]
     assert result.records[0].extra["original_language"] == "en"
     assert result.records[0].extra["release_date"] == "2000-04-20"
+    assert result.records[0].extra["clearlogo_status"] == "downloaded"
+    assert Path(result.records[0].extra["clearlogo_path"]).name == "一见钟情.Sausalito.2000.BD1080P-clearlogo.png"
     assert nfo.exists()
     nfo_text = nfo.read_text(encoding="utf-8")
     assert "<title>一见钟情</title>" in nfo_text
@@ -1021,6 +1075,7 @@ def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path
     assert "<name>Actor 24</name>" in nfo_text
     assert "<role>Role 24</role>" in nfo_text
     assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-poster.jpg").exists()
+    assert (movie_dir / "一见钟情.Sausalito.2000.BD1080P-clearlogo.png").exists()
 
 
 def test_movie_metadata_auto_renames_first_level_folder_from_nfo(tmp_path):
@@ -1141,6 +1196,7 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     tvshow_nfo = renamed / "tvshow.nfo"
     episode_nfo = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p.nfo"
     thumb = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p-thumb.jpg"
+    clearlogo = renamed / "clearlogo.png"
     season_poster = renamed / "season01-poster.jpg"
     specials_poster = renamed / "season-specials-poster.jpg"
     assert result.status == "success"
@@ -1149,6 +1205,7 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     assert tvshow_nfo.exists()
     assert episode_nfo.exists()
     assert thumb.exists()
+    assert clearlogo.exists()
     assert season_poster.exists()
     assert specials_poster.exists()
     tvshow_text = tvshow_nfo.read_text(encoding="utf-8")
@@ -1178,6 +1235,8 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     assert episode_record.extra["rating"] == 8.7
     assert episode_record.extra["actor_count"] == 1
     show_record = next(record for record in result.records if record.target_path.endswith("tvshow.nfo"))
+    assert show_record.extra["clearlogo_status"] == "downloaded"
+    assert Path(show_record.extra["clearlogo_path"]).name == "clearlogo.png"
     assert [
         {
             "season_number": item["season_number"],
