@@ -21,6 +21,7 @@ TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
 TMDB_REQUEST_RETRIES = 3
 INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
+PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
 
 
 @dataclass(frozen=True)
@@ -1107,18 +1108,43 @@ def infer_movie_query(
     video_extensions: set[str] | None = None,
     mixed_query_folders: set[Path] | None = None,
 ) -> MovieQuery:
-    raw_title = movie_query_source_text(
-        video_path,
-        library_path,
-        video_extensions or {video_path.suffix.lower()},
-        mixed_query_folders or set(),
+    raw_title = clean_movie_search_title(
+        movie_query_source_text(
+            video_path,
+            library_path,
+            video_extensions or {video_path.suffix.lower()},
+            mixed_query_folders or set(),
+        )
     )
-    match = re.search(r"\((\d{4})\)", raw_title)
+    match = re.search(PARENTHESIZED_YEAR_RE, raw_title)
     year = match.group(1) if match else extract_year(video_path.stem)
-    title = re.sub(r"\(\d{4}\)", "", raw_title).strip()
+    title = re.sub(PARENTHESIZED_YEAR_RE, "", raw_title).strip()
     if not title or title == video_path.stem:
         title = clean_release_title(video_path.stem)
     return MovieQuery(title=title.strip(" ._-"), year=year)
+
+
+def clean_movie_search_title(value: str) -> str:
+    value = strip_non_year_bracketed_text(value)
+    return re.sub(r"\s+", " ", value).strip(" ._-")
+
+
+def strip_non_year_bracketed_text(value: str) -> str:
+    patterns = [
+        r"\([^()]*\)",
+        r"（[^（）]*）",
+        r"\[[^\[\]]*\]",
+        r"【[^【】]*】",
+        r"「[^「」]*」",
+    ]
+    for pattern in patterns:
+        value = re.sub(pattern, replace_non_year_bracket, value)
+    return value
+
+
+def replace_non_year_bracket(match: re.Match[str]) -> str:
+    text = match.group(0)
+    return text if re.fullmatch(PARENTHESIZED_YEAR_RE, text) else " "
 
 
 def movie_query_source_text(
@@ -1151,7 +1177,7 @@ def should_query_movie_from_video_stem(first_folder: Path, video_extensions: set
 
 
 def has_year_marker(value: str) -> bool:
-    return bool(re.search(r"\((?:19|20)\d{2}\)", value) or extract_year(value))
+    return bool(re.search(PARENTHESIZED_YEAR_RE, value) or extract_year(value))
 
 
 def count_video_files(folder: Path, extensions: set[str], limit: int = 2) -> int:
