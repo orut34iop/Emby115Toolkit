@@ -456,6 +456,16 @@ class QueryAwareMovieClient:
                 "poster_path": "",
                 "backdrop_path": "",
             }
+        if tmdb_id == 322587:
+            return {
+                "id": 322587,
+                "title": "热点服务：一个残忍的理发师",
+                "original_title": "화끈한 써비스: 어느 잔인한 미용사의",
+                "release_date": "2015-01-29",
+                "overview": "一名理发师展开复仇。",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
         return {
             "id": 102,
             "title": "贝塔电影",
@@ -684,6 +694,41 @@ def test_movie_metadata_uses_known_stylized_alias_before_generic_candidates(tmp_
     assert result.records[0].status == "written"
     assert result.records[0].title == "囡囡"
     assert result.records[0].year == "2010"
+
+
+def test_movie_metadata_uses_known_tmdb_id_when_search_cannot_find_title(tmp_path):
+    library = tmp_path / "movies"
+    movie_dir = library / "janinhan.miyongsaui (2014)"
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / "janinhan.miyongsaui.2014.1080p.HDRip.H264-Ental.mp4"
+    video.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": False,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mp4"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_known_tmdb_id", context.logging.log_dir, context.run_id)
+    fake_tmdb = QueryAwareMovieClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    assert fake_tmdb.search_calls == []
+    assert result.records[0].status == "written"
+    assert result.records[0].title == "热点服务：一个残忍的理发师"
+    assert result.records[0].year == "2015"
+    assert result.records[0].extra["tmdb_id"] == 322587
+    assert result.records[0].extra["candidates"][0]["match_source"] == "known_tmdb_id"
 
 
 def test_movie_auto_rename_moves_each_movie_out_of_category_folder(tmp_path):

@@ -25,6 +25,10 @@ PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
 KNOWN_MOVIE_QUERY_ALIASES = {
     ("girls", "2010"): ("囡囡", "Girl$"),
 }
+KNOWN_MOVIE_TMDB_IDS = {
+    ("janinhanmiyongsaui", "2014"): 322587,
+    ("janinhanmiyongsaui", "2015"): 322587,
+}
 
 
 @dataclass(frozen=True)
@@ -1410,6 +1414,11 @@ def fetch_movie_metadata(
     language: str,
     fallback_language: str,
 ) -> tuple[MovieMetadata | None, list[dict[str, Any]]]:
+    direct_tmdb_id = known_movie_tmdb_id(query)
+    if direct_tmdb_id:
+        metadata = fetch_movie_metadata_by_id(client, direct_tmdb_id, language, fallback_language)
+        return metadata, summarize_metadata_candidate(metadata) if metadata else []
+
     summarized_candidates: list[dict[str, Any]] = []
     for search_query in movie_search_queries(query):
         candidates = client.search_movie(search_query, language)
@@ -1433,6 +1442,39 @@ def fetch_movie_metadata(
         metadata = movie_metadata_from_details(details, fallback_details, used_language, fallback_used)
         return metadata, summarized_candidates
     return None, summarized_candidates
+
+
+def fetch_movie_metadata_by_id(
+    client: TmdbClient,
+    tmdb_id: int,
+    language: str,
+    fallback_language: str,
+) -> MovieMetadata | None:
+    details = client.movie_details(tmdb_id, language)
+    if not details:
+        return None
+    fallback_details = {}
+    fallback_used = False
+    if fallback_language != language and missing_core_fields(details):
+        fallback_details = client.movie_details(tmdb_id, fallback_language)
+        fallback_used = True
+    return movie_metadata_from_details(details, fallback_details, language, fallback_used)
+
+
+def summarize_metadata_candidate(metadata: MovieMetadata) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": metadata.tmdb_id,
+            "title": metadata.title,
+            "original_title": metadata.original_title,
+            "release_date": metadata.release_date,
+            "match_source": "known_tmdb_id",
+        }
+    ]
+
+
+def known_movie_tmdb_id(query: MovieQuery) -> int | None:
+    return KNOWN_MOVIE_TMDB_IDS.get((normalize_latin_key(query.title), query.year))
 
 
 def movie_search_queries(query: MovieQuery) -> list[MovieQuery]:
