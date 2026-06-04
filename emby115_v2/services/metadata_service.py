@@ -545,22 +545,30 @@ class MetadataScraperService:
 
     def _run_movies(self, context: AppContext, logger: logging.Logger, library_path: Path) -> StepResult:
         records = []
+        rename_summary = empty_auto_rename_summary()
         extensions = set(context.symlink.video_extensions)
         video_paths = list(iter_video_files(library_path, extensions))
+        mixed_query_folders = mixed_movie_query_folders(library_path, extensions)
         logger.info("开始电影元数据刮削 library=%s videos=%s", library_path, len(video_paths))
         for index, video_path in enumerate(video_paths, start=1):
             if cancellation.is_cancelled(context.run_id):
                 logger.info("电影元数据刮削收到取消请求，停止启动后续电影处理")
                 break
             logger.info("正在刮削电影元数据 [%s/%s] %s", index, len(video_paths), video_path)
-            records.append(self._process_movie(context, video_path, logger))
-            logger.info("完成电影元数据 [%s/%s] %s status=%s", index, len(video_paths), video_path.name, records[-1].status)
+            record = self._process_movie(context, video_path, logger, mixed_query_folders)
+            records.append(record)
+            auto_record = auto_rename_movie_record(context, record, logger, rename_summary)
+            if auto_record is not None:
+                records.append(auto_record)
+            logger.info("完成电影元数据 [%s/%s] %s status=%s", index, len(video_paths), video_path.name, record.status)
         canceled = cancellation.is_cancelled(context.run_id)
-        rename_summary = {"skipped": "canceled"} if canceled else auto_rename_from_movie_records(context, records, logger)
+        if canceled:
+            rename_summary["canceled"] = 1
 
-        matched = sum(1 for record in records if record.status in {"planned", "written", "skipped_existing"})
-        manual_review = sum(1 for record in records if record.status == "manual_review")
-        failed = sum(1 for record in records if record.status == "failed") + rename_summary.get("failed", 0)
+        metadata_records = [record for record in records if record.action == "scrape_metadata"]
+        matched = sum(1 for record in metadata_records if record.status in {"planned", "written", "skipped_existing"})
+        manual_review = sum(1 for record in metadata_records if record.status == "manual_review")
+        failed = sum(1 for record in metadata_records if record.status == "failed") + rename_summary.get("failed", 0)
         logger.info("电影元数据刮削完成 library=%s matched=%s manual_review=%s", library_path, matched, manual_review)
         if canceled:
             records.append(OperationRecord(action="cancel", status="canceled", media_type="movies", reason="电影元数据刮削收到取消请求"))
@@ -571,7 +579,7 @@ class MetadataScraperService:
                 "media_type": "movies",
                 "library_path": str(library_path),
                 "dry_run": context.dry_run,
-                "scanned": len(records),
+                "scanned": len(video_paths),
                 "matched": matched,
                 "manual_review": manual_review,
                 "failed": failed,
@@ -924,8 +932,19 @@ class MetadataScraperService:
                 extra={"tmdb_id": show_metadata.tmdb_id},
             )
 
-    def _process_movie(self, context: AppContext, video_path: Path, logger: logging.Logger) -> OperationRecord:
-        query = infer_movie_query(video_path, context.metadata_output.library_path)
+    def _process_movie(
+        self,
+        context: AppContext,
+        video_path: Path,
+        logger: logging.Logger,
+        mixed_query_folders: set[Path] | None = None,
+    ) -> OperationRecord:
+        query = infer_movie_query(
+            video_path,
+            context.metadata_output.library_path,
+            set(context.symlink.video_extensions),
+            mixed_query_folders,
+        )
         nfo_path = video_path.with_suffix(".nfo")
         poster_path = video_path.with_name(f"{video_path.stem}-poster.jpg")
         fanart_path = video_path.with_name(f"{video_path.stem}-fanart.jpg")
@@ -1078,19 +1097,75 @@ class MetadataScraperService:
 
 def iter_video_files(root: Path, extensions: set[str]):
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in extensions:
+        if path_is_file_or_symlink(path) and path.suffix.lower() in extensions:
             yield path
 
 
-def infer_movie_query(video_path: Path, library_path: Path) -> MovieQuery:
-    parent = video_path.parent
-    raw_title = parent.name if parent != library_path else video_path.stem
+def infer_movie_query(
+    video_path: Path,
+    library_path: Path,
+    video_extensions: set[str] | None = None,
+    mixed_query_folders: set[Path] | None = None,
+) -> MovieQuery:
+    raw_title = movie_query_source_text(
+        video_path,
+        library_path,
+        video_extensions or {video_path.suffix.lower()},
+        mixed_query_folders or set(),
+    )
     match = re.search(r"\((\d{4})\)", raw_title)
     year = match.group(1) if match else extract_year(video_path.stem)
     title = re.sub(r"\(\d{4}\)", "", raw_title).strip()
     if not title or title == video_path.stem:
         title = clean_release_title(video_path.stem)
     return MovieQuery(title=title.strip(" ._-"), year=year)
+
+
+def movie_query_source_text(
+    video_path: Path,
+    library_path: Path,
+    video_extensions: set[str],
+    mixed_query_folders: set[Path],
+) -> str:
+    parent = video_path.parent
+    if parent == library_path:
+        return video_path.stem
+    first_folder = first_level_folder(library_path, video_path)
+    if first_folder and (first_folder in mixed_query_folders or should_query_movie_from_video_stem(first_folder, video_extensions)):
+        return video_path.stem
+    return parent.name
+
+
+def mixed_movie_query_folders(library_path: Path, video_extensions: set[str]) -> set[Path]:
+    return {
+        folder
+        for folder in direct_child_dirs(library_path)
+        if should_query_movie_from_video_stem(folder, video_extensions)
+    }
+
+
+def should_query_movie_from_video_stem(first_folder: Path, video_extensions: set[str]) -> bool:
+    if has_year_marker(first_folder.name):
+        return False
+    return count_video_files(first_folder, video_extensions, limit=2) > 1
+
+
+def has_year_marker(value: str) -> bool:
+    return bool(re.search(r"\((?:19|20)\d{2}\)", value) or extract_year(value))
+
+
+def count_video_files(folder: Path, extensions: set[str], limit: int = 2) -> int:
+    count = 0
+    for path in folder.rglob("*"):
+        if path_is_file_or_symlink(path) and path.suffix.lower() in extensions:
+            count += 1
+            if count >= limit:
+                return count
+    return count
+
+
+def path_is_file_or_symlink(path: Path) -> bool:
+    return path.is_file() or path.is_symlink()
 
 
 def infer_tvshow_query(show_dir: Path) -> TvShowQuery:
@@ -1938,37 +2013,173 @@ def append_movie_set(parent: ET.Element, collection_name: str, collection_tmdb_i
         tmdbid.text = collection_tmdb_id
 
 
+def empty_auto_rename_summary() -> dict[str, int]:
+    return {"planned": 0, "renamed": 0, "merged": 0, "skipped": 0, "failed": 0}
+
+
 def auto_rename_from_movie_records(
     context: AppContext,
     records: list[OperationRecord],
     logger: logging.Logger,
 ) -> dict[str, int]:
-    summary = {"planned": 0, "renamed": 0, "merged": 0, "skipped": 0, "failed": 0}
-    if not context.metadata_output.auto_rename:
-        return summary
-
-    library_path = context.metadata_output.library_path
-    folders: dict[Path, OperationRecord] = {}
-    for record in records:
-        if record.media_type != "movies" or record.status not in {"written", "skipped_existing", "planned"}:
-            continue
-        nfo_path = Path(record.target_path)
-        folder = first_level_folder(library_path, nfo_path)
-        if folder and folder not in folders:
-            folders[folder] = record
-
-    for folder, record in folders.items():
-        nfo_path = Path(record.target_path)
-        result = auto_rename_folder_from_nfo(
-            folder=folder,
-            nfo_path=nfo_path,
-            expected_root="movie",
-            dry_run=context.dry_run,
-            logger=logger,
-        )
-        summary[result["status"]] = summary.get(result["status"], 0) + 1
-        record.extra["auto_rename"] = result
+    summary = empty_auto_rename_summary()
+    for record in list(records):
+        auto_record = auto_rename_movie_record(context, record, logger, summary)
+        if auto_record is not None:
+            records.append(auto_record)
     return summary
+
+
+def auto_rename_movie_record(
+    context: AppContext,
+    record: OperationRecord,
+    logger: logging.Logger,
+    summary: dict[str, int] | None = None,
+) -> OperationRecord | None:
+    if not context.metadata_output.auto_rename:
+        return None
+    if record.action != "scrape_metadata" or record.media_type != "movies":
+        return None
+    if record.status not in {"written", "skipped_existing", "planned"}:
+        return None
+
+    result = auto_relocate_movie_from_record(context, record, logger)
+    if summary is not None:
+        summary[result["status"]] = summary.get(result["status"], 0) + 1
+    record.extra["auto_rename"] = result
+    return OperationRecord(
+        action="auto_rename",
+        status=result["status"],
+        source_path=result.get("source_path", record.source_path),
+        target_path=result.get("target_path", ""),
+        media_type="movies",
+        title=result.get("title", record.title),
+        year=result.get("year", record.year),
+        reason=result.get("reason", ""),
+        extra=result,
+    )
+
+
+def auto_relocate_movie_from_record(
+    context: AppContext,
+    record: OperationRecord,
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    library_path = context.metadata_output.library_path
+    video_path = Path(record.source_path)
+    nfo_path = Path(record.target_path)
+    parsed = None if context.dry_run else parse_title_year_from_nfo(nfo_path, "movie")
+    title = parsed[0] if parsed else record.title
+    year = parsed[1] if parsed else record.year
+    result: dict[str, Any] = {
+        "status": "skipped",
+        "source_path": str(video_path),
+        "target_path": "",
+        "title": title,
+        "year": year,
+        "reason": "",
+    }
+    if not title or not year:
+        result["reason"] = "缺少 movie NFO title/year，跳过电影自动整理"
+        return result
+
+    target_folder = library_path / format_media_folder_name(title, year)
+    result["target_path"] = str(target_folder)
+    if video_path.parent == target_folder:
+        result["reason"] = "电影已经位于标准一级目录"
+        return result
+    if context.dry_run:
+        result["status"] = "planned"
+        result["reason"] = "计划移动电影及同名 NFO/图片到标准一级目录"
+        result["files"] = [str(path) for path in movie_sidecar_paths(video_path, nfo_path)]
+        return result
+
+    if target_folder.exists() and not target_folder.is_dir():
+        result["status"] = "failed"
+        result["reason"] = "目标路径已存在但不是目录"
+        return result
+
+    video_destination = target_folder / video_path.name
+    if video_destination.exists() or video_destination.is_symlink():
+        result["reason"] = "目标目录已存在同名视频，跳过该电影自动整理"
+        result["conflicts"] = [str(video_destination)]
+        return result
+
+    try:
+        target_folder.mkdir(parents=True, exist_ok=True)
+        move_result = move_movie_sidecars(video_path, nfo_path, target_folder)
+        cleanup_empty_parent_dirs(video_path.parent, library_path)
+        result.update(move_result)
+        logger.info(
+            "电影自动整理 %s -> %s moved=%s skipped=%s",
+            video_path,
+            target_folder,
+            move_result.get("moved_count", 0),
+            move_result.get("skipped_count", 0),
+        )
+        return result
+    except OSError as exc:
+        result["status"] = "failed"
+        result["reason"] = str(exc)
+        return result
+
+
+def movie_sidecar_paths(video_path: Path, nfo_path: Path) -> list[Path]:
+    if not video_path.parent.exists():
+        return [path for path in (video_path, nfo_path) if path_exists_or_symlink(path)]
+
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in (video_path, nfo_path):
+        if path_exists_or_symlink(candidate):
+            paths.append(candidate)
+            seen.add(candidate)
+    stem = video_path.stem
+    for child in video_path.parent.iterdir():
+        if child in seen or not path_is_file_or_symlink(child):
+            continue
+        if child.name.startswith(f"{stem}.") or child.name.startswith(f"{stem}-"):
+            paths.append(child)
+            seen.add(child)
+    return paths
+
+
+def move_movie_sidecars(video_path: Path, nfo_path: Path, target_folder: Path) -> dict[str, Any]:
+    moved: list[str] = []
+    skipped: list[str] = []
+    for source in movie_sidecar_paths(video_path, nfo_path):
+        destination = target_folder / source.name
+        if source == destination:
+            continue
+        if destination.exists() or destination.is_symlink():
+            skipped.append(str(source))
+            continue
+        source.rename(destination)
+        moved.append(str(destination))
+    status = "renamed" if moved and not skipped else "merged" if moved else "skipped"
+    reason = f"已移动 {len(moved)} 个电影文件/元数据文件，跳过 {len(skipped)} 个冲突项"
+    return {
+        "status": status,
+        "reason": reason,
+        "moved_files": moved,
+        "skipped_files": skipped,
+        "moved_count": len(moved),
+        "skipped_count": len(skipped),
+    }
+
+
+def cleanup_empty_parent_dirs(start: Path, stop: Path) -> None:
+    current = start
+    while current != stop:
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent
+
+
+def path_exists_or_symlink(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
 
 
 def auto_rename_tvshow_folders(

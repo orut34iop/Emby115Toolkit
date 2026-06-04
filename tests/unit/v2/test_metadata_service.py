@@ -403,6 +403,54 @@ class FakeLlmClient:
         ]
 
 
+class QueryAwareMovieClient:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+
+    def search_movie(self, query, language):
+        self.search_calls.append((query, language))
+        if query.title == "Alpha Movie":
+            return [{"id": 101, "title": "阿尔法电影", "original_title": "Alpha Movie", "release_date": "2024-01-01"}]
+        if query.title == "Beta Movie":
+            return [{"id": 102, "title": "贝塔电影", "original_title": "Beta Movie", "release_date": "2025-01-01"}]
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        if tmdb_id == 101:
+            return {
+                "id": 101,
+                "title": "阿尔法电影",
+                "original_title": "Alpha Movie",
+                "release_date": "2024-01-01",
+                "overview": "Alpha overview.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        return {
+            "id": 102,
+            "title": "贝塔电影",
+            "original_title": "Beta Movie",
+            "release_date": "2025-01-01",
+            "overview": "Beta overview.",
+            "poster_path": "",
+            "backdrop_path": "",
+        }
+
+    def search_tv(self, query, language):
+        return []
+
+    def tv_details(self, tmdb_id, language):
+        return {}
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        return {}
+
+    def download_image(self, image_path, target_path, overwrite):
+        return "missing"
+
+
 def test_tmdb_config_test_reports_missing_api_key(tmp_path):
     context = AppContext.from_dict(
         {
@@ -503,6 +551,81 @@ def test_metadata_scraper_dry_run_scans_library_without_writing(tmp_path):
     assert result.records[0].target_path.endswith("Movie.Title.2026.nfo")
     assert result.records[0].status == "planned"
     assert not (library / "Movie.Title.2026.nfo").exists()
+
+
+def test_movie_metadata_uses_video_stem_for_multi_movie_parent_folder(tmp_path):
+    library = tmp_path / "movies"
+    category_dir = library / "三级"
+    category_dir.mkdir(parents=True)
+    (category_dir / "Alpha.Movie.2024.1080p.mkv").write_text("x", encoding="utf-8")
+    (category_dir / "Beta.Movie.2025.1080p.mkv").write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": True,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "auto_rename": False,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_category_query", context.logging.log_dir, context.run_id)
+    fake_tmdb = QueryAwareMovieClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    searched_titles = [query.title for query, _language in fake_tmdb.search_calls]
+    assert result.status == "success"
+    assert "三级" not in searched_titles
+    assert "Alpha Movie" in searched_titles
+    assert "Beta Movie" in searched_titles
+
+
+def test_movie_auto_rename_moves_each_movie_out_of_category_folder(tmp_path):
+    library = tmp_path / "movies"
+    category_dir = library / "三级"
+    category_dir.mkdir(parents=True)
+    alpha = category_dir / "Alpha.Movie.2024.1080p.mkv"
+    beta = category_dir / "Beta.Movie.2025.1080p.mkv"
+    alpha.write_text("x", encoding="utf-8")
+    beta.write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": True,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mkv"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_category_relocate", context.logging.log_dir, context.run_id)
+    fake_tmdb = QueryAwareMovieClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    alpha_dir = library / "阿尔法电影 (2024)"
+    beta_dir = library / "贝塔电影 (2025)"
+    assert result.status == "success"
+    assert result.summary["auto_rename"]["renamed"] == 2
+    assert not category_dir.exists()
+    assert (alpha_dir / "Alpha.Movie.2024.1080p.mkv").exists()
+    assert (alpha_dir / "Alpha.Movie.2024.1080p.nfo").exists()
+    assert (beta_dir / "Beta.Movie.2025.1080p.mkv").exists()
+    assert (beta_dir / "Beta.Movie.2025.1080p.nfo").exists()
+    auto_records = [record for record in result.records if record.action == "auto_rename"]
+    assert len(auto_records) == 2
 
 
 def test_movie_metadata_writes_video_stem_nfo_and_uses_fallback_details(tmp_path):
