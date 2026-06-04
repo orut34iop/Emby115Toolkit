@@ -91,12 +91,33 @@ def test_waiter_reports_not_observed_after_quiet_window(mock_logger):
     assert result.observed is False
 
 
-def test_waiter_reports_upload_errors(mock_logger):
+def test_waiter_records_upload_errors_but_waits_for_quiet_window(mock_logger):
     client = FakeCloudDrive2Client([[_task("/115open/tmp/library/movie.nfo", status_enum=9)]])
     waiter = CloudDrive2UploadWaiter(client, poll_interval_seconds=0.5, settle_seconds=0, max_wait_minutes=1)
 
     result = waiter.wait_for_paths([Path("D:\\library")], "run-1", mock_logger)
 
-    assert result.status == "failed"
-    assert "上传任务失败" in result.reason
+    assert result.status == "success"
+    assert "错误状态" in result.reason
     assert result.error_count == 1
+
+
+def test_waiter_keeps_polling_after_error_until_active_tasks_quiet(monkeypatch, mock_logger):
+    monkeypatch.setattr("emby115_v2.services.clouddrive2.time.sleep", lambda _seconds: None)
+    client = FakeCloudDrive2Client(
+        [
+            [
+                _task("/115open/tmp/library/movie.nfo", status_enum=10),
+                _task("/115open/tmp/library/poster.jpg", status_enum=3),
+            ],
+            [],
+        ]
+    )
+    waiter = CloudDrive2UploadWaiter(client, poll_interval_seconds=0.5, settle_seconds=0, max_wait_minutes=1)
+
+    result = waiter.wait_for_paths([Path("D:\\library")], "run-1", mock_logger)
+
+    assert result.status == "success"
+    assert result.observed is True
+    assert result.error_count == 1
+    assert client.upload_calls == 2

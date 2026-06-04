@@ -312,8 +312,9 @@ class CloudDrive2UploadWaiter:
         deadline = started + self.max_wait_seconds if self.max_wait_seconds > 0 else started
         observed = False
         first_observed_at: float | None = None
-        last_no_match_at: float | None = None
+        last_no_activity_at: float | None = None
         last_tasks: tuple[CloudDrive2UploadTask, ...] = ()
+        last_error_tasks: tuple[CloudDrive2UploadTask, ...] = ()
 
         while True:
             if cancellation.is_cancelled(run_id):
@@ -362,22 +363,16 @@ class CloudDrive2UploadWaiter:
                 if first_observed_at is None:
                     first_observed_at = now
                     logger.info("已观测到匹配的 CloudDrive2 挂载上传任务，进入已开始上传状态")
-                last_no_match_at = None
+            if active:
+                last_no_activity_at = None
 
             if errors:
-                reason = "; ".join(
-                    f"{task.dest_path} {task.status_name} {task.error_message}".strip() for task in errors[:5]
-                )
-                return CloudDrive2WaitResult(
-                    "failed",
-                    f"CloudDrive2 上传任务失败: {reason}",
-                    observed=observed,
-                    waited_seconds=now - started,
-                    watched_roots=watched_roots,
-                    active_count=len(active),
-                    error_count=len(errors),
-                    matched_count=len(matched),
-                    matched_tasks=matched,
+                last_error_tasks = errors
+                logger.warning(
+                    "CloudDrive2 上传任务出现错误状态，将继续等待队列静默 error_count=%s 示例=%s %s",
+                    len(errors),
+                    errors[0].dest_path,
+                    errors[0].status_name,
                 )
 
             if active:
@@ -390,7 +385,7 @@ class CloudDrive2UploadWaiter:
                     total_size,
                     active[0].dest_path,
                 )
-            elif terminal_success:
+            elif terminal_success and not errors:
                 return CloudDrive2WaitResult(
                     "success",
                     "CloudDrive2 挂载盘上传任务已全部进入完成状态",
@@ -401,24 +396,34 @@ class CloudDrive2UploadWaiter:
                     matched_tasks=matched,
                 )
             else:
-                if last_no_match_at is None:
-                    last_no_match_at = now
-                quiet_seconds = now - last_no_match_at
+                if last_no_activity_at is None:
+                    last_no_activity_at = now
+                quiet_seconds = now - last_no_activity_at
                 if observed:
                     logger.info(
-                        "已观测到上传任务，当前无匹配任务，连续静默 %.1f/%s 秒",
+                        "已观测到上传任务，当前无活动上传任务，连续静默 %.1f/%s 秒",
                         quiet_seconds,
                         self.settle_seconds,
                     )
                 else:
                     logger.info("尚未观测到匹配的 CloudDrive2 挂载上传任务，已等待 %.1f 秒", quiet_seconds)
                 if quiet_seconds >= self.settle_seconds and observed:
+                    error_reason = ""
+                    if last_error_tasks:
+                        examples = "; ".join(
+                            f"{task.dest_path} {task.status_name} {task.error_message}".strip()
+                            for task in last_error_tasks[:5]
+                        )
+                        error_reason = f"；期间观测到错误状态但已继续等待: {examples}"
                     return CloudDrive2WaitResult(
                         "success",
-                        "已观测到 CloudDrive2 上传任务，随后连续静默窗口内无匹配任务，视为上传结束",
+                        "已观测到 CloudDrive2 上传任务，随后连续静默窗口内无活动上传任务，视为上传结束"
+                        + error_reason,
                         observed=True,
                         waited_seconds=now - started,
                         watched_roots=watched_roots,
+                        active_count=len(active),
+                        error_count=len(last_error_tasks),
                         matched_count=len(last_tasks),
                         matched_tasks=last_tasks,
                     )
