@@ -6,7 +6,7 @@ from emby115_v2.context import AppContext
 from emby115_v2.services.symlink_service import ScanAndLinkService
 
 
-def _context(tmp_path, dry_run=False):
+def _context(tmp_path, dry_run=False, auto_clear_workspace=True):
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()
@@ -18,7 +18,11 @@ def _context(tmp_path, dry_run=False):
             "action": "build_symlink_workspace",
             "dry_run": dry_run,
             "path_pairs": [{"name": "movies", "source": str(source), "target": str(target)}],
-            "symlink": {"video_extensions": [".mkv"], "thread_count": 1},
+            "symlink": {
+                "video_extensions": [".mkv"],
+                "thread_count": 1,
+                "auto_clear_workspace": auto_clear_workspace,
+            },
         }
     )
 
@@ -75,8 +79,8 @@ def test_run_allows_existing_empty_target_workspace(tmp_path, mock_logger):
     mock_symlink.assert_called_once()
 
 
-def test_non_empty_target_workspace_fails_before_scan_plan(tmp_path, mock_logger):
-    context = _context(tmp_path)
+def test_non_empty_target_workspace_fails_before_scan_plan_when_auto_clear_disabled(tmp_path, mock_logger):
+    context = _context(tmp_path, auto_clear_workspace=False)
     existing = tmp_path / "target" / "Movie"
     existing.mkdir(parents=True)
     (existing / "movie.mkv").write_text("already here", encoding="utf-8")
@@ -91,6 +95,63 @@ def test_non_empty_target_workspace_fails_before_scan_plan(tmp_path, mock_logger
     assert result.records[0].action == "validate_target_workspace"
     assert result.records[0].status == "failed"
     assert "必须是空文件夹" in result.records[0].reason
+
+
+def test_auto_clear_workspace_removes_existing_contents_before_creating_links(tmp_path, mock_logger):
+    context = _context(tmp_path)
+    stale_folder = tmp_path / "target" / "old"
+    stale_folder.mkdir(parents=True)
+    (stale_folder / "old.nfo").write_text("stale", encoding="utf-8")
+    (tmp_path / "target" / "old.txt").write_text("stale", encoding="utf-8")
+
+    with patch("os.symlink") as mock_symlink:
+        result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "success"
+    assert result.summary["workspace_cleared"] == 1
+    assert result.summary["workspace_precheck_failed"] == 0
+    assert not stale_folder.exists()
+    assert not (tmp_path / "target" / "old.txt").exists()
+    assert any(record.action == "clear_target_workspace" and record.status == "cleared" for record in result.records)
+    mock_symlink.assert_called_once()
+
+
+def test_auto_clear_workspace_dry_run_only_plans_clear(tmp_path, mock_logger):
+    context = _context(tmp_path, dry_run=True)
+    stale = tmp_path / "target" / "old.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale", encoding="utf-8")
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "success"
+    assert result.summary["workspace_clear_planned"] == 1
+    assert result.summary["planned"] == 1
+    assert stale.exists()
+    assert result.records[0].action == "clear_target_workspace"
+    assert result.records[0].status == "planned"
+
+
+def test_auto_clear_workspace_refuses_to_clear_source_path(tmp_path, mock_logger):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "movie.mkv").write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "build_symlink_workspace",
+            "path_pairs": [{"name": "movies", "source": str(source), "target": str(source)}],
+            "symlink": {"video_extensions": [".mkv"], "thread_count": 1, "auto_clear_workspace": True},
+        }
+    )
+
+    result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "failed"
+    assert result.summary["workspace_clear_failed"] == 1
+    assert result.summary["created"] == 0
+    assert (source / "movie.mkv").exists()
+    assert result.records[0].action == "clear_target_workspace"
+    assert "拒绝自动清空" in result.records[0].reason
 
 
 def test_target_workspace_file_path_fails_precheck(tmp_path, mock_logger):

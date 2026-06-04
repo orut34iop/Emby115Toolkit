@@ -58,9 +58,9 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 `build_symlink_workspace` maps to the confirmed workflow step "软链接导出":
 
 - scan mounted CloudDrive2 source folders;
-- WebUI presents a fixed checked list for movies and TV shows; checked rows with non-empty source/target paths are submitted together as one `build_symlink_workspace` request;
-- CLI and the core Context Object continue to accept a `path_pairs` array, including multiple pairs when supplied outside the WebUI;
-- each local symlink workspace target must be missing or an existing empty directory before execution. If it already contains files or folders, the action fails and reports `validate_target_workspace` instead of deleting, merging, or incrementally adding links;
+- WebUI presents a fixed checked list for movies and TV shows; checked rows with non-empty source/target paths are submitted together as one `build_symlink_workspace` request. The WebUI also exposes an `自动清空工作区` checkbox, enabled by default;
+- CLI and the core Context Object continue to accept a `path_pairs` array, including multiple pairs when supplied outside the WebUI. CLI defaults to automatic target cleanup and can disable it with `--no-auto-clear-workspace`;
+- each local symlink workspace target defaults to automatic cleanup through `symlink.auto_clear_workspace=true`. If the target already contains files or folders, the action clears that target workspace first and reports `clear_target_workspace`; if automatic cleanup is disabled, a non-empty target fails and reports `validate_target_workspace`. Automatic cleanup refuses unsafe paths such as disk roots, the source path itself, or source/target paths that contain one another;
 - filter video files;
 - build standardized local library paths instead of blindly mirroring the source tree;
 - for movies, place symlinks under a movie title folder with explicit year when the year is present;

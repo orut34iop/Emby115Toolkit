@@ -15,7 +15,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
                     "target": str(tmp_path / "target"),
                 }
             ],
-            "symlink": {"thread_count": 99, "video_extensions": [".mkv"]},
+            "symlink": {"thread_count": 99, "video_extensions": [".mkv"], "auto_clear_workspace": False},
             "tmdb": {"api_key": "tmdb-key", "language": "zh-CN", "fallback_language": "en-US"},
             "llm": {
                 "provider": "deepseek",
@@ -54,6 +54,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
     assert context.path_pairs[0].source == tmp_path / "source"
     assert context.symlink.thread_count == 32
     assert context.symlink.video_extensions == (".mkv",)
+    assert context.symlink.auto_clear_workspace is False
     assert context.tmdb.language == "zh-CN"
     assert context.tmdb.fallback_language == "en-US"
     assert context.llm.provider == "deepseek"

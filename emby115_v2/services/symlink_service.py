@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +60,9 @@ class ScanAndLinkService:
             "broken_links": 0,
             "manual_review": 0,
             "workspace_precheck_failed": 0,
+            "workspace_clear_planned": 0,
+            "workspace_cleared": 0,
+            "workspace_clear_failed": 0,
             "dry_run": context.dry_run,
         }
 
@@ -74,6 +78,15 @@ class ScanAndLinkService:
             summary["failed"] += len(failed_records)
             summary["workspace_precheck_failed"] += len(
                 [record for record in failed_records if record.action == "validate_target_workspace"]
+            )
+            summary["workspace_clear_failed"] += len(
+                [record for record in failed_records if record.action == "clear_target_workspace"]
+            )
+            summary["workspace_clear_planned"] += len(
+                [record for record in pair_records if record.action == "clear_target_workspace" and record.status == "planned"]
+            )
+            summary["workspace_cleared"] += len(
+                [record for record in pair_records if record.action == "clear_target_workspace" and record.status == "cleared"]
             )
             if failed_records:
                 continue
@@ -153,10 +166,11 @@ class ScanAndLinkService:
             )
             return plans, records
 
-        target_precheck = self._validate_empty_target_workspace(pair)
+        target_precheck = self._prepare_target_workspace(pair, context)
         if target_precheck:
             records.append(target_precheck)
-            return plans, records
+            if target_precheck.status == "failed":
+                return plans, records
 
         if not context.dry_run:
             pair.target.mkdir(parents=True, exist_ok=True)
@@ -175,7 +189,7 @@ class ScanAndLinkService:
 
         return plans, records
 
-    def _validate_empty_target_workspace(self, pair: PathPair) -> OperationRecord | None:
+    def _prepare_target_workspace(self, pair: PathPair, context: AppContext) -> OperationRecord | None:
         try:
             if not pair.target.exists():
                 return None
@@ -190,6 +204,28 @@ class ScanAndLinkService:
                     extra={"path_pair": pair.name},
                 )
             if any(pair.target.iterdir()):
+                if context.symlink.auto_clear_workspace:
+                    if danger_reason := self._dangerous_clear_target_reason(pair):
+                        return OperationRecord(
+                            action="clear_target_workspace",
+                            status="failed",
+                            source_path=str(pair.source),
+                            target_path=str(pair.target),
+                            confidence="high",
+                            reason=danger_reason,
+                            extra={"path_pair": pair.name},
+                        )
+                    if context.dry_run:
+                        return OperationRecord(
+                            action="clear_target_workspace",
+                            status="planned",
+                            source_path=str(pair.source),
+                            target_path=str(pair.target),
+                            confidence="high",
+                            reason="dry-run 计划自动清空本地 symlink 工作区；本次不会实际删除文件。",
+                            extra={"path_pair": pair.name},
+                        )
+                    return self._clear_target_workspace(pair)
                 return OperationRecord(
                     action="validate_target_workspace",
                     status="failed",
@@ -210,6 +246,52 @@ class ScanAndLinkService:
                 extra={"path_pair": pair.name},
             )
         return None
+
+    def _dangerous_clear_target_reason(self, pair: PathPair) -> str:
+        try:
+            source = pair.source.resolve(strict=False)
+            target = pair.target.resolve(strict=False)
+        except OSError as exc:
+            return f"无法确认本地 symlink 工作区清空范围是否安全: {exc}"
+
+        if len(target.parts) <= 1:
+            return "拒绝自动清空磁盘根目录；请配置到具体的本地 symlink 工作区。"
+        if source == target:
+            return "拒绝自动清空：源目录和本地 symlink 工作区是同一路径。"
+        if source.is_relative_to(target):
+            return "拒绝自动清空：本地 symlink 工作区包含源目录，可能删除真实源文件。"
+        if target.is_relative_to(source):
+            return "拒绝自动清空：本地 symlink 工作区位于源目录内部，可能污染扫描结果。"
+        return ""
+
+    def _clear_target_workspace(self, pair: PathPair) -> OperationRecord:
+        try:
+            for child in pair.target.iterdir():
+                if child.is_symlink() or child.is_file():
+                    child.unlink()
+                elif child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            return OperationRecord(
+                action="clear_target_workspace",
+                status="cleared",
+                source_path=str(pair.source),
+                target_path=str(pair.target),
+                confidence="high",
+                reason="已自动清空本地 symlink 工作区。",
+                extra={"path_pair": pair.name},
+            )
+        except OSError as exc:
+            return OperationRecord(
+                action="clear_target_workspace",
+                status="failed",
+                source_path=str(pair.source),
+                target_path=str(pair.target),
+                confidence="high",
+                reason=f"自动清空本地 symlink 工作区失败: {exc}",
+                extra={"path_pair": pair.name},
+            )
 
     def _build_plan(self, pair: PathPair, source_path: Path) -> LinkPlan:
         media_type = self._media_type(pair)

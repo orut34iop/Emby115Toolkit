@@ -49,6 +49,7 @@ class SymlinkOptions:
     video_extensions: tuple[str, ...] = DEFAULT_VIDEO_EXTENSIONS
     thread_count: int = 4
     report_broken_links: bool = True
+    auto_clear_workspace: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "SymlinkOptions":
@@ -59,6 +60,7 @@ class SymlinkOptions:
             video_extensions=tuple(str(ext).lower() for ext in extensions),
             thread_count=max(1, min(int(data.get("thread_count", 4)), 32)),
             report_broken_links=bool(data.get("report_broken_links", True)),
+            auto_clear_workspace=bool(data.get("auto_clear_workspace", True)),
         )
 
 

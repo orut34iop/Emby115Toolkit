@@ -29,6 +29,8 @@ def test_webui_serves_index():
     assert "symlinkTvshowsEnabled" in response.text
     assert "symlinkMoviesSource" in response.text
     assert "symlinkTvshowsTarget" in response.text
+    assert "autoClearWorkspace" in response.text
+    assert "自动清空工作区" in response.text
     assert "执行完整流程" in response.text
     assert "网盘同步" in response.text
     assert "cloudMoviesEnabled" in response.text
@@ -49,12 +51,15 @@ def test_webui_symlink_uses_fixed_library_checklist():
     assert "symlinkTvshowsEnabled" in html
     assert "symlinkMoviesSource" in html
     assert "symlinkTvshowsTarget" in html
+    assert "autoClearWorkspace" in html
     assert "添加路径对" not in html
     assert "移除" not in html
     assert "pair-media-type" not in script
     assert "collectPathPairRows()" in script
     assert "normalizePathPairs" in script
     assert "pair.enabled" in script
+    assert "auto_clear_workspace" in script
+    assert "symlinkOptionsFromForm()" in script
     assert "请至少勾选一个源目录和目标目录都有效的媒体库" in script
     assert "addPair(" not in script
     assert "runFullWorkflow" in script
@@ -126,7 +131,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "cloud-sync-always-move" in html
+    assert "auto-clear-workspace" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
@@ -216,6 +221,7 @@ def test_webui_persists_form_without_access_token():
     assert "localStorage.setItem(FORM_STORAGE_KEY" in response.text
     saved_config_block = response.text.split("function currentFormConfig()", 1)[1].split("function saveFormConfig()", 1)[0]
     assert "accessToken" not in saved_config_block
+    assert "auto_clear_workspace" in saved_config_block
 
 
 def test_webui_includes_metadata_config_controls():
@@ -263,6 +269,7 @@ def test_metadata_config_api_loads_and_saves(tmp_path, monkeypatch):
 
     assert loaded.status_code == 200
     assert loaded.json()["config"]["tmdb"]["language"] == "zh-CN"
+    assert loaded.json()["config"]["symlink"]["auto_clear_workspace"] is True
     assert loaded.json()["config"]["metadata_libraries"][0]["media_type"] == "movies"
     assert loaded.json()["config"]["metadata_libraries"][1]["media_type"] == "tvshows"
     assert saved.status_code == 200

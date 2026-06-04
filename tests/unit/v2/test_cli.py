@@ -65,6 +65,41 @@ def test_cli_keeps_scan_and_link_alias(tmp_path, capsys):
     assert (report_dir / output["run_id"] / "report.json").exists()
 
 
+def test_cli_can_disable_auto_clear_workspace(tmp_path, capsys):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    report_dir = tmp_path / "reports"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mkv").write_text("x", encoding="utf-8")
+    (target / "stale.txt").write_text("stale", encoding="utf-8")
+
+    code = run_cli(
+        [
+            "--action",
+            "build_symlink_workspace",
+            "--source",
+            str(source),
+            "--target",
+            str(target),
+            "--report-dir",
+            str(report_dir),
+            "--no-auto-clear-workspace",
+            "--dry-run",
+            "--json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    report = json.loads((report_dir / output["run_id"] / "report.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert output["action"] == "build_symlink_workspace"
+    assert report["steps"][0]["status"] == "failed"
+    assert report["steps"][0]["records"][0]["action"] == "validate_target_workspace"
+    assert (target / "stale.txt").exists()
+
+
 def test_cli_runs_scrape_metadata_dry_run_from_config(tmp_path, capsys):
     library = tmp_path / "movies"
     report_dir = tmp_path / "reports"

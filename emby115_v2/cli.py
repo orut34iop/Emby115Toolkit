@@ -25,6 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-dir", help="日志输出目录")
     parser.add_argument("--log-level", help="日志级别")
     parser.add_argument("--thread-count", type=int, help="构建 symlink 工作区线程数")
+    parser.add_argument(
+        "--auto-clear-workspace",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="软链接导出前自动清空目标工作区；默认开启，可用 --no-auto-clear-workspace 关闭",
+    )
     parser.add_argument("--pair-name", action="append", help="路径对名称，可与 --source/--target 一起重复使用")
     parser.add_argument("--source", action="append", help="源目录，可重复")
     parser.add_argument("--target", action="append", help="目标工作区目录，可重复")
@@ -69,6 +75,8 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
         cli_overrides.setdefault("logging", {})["log_level"] = args.log_level
     if args.thread_count is not None:
         cli_overrides.setdefault("symlink", {})["thread_count"] = args.thread_count
+    if args.auto_clear_workspace is not None:
+        cli_overrides.setdefault("symlink", {})["auto_clear_workspace"] = args.auto_clear_workspace
     if args.cloud_wait_minutes is not None:
         cli_overrides.setdefault("cloud_library_output", {})["wait_minutes"] = args.cloud_wait_minutes
     if args.cloud_upload_wait_strategy:

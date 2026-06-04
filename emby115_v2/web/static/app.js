@@ -264,6 +264,7 @@ function readSavedForm() {
 function currentFormConfig() {
   return {
     thread_count: Number(document.querySelector("#threadCount").value || 4),
+    auto_clear_workspace: document.querySelector("#autoClearWorkspace").checked,
     path_pairs: collectPathPairRows(),
     report_dir: document.querySelector("#reportDir").value.trim() || "reports",
     log_dir: document.querySelector("#logDir").value.trim() || "logs",
@@ -315,6 +316,38 @@ function applyPathPairs(config = {}) {
     row.querySelector(".pair-source").value = pair.source || "";
     row.querySelector(".pair-target").value = pair.target || "";
   }
+}
+
+function symlinkOptionsFromForm() {
+  return {
+    thread_count: Number(document.querySelector("#threadCount").value || 4),
+    video_extensions: document
+      .querySelector("#extensions")
+      .value.split(";")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    report_broken_links: true,
+    auto_clear_workspace: document.querySelector("#autoClearWorkspace").checked,
+  };
+}
+
+function symlinkConfigFromForm() {
+  return {
+    path_pairs: collectPathPairRows(),
+    symlink: symlinkOptionsFromForm(),
+  };
+}
+
+function applySymlinkConfig(config = {}) {
+  const symlink = config.symlink || {};
+  if (symlink.thread_count) {
+    document.querySelector("#threadCount").value = symlink.thread_count;
+  }
+  if (Array.isArray(symlink.video_extensions) && symlink.video_extensions.length) {
+    document.querySelector("#extensions").value = symlink.video_extensions.join(";");
+  }
+  document.querySelector("#autoClearWorkspace").checked = symlink.auto_clear_workspace ?? true;
+  applyPathPairs(config);
 }
 
 function readSavedMetadataForm() {
@@ -567,13 +600,7 @@ function buildCloudPayload(action = "build_cloud_scraped_library", libraries = n
       source: library.source,
       target: library.target,
     })),
-    symlink: {
-      video_extensions: document
-        .querySelector("#extensions")
-        .value.split(";")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    },
+    symlink: symlinkOptionsFromForm(),
     cloud_library_output: config.cloud_library_output,
     clouddrive2: config.clouddrive2,
     report: config.report,
@@ -594,6 +621,7 @@ function restoreFormConfig() {
       document.querySelector("#extensions").value = saved.extensions;
     }
     document.querySelector("#dryRun").checked = saved?.dry_run ?? true;
+    document.querySelector("#autoClearWorkspace").checked = saved?.auto_clear_workspace ?? true;
     applyPathPairs(saved || {});
     applyMetadataConfig(savedMetadata || {});
     applyCloudConfig(savedCloud || {});
@@ -618,21 +646,11 @@ function collectPairs() {
 }
 
 function buildPayload() {
-  const extensions = document
-    .querySelector("#extensions")
-    .value.split(";")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
   return {
     action: "build_symlink_workspace",
     dry_run: document.querySelector("#dryRun").checked,
     path_pairs: collectPairs(),
-    symlink: {
-      thread_count: Number(document.querySelector("#threadCount").value || 4),
-      video_extensions: extensions,
-      report_broken_links: true,
-    },
+    symlink: symlinkOptionsFromForm(),
     report: {
       output_dir: document.querySelector("#reportDir").value.trim() || "reports",
     },
@@ -944,13 +962,7 @@ function buildMetadataPayload(action = "scrape_metadata", library = null) {
   return {
     action,
     dry_run: config.dry_run,
-    symlink: {
-      video_extensions: document
-        .querySelector("#extensions")
-        .value.split(";")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    },
+    symlink: symlinkOptionsFromForm(),
     ...config,
     metadata_output: metadataOutput,
   };
@@ -1192,12 +1204,14 @@ async function loadMetadataConfigFromServer() {
     if (!response.ok) throw new Error(data.detail || response.statusText);
     state.restoring = true;
     try {
+      applySymlinkConfig(data.config);
       applyMetadataConfig(data.config);
       applyCloudConfig(data.config);
       document.querySelector("#metadataDryRun").checked = true;
     } finally {
       state.restoring = false;
     }
+    saveFormConfig();
     saveMetadataFormConfig();
     saveCloudFormConfig();
     appendLog(`已从本地配置加载: ${data.path}`);
@@ -1214,10 +1228,11 @@ async function saveMetadataConfigToServer() {
         "Content-Type": "application/json",
         ...tokenHeaders(),
       },
-      body: JSON.stringify({ config: { ...metadataConfigFromForm(), ...cloudConfigFromForm() } }),
+      body: JSON.stringify({ config: { ...symlinkConfigFromForm(), ...metadataConfigFromForm(), ...cloudConfigFromForm() } }),
     });
     const data = await parseJson(response);
     if (!response.ok) throw new Error(data.detail || response.statusText);
+    saveFormConfig();
     saveMetadataFormConfig();
     saveCloudFormConfig();
     appendLog(`已保存到本地配置: ${data.path}`);

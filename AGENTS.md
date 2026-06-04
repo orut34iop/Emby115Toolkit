@@ -83,7 +83,7 @@ Core services must only accept Context Objects and must not care whether the req
 Current V2 action names:
 
 - `build_symlink_workspace` — Build the local symlink workspace from mounted CloudDrive2 source folders.
-  - Each `path_pairs[].target` local symlink workspace must be missing or an existing empty directory before execution. If it already contains files or folders, the action must fail with a report row and must not auto-delete or merge into the existing workspace.
+  - Each `path_pairs[].target` local symlink workspace defaults to `symlink.auto_clear_workspace=true`: if the target already contains files or folders, the action clears that target workspace before creating new symlinks and records `clear_target_workspace` in the report. If `auto_clear_workspace=false`, a non-empty target fails with `validate_target_workspace`. Automatic clearing must refuse dangerous paths such as disk roots, the source path itself, or source/target paths that contain one another.
   - This action must standardize symlink target paths by media type. Movies go under a movie title folder; TV shows go under a show title folder plus a season/version second-level folder.
   - Movie title parsing must prefer a parent folder that contains both a usable title and a year over short release filenames, so files such as `eb-1080p-fap.mkv` inside `东方男孩Eastern.Boys.2013...` group under `东方男孩Eastern.Boys (2013)`.
   - When a movie parent folder has a Chinese title/year and the video filename has a same-year English title, preserve both as `Chinese.English (year)` to improve downstream metadata matching; if the parent folder already contains the English title, keep the parent title intact.

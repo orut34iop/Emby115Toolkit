@@ -27,6 +27,44 @@ def default_config_path() -> Path:
 
 def default_metadata_config() -> dict[str, Any]:
     return {
+        "path_pairs": [
+            {
+                "enabled": True,
+                "name": "movies",
+                "source": "D:\\115open\\tmp\\origin\\movies",
+                "target": "C:\\working-emby\\movies",
+            },
+            {
+                "enabled": True,
+                "name": "tvshows",
+                "source": "D:\\115open\\tmp\\origin\\tvshows",
+                "target": "C:\\working-emby\\tvshows",
+            },
+        ],
+        "symlink": {
+            "thread_count": 4,
+            "video_extensions": [
+                ".mkv",
+                ".iso",
+                ".ts",
+                ".mp4",
+                ".avi",
+                ".rmvb",
+                ".wmv",
+                ".m2ts",
+                ".mpg",
+                ".flv",
+                ".rm",
+                ".m4v",
+                ".mov",
+                ".vob",
+                ".webm",
+                ".divx",
+                ".3gp",
+            ],
+            "report_broken_links": True,
+            "auto_clear_workspace": True,
+        },
         "tmdb": {
             "api_key": "",
             "language": "zh-CN",
