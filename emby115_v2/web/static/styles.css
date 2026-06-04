@@ -177,6 +177,13 @@ select {
   background: #ffffff;
 }
 
+input:disabled,
+select:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
 fieldset {
   margin: 0;
   border: 0;
@@ -338,6 +345,41 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.locked-input-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.full-flow-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.full-flow-lock-badge[hidden] {
+  display: none;
+}
+
+.metadata-library-row.full-flow-locked,
+.cloud-library-row.full-flow-locked {
+  background: #f8fafc;
+}
+
+.metadata-library-row.full-flow-locked .metadata-library-path,
+.cloud-library-row.full-flow-locked .cloud-library-source {
+  border-style: dashed;
+  border-color: #93c5fd;
 }
 
 .checkline {

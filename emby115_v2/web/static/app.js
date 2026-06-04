@@ -49,6 +49,7 @@ const state = {
   cloudWorkflowActive: false,
   cloudCancelRequested: false,
   activeRunId: "",
+  fullFlowLockedInputs: [],
 };
 
 const pathPairs = document.querySelector("#pathPairs");
@@ -105,6 +106,59 @@ function setBusy(busy) {
     fullRunButton.disabled = busy || state.metadataWorkflowActive || state.cloudWorkflowActive;
     fullRunButton.textContent = busy && !state.metadataWorkflowActive && !state.cloudWorkflowActive ? "执行中" : "执行完整流程";
   }
+}
+
+function pathPairsByMediaType(pathPairs) {
+  return new Map(
+    (pathPairs || [])
+      .filter((pair) => pair.name && pair.target)
+      .map((pair) => [pair.name, pair])
+  );
+}
+
+function lockInputFromPair(row, inputSelector, pair, label) {
+  const input = row.querySelector(inputSelector);
+  if (!input || !pair?.target) return;
+  const badge = row.querySelector(".full-flow-lock-badge");
+  state.fullFlowLockedInputs.push({
+    row,
+    input,
+    badge,
+    value: input.value,
+    disabled: input.disabled,
+    title: input.title,
+  });
+  row.classList.add("full-flow-locked");
+  input.value = pair.target;
+  input.disabled = true;
+  input.title = `执行完整流程时由“构建本地软链接工作区”的${label}输出接管`;
+  if (badge) {
+    badge.hidden = false;
+  }
+}
+
+function lockFullFlowPathInputs(pathPairs) {
+  unlockFullFlowPathInputs();
+  const pairsByType = pathPairsByMediaType(pathPairs);
+  for (const row of document.querySelectorAll(".metadata-library-row")) {
+    lockInputFromPair(row, ".metadata-library-path", pairsByType.get(row.dataset.mediaType), "本地 symlink 工作区");
+  }
+  for (const row of document.querySelectorAll(".cloud-library-row")) {
+    lockInputFromPair(row, ".cloud-library-source", pairsByType.get(row.dataset.mediaType), "本地 symlink 工作区");
+  }
+}
+
+function unlockFullFlowPathInputs() {
+  for (const item of state.fullFlowLockedInputs) {
+    item.input.value = item.value;
+    item.input.disabled = item.disabled;
+    item.input.title = item.title;
+    item.row.classList.remove("full-flow-locked");
+    if (item.badge) {
+      item.badge.hidden = true;
+    }
+  }
+  state.fullFlowLockedInputs = [];
 }
 
 function requestFullWorkflowCancel() {
@@ -993,14 +1047,17 @@ async function runFullWorkflow(event) {
     requestFullWorkflowCancel();
     return;
   }
+  const symlinkPayload = buildPayload();
   state.fullWorkflowActive = true;
   state.fullWorkflowCancelRequested = false;
+  lockFullFlowPathInputs(symlinkPayload.path_pairs);
   setBusy(false);
   try {
-    await runFullWorkflowPayload(buildPayload());
+    await runFullWorkflowPayload(symlinkPayload);
   } finally {
     state.fullWorkflowActive = false;
     state.fullWorkflowCancelRequested = false;
+    unlockFullFlowPathInputs();
     setBusy(false);
   }
 }

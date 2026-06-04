@@ -23,6 +23,7 @@ def test_webui_serves_index():
     assert "metadataTvshowsEnabled" in response.text
     assert "metadataMoviesPath" in response.text
     assert "metadataTvshowsPath" in response.text
+    assert "完整流程锁定，使用上游输出" in response.text
     assert "执行完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入" in response.text
     assert "symlinkMoviesEnabled" in response.text
     assert "symlinkTvshowsEnabled" in response.text
@@ -123,7 +124,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "full-flow-no-confirm" in html
+    assert "full-flow-lock-inputs" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
     assert "overflow-wrap: anywhere" in css
@@ -148,6 +149,11 @@ def test_webui_uses_background_runs_and_sse():
     assert "metadata library_path=" in script
     assert "cloud source=" in script
     assert "完整流程已覆盖" in script
+    assert "lockFullFlowPathInputs" in script
+    assert "unlockFullFlowPathInputs" in script
+    assert "fullFlowLockedInputs" in script
+    assert "full-flow-locked" in script
+    assert "执行完整流程时由“构建本地软链接工作区”" in script
     assert "library_path: pair.target" in script
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script

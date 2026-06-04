@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260604-full-flow-no-confirm">
+  <link rel="stylesheet" href="/static/styles.css?v=20260604-full-flow-lock-inputs">
 </head>
 <body>
   <header class="topbar">
@@ -114,7 +114,10 @@
                 刮削
               </label>
               <span class="media-label">电影</span>
-              <input id="metadataMoviesPath" class="metadata-library-path" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+              <div class="locked-input-cell">
+                <input id="metadataMoviesPath" class="metadata-library-path" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+                <span class="full-flow-lock-badge" hidden>完整流程锁定，使用上游输出</span>
+              </div>
             </div>
             <div class="metadata-library-row" data-media-type="tvshows">
               <label class="checkline compact-check">
@@ -122,7 +125,10 @@
                 刮削
               </label>
               <span class="media-label">电视剧</span>
-              <input id="metadataTvshowsPath" class="metadata-library-path" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+              <div class="locked-input-cell">
+                <input id="metadataTvshowsPath" class="metadata-library-path" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+                <span class="full-flow-lock-badge" hidden>完整流程锁定，使用上游输出</span>
+              </div>
             </div>
           </div>
 
@@ -258,7 +264,10 @@
                 导入
               </label>
               <span class="media-label">电影</span>
-              <input id="cloudMoviesSource" class="cloud-library-source" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+              <div class="locked-input-cell">
+                <input id="cloudMoviesSource" class="cloud-library-source" value="C:\working-emby\movies" placeholder="C:\working-emby\movies">
+                <span class="full-flow-lock-badge" hidden>完整流程锁定，使用上游输出</span>
+              </div>
               <input id="cloudMoviesTarget" class="cloud-library-target" value="D:\115open\tmp\organized\movies" placeholder="D:\115open\tmp\organized\movies">
             </div>
             <div class="cloud-library-row" data-media-type="tvshows">
@@ -267,7 +276,10 @@
                 导入
               </label>
               <span class="media-label">电视剧</span>
-              <input id="cloudTvshowsSource" class="cloud-library-source" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+              <div class="locked-input-cell">
+                <input id="cloudTvshowsSource" class="cloud-library-source" value="C:\working-emby\tvshows" placeholder="C:\working-emby\tvshows">
+                <span class="full-flow-lock-badge" hidden>完整流程锁定，使用上游输出</span>
+              </div>
               <input id="cloudTvshowsTarget" class="cloud-library-target" value="D:\115open\tmp\organized\tvshows" placeholder="D:\115open\tmp\organized\tvshows">
             </div>
           </div>
@@ -359,6 +371,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260604-full-flow-no-confirm"></script>
+  <script src="/static/app.js?v=20260604-full-flow-lock-inputs"></script>
 </body>
 </html>
