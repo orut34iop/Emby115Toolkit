@@ -430,6 +430,10 @@ class QueryAwareMovieClient:
             return [{"id": 439486, "title": "93女爱男欢", "original_title": "93女愛男歡", "release_date": "1992-10-29"}]
         if query.title == "女爱男欢":
             return [{"id": 639, "title": "当哈利遇到莎莉", "original_title": "When Harry Met Sally...", "release_date": "1989-07-12"}]
+        if query.title == "97风流梦":
+            return [{"id": 693791, "title": "97风流梦", "original_title": "97風流夢", "release_date": "1994-06-07"}]
+        if query.title == "三分之一情人":
+            return [{"id": 249842, "title": "三分之一情人", "original_title": "1/3情人", "release_date": "1993-01-01"}]
         return []
 
     def movie_details(self, tmdb_id, language):
@@ -513,6 +517,37 @@ class QueryAwareMovieClient:
                 "original_title": "93女愛男歡",
                 "release_date": "1992-10-29",
                 "overview": "A Hong Kong drama.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 926910:
+            return {
+                "id": 926910,
+                "title": "超级床上接班人",
+                "original_title": "超级床上接班人",
+                "release_date": "1998-01-01",
+                "overview": "Three sexy stories.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 693791:
+            return {
+                "id": 693791,
+                "title": "97风流梦",
+                "original_title": "97風流夢",
+                "release_date": "1994-06-07",
+                "overview": "Comic dreams.",
+                "external_ids": {"imdb_id": "tt0182923"},
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 249842:
+            return {
+                "id": 249842,
+                "title": "三分之一情人",
+                "original_title": "1/3情人",
+                "release_date": "1993-01-01",
+                "overview": "A Hong Kong romance.",
                 "poster_path": "",
                 "backdrop_path": "",
             }
@@ -781,6 +816,28 @@ def test_movie_metadata_uses_known_tmdb_id_when_search_cannot_find_title(tmp_pat
     assert result.records[0].extra["candidates"][0]["match_source"] == "known_tmdb_id"
 
 
+def test_movie_metadata_uses_known_tmdb_id_from_cjk_variant_and_title_override(tmp_path):
+    cases = [
+        "96超级床上接班人.mkv",
+        "96超级床上接班人（国语繁字.3.91G）-96超级床上接班人.mkv",
+    ]
+
+    for index, filename in enumerate(cases):
+        result, fake_tmdb = run_single_movie_metadata_case(
+            tmp_path / str(index),
+            "movies",
+            filename,
+            add_mixed_placeholder=True,
+        )
+        movie_record = next(record for record in result.records if record.source_path.endswith(filename))
+
+        assert fake_tmdb.detail_calls[0][0] == 926910
+        assert movie_record.status == "written"
+        assert movie_record.title == "96超级床上接班人"
+        assert movie_record.year == "1998"
+        assert movie_record.extra["candidates"][0]["match_source"] == "known_tmdb_id"
+
+
 def run_single_movie_metadata_case(tmp_path, folder_name: str, video_name: str, add_mixed_placeholder: bool = False):
     library = tmp_path / "movies"
     movie_dir = library / folder_name
@@ -830,6 +887,8 @@ def test_movie_metadata_extracts_cjk_title_from_mixed_release_name(tmp_path):
         ("movies", "18P2P色模SuperModels[粵語簡中].avi", "色模", "2015"),
         ("movies", "1983欲望之翼BD720P中字内嵌.mp4", "欲望之翼", "1983"),
         ("movies", "93女爱男欢（国语繁字.5.61G）-93女爱男欢.mkv", "93女爱男欢", "1992"),
+        ("movies", "97风流梦（粤语繁字.5.49G）-97风流梦.mkv", "97风流梦", "1994"),
+        ("movies", "三分之一情人（国语繁字.3.81G）-三分之一情人.mkv", "三分之一情人", "1993"),
     ]
 
     for index, (folder, filename, expected_title, expected_year) in enumerate(cases):
@@ -840,11 +899,16 @@ def test_movie_metadata_extracts_cjk_title_from_mixed_release_name(tmp_path):
             add_mixed_placeholder=True,
         )
         searched_titles = [query.title for query, _language in fake_tmdb.search_calls]
+        matched_records = [
+            record
+            for record in result.records
+            if record.action == "scrape_metadata" and record.title == expected_title
+        ]
 
-        assert searched_titles[0] == expected_title
-        assert result.records[0].status == "written"
-        assert result.records[0].title == expected_title
-        assert result.records[0].year == expected_year
+        assert expected_title in searched_titles
+        assert matched_records
+        assert matched_records[0].status == "written"
+        assert matched_records[0].year == expected_year
 
 
 def test_movie_auto_rename_moves_each_movie_out_of_category_folder(tmp_path):

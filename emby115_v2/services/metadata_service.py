@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,8 +29,19 @@ KNOWN_MOVIE_QUERY_ALIASES = {
     ("supermodels", "2015"): ("色模", "Super Models"),
 }
 KNOWN_MOVIE_TMDB_IDS = {
+    ("96超级床上接班人", ""): 926910,
+    ("96超级床上接班人", "1998"): 926910,
+    ("96超級床上接班人", ""): 926910,
+    ("96超級床上接班人", "1998"): 926910,
+    ("超级床上接班人", ""): 926910,
+    ("超级床上接班人", "1998"): 926910,
+    ("超級床上接班人", ""): 926910,
+    ("超級床上接班人", "1998"): 926910,
     ("janinhanmiyongsaui", "2014"): 322587,
     ("janinhanmiyongsaui", "2015"): 322587,
+}
+KNOWN_MOVIE_METADATA_OVERRIDES = {
+    926910: {"title": "96超级床上接班人"},
 }
 CJK_TITLE_NOISE_FRAGMENTS = {
     "中字",
@@ -1459,7 +1470,9 @@ def fetch_movie_metadata(
         if fallback_language != used_language and missing_core_fields(details):
             fallback_details = client.movie_details(tmdb_id, fallback_language)
             fallback_used = True
-        metadata = movie_metadata_from_details(details, fallback_details, used_language, fallback_used)
+        metadata = apply_known_movie_metadata_overrides(
+            movie_metadata_from_details(details, fallback_details, used_language, fallback_used)
+        )
         return metadata, summarized_candidates
     return None, summarized_candidates
 
@@ -1478,7 +1491,8 @@ def fetch_movie_metadata_by_id(
     if fallback_language != language and missing_core_fields(details):
         fallback_details = client.movie_details(tmdb_id, fallback_language)
         fallback_used = True
-    return movie_metadata_from_details(details, fallback_details, language, fallback_used)
+    metadata = movie_metadata_from_details(details, fallback_details, language, fallback_used)
+    return apply_known_movie_metadata_overrides(metadata)
 
 
 def summarize_metadata_candidate(metadata: MovieMetadata) -> list[dict[str, Any]]:
@@ -1494,7 +1508,20 @@ def summarize_metadata_candidate(metadata: MovieMetadata) -> list[dict[str, Any]
 
 
 def known_movie_tmdb_id(query: MovieQuery) -> int | None:
-    return KNOWN_MOVIE_TMDB_IDS.get((normalize_latin_key(query.title), query.year))
+    for candidate in [query, *movie_search_queries(query)]:
+        tmdb_id = KNOWN_MOVIE_TMDB_IDS.get((normalize_movie_lookup_key(candidate.title), candidate.year))
+        if tmdb_id:
+            return tmdb_id
+    return None
+
+
+def normalize_movie_lookup_key(value: str) -> str:
+    return re.sub(r"[^0-9A-Za-z\u3400-\u9fff]+", "", value).casefold()
+
+
+def apply_known_movie_metadata_overrides(metadata: MovieMetadata) -> MovieMetadata:
+    overrides = KNOWN_MOVIE_METADATA_OVERRIDES.get(metadata.tmdb_id)
+    return replace(metadata, **overrides) if overrides else metadata
 
 
 def movie_search_queries(query: MovieQuery) -> list[MovieQuery]:
