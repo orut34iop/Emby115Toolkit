@@ -30,7 +30,7 @@ def test_webui_serves_index():
     assert "symlinkMoviesSource" in response.text
     assert "symlinkTvshowsTarget" in response.text
     assert "执行完整流程" in response.text
-    assert "构建网盘已刮削媒体库" in response.text
+    assert "网盘同步" in response.text
     assert "cloudMoviesEnabled" in response.text
     assert "cloudTvshowsEnabled" in response.text
     assert "cloudWaitStrategy" in response.text
@@ -96,7 +96,7 @@ def test_webui_cloud_library_card_uses_fixed_checklist_and_probe():
     html = client.get("/").text
     script = client.get("/static/app.js").text
 
-    assert "构建网盘已刮削媒体库" in html
+    assert "网盘同步" in html
     assert "单独运行本卡片时使用“本地 symlink 工作区”" in html
     assert "网盘新媒体库目录仍使用下方目标目录" in html
     assert "cloudMoviesEnabled" in html
@@ -124,8 +124,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "full-flow-lock-inputs" in html
-    assert "full-flow-lock-inputs-toggle-layout" in html
+    assert "cloud-sync-label" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
@@ -149,7 +148,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "streamRunEvents" in script
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
-    assert "构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库" in script
+    assert "构建本地软链接工作区 -> 刮削媒体元数据 -> 网盘同步" in script
     assert "完整流程路径规则：使用上游输出作为下游输入" in script
     assert "完整流程路径链路" in script
     assert "metadata library_path=" in script
@@ -169,7 +168,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script
     assert "完整流程开始网盘导入：自动进入第三阶段" in script
-    assert "网盘已刮削媒体库" in script
+    assert "网盘同步" in script
     assert "软链接工作区步骤未成功完成，完整流程已停止" in script
     assert "confirmCloudMoveIfNeeded" in script
     assert "window.confirm" in script

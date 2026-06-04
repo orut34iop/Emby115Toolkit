@@ -1031,7 +1031,7 @@ async function runCloudLibraryWorkflow(event) {
   try {
     const result = await executePayload(payload, {
       clearReports: true,
-      reportLabel: "网盘已刮削媒体库",
+      reportLabel: "网盘同步",
     });
     if (state.cloudCancelRequested) {
       appendLog("网盘导入已取消。");
@@ -1109,7 +1109,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
 
-  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库。");
+  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据 -> 网盘同步。");
   logFullFlowPathSources(pairs);
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
@@ -1164,7 +1164,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
         appendLog("完整流程开始网盘导入：自动进入第三阶段，复制已刮削元数据并移动真实视频。");
         const result = await executePayload(cloudPayload, {
           clearReports: false,
-          reportLabel: "网盘已刮削媒体库",
+          reportLabel: "网盘同步",
         });
         if (result.ok) {
           successCount += 1;

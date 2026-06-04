@@ -28,15 +28,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pair-name", action="append", help="路径对名称，可与 --source/--target 一起重复使用")
     parser.add_argument("--source", action="append", help="源目录，可重复")
     parser.add_argument("--target", action="append", help="目标工作区目录，可重复")
-    parser.add_argument("--cloud-wait-minutes", type=int, help="构建网盘已刮削媒体库时阶段 A 后等待分钟数")
+    parser.add_argument("--cloud-wait-minutes", type=int, help="网盘同步时阶段 A 后等待分钟数")
     parser.add_argument(
         "--cloud-upload-wait-strategy",
         choices=["fixed", "clouddrive2", "clouddrive2_or_fixed"],
         help="阶段 A 后等待策略：fixed 固定等待，clouddrive2 轮询 CloudDrive2 上传任务，clouddrive2_or_fixed 探测失败时回退固定等待",
     )
-    parser.add_argument("--cloud-metadata-only", action="store_true", help="构建网盘已刮削媒体库时只复制非 symlink 文件，不移动真实视频")
-    parser.add_argument("--overwrite-metadata", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的元数据文件")
-    parser.add_argument("--overwrite-videos", action="store_true", help="构建网盘已刮削媒体库时覆盖已存在的视频文件")
+    parser.add_argument("--cloud-metadata-only", action="store_true", help="网盘同步时只复制非 symlink 文件，不移动真实视频")
+    parser.add_argument("--overwrite-metadata", action="store_true", help="网盘同步时覆盖已存在的元数据文件")
+    parser.add_argument("--overwrite-videos", action="store_true", help="网盘同步时覆盖已存在的视频文件")
     parser.add_argument("--cd2-endpoint", help="CloudDrive2 gRPC 地址，例如 127.0.0.1:19798")
     parser.add_argument("--cd2-api-token", help="CloudDrive2 API token")
     parser.add_argument("--cd2-timeout", type=float, help="CloudDrive2 gRPC 单次请求超时时间，单位秒")
