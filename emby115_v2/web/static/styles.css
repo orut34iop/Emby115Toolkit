@@ -371,6 +371,13 @@ button:disabled {
   display: none;
 }
 
+.compact-lock-badge {
+  margin-left: 2px;
+  padding: 1px 5px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .metadata-library-row.full-flow-locked,
 .cloud-library-row.full-flow-locked {
   background: #f8fafc;

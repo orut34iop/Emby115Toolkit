@@ -125,12 +125,14 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     css = client.get("/static/styles.css").text
 
     assert "full-flow-lock-inputs" in html
+    assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
     assert "overflow-wrap: anywhere" in css
     assert "@media (max-width: 1280px)" in css
     assert ".run-panel" in css
     assert "position: sticky" in css
+    assert ".compact-lock-badge" in css
 
 
 def test_webui_uses_background_runs_and_sse():
@@ -150,10 +152,15 @@ def test_webui_uses_background_runs_and_sse():
     assert "cloud source=" in script
     assert "完整流程已覆盖" in script
     assert "lockFullFlowPathInputs" in script
+    assert "lockFullFlowCheckbox" in script
     assert "unlockFullFlowPathInputs" in script
     assert "fullFlowLockedInputs" in script
     assert "full-flow-locked" in script
     assert "执行完整流程时由“构建本地软链接工作区”" in script
+    assert "执行完整流程时由“构建本地软链接工作区”的启用状态接管" in script
+    assert "执行完整流程时按当前网盘导入勾选状态锁定" in script
+    assert ".metadata-library-enabled" in script
+    assert ".cloud-library-enabled" in script
     assert "library_path: pair.target" in script
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script

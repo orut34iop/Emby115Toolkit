@@ -116,41 +116,81 @@ function pathPairsByMediaType(pathPairs) {
   );
 }
 
-function lockInputFromPair(row, inputSelector, pair, label) {
-  const input = row.querySelector(inputSelector);
-  if (!input || !pair?.target) return;
-  const badge = row.querySelector(".full-flow-lock-badge");
+function lockFullFlowControl(row, input, badge, options = {}) {
+  if (!input) return;
   state.fullFlowLockedInputs.push({
     row,
     input,
     badge,
     value: input.value,
+    checked: input.type === "checkbox" ? input.checked : null,
     disabled: input.disabled,
     title: input.title,
   });
   row.classList.add("full-flow-locked");
-  input.value = pair.target;
+  if (Object.prototype.hasOwnProperty.call(options, "value")) {
+    input.value = options.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "checked")) {
+    input.checked = options.checked;
+  }
   input.disabled = true;
-  input.title = `执行完整流程时由“构建本地软链接工作区”的${label}输出接管`;
+  input.title = options.title || input.title;
   if (badge) {
     badge.hidden = false;
   }
+}
+
+function lockInputFromPair(row, inputSelector, pair, label) {
+  const input = row.querySelector(inputSelector);
+  if (!input || !pair?.target) return;
+  const badge = input.closest(".locked-input-cell")?.querySelector(".full-flow-lock-badge");
+  lockFullFlowControl(row, input, badge, {
+    value: pair.target,
+    title: `执行完整流程时由“构建本地软链接工作区”的${label}输出接管`,
+  });
+}
+
+function lockFullFlowCheckbox(row, inputSelector, checked, title) {
+  const input = row.querySelector(inputSelector);
+  if (!input) return;
+  const badge = input.closest(".checkline")?.querySelector(".compact-lock-badge");
+  lockFullFlowControl(row, input, badge, { checked, title });
 }
 
 function lockFullFlowPathInputs(pathPairs) {
   unlockFullFlowPathInputs();
   const pairsByType = pathPairsByMediaType(pathPairs);
   for (const row of document.querySelectorAll(".metadata-library-row")) {
-    lockInputFromPair(row, ".metadata-library-path", pairsByType.get(row.dataset.mediaType), "本地 symlink 工作区");
+    const pair = pairsByType.get(row.dataset.mediaType);
+    lockFullFlowCheckbox(
+      row,
+      ".metadata-library-enabled",
+      Boolean(pair),
+      "执行完整流程时由“构建本地软链接工作区”的启用状态接管"
+    );
+    lockInputFromPair(row, ".metadata-library-path", pair, "本地 symlink 工作区");
   }
   for (const row of document.querySelectorAll(".cloud-library-row")) {
-    lockInputFromPair(row, ".cloud-library-source", pairsByType.get(row.dataset.mediaType), "本地 symlink 工作区");
+    const pair = pairsByType.get(row.dataset.mediaType);
+    const enabled = Boolean(pair) && Boolean(row.querySelector(".cloud-library-enabled")?.checked);
+    lockFullFlowCheckbox(
+      row,
+      ".cloud-library-enabled",
+      enabled,
+      "执行完整流程时按当前网盘导入勾选状态锁定"
+    );
+    lockInputFromPair(row, ".cloud-library-source", pair, "本地 symlink 工作区");
   }
 }
 
 function unlockFullFlowPathInputs() {
   for (const item of state.fullFlowLockedInputs) {
-    item.input.value = item.value;
+    if (item.checked === null) {
+      item.input.value = item.value;
+    } else {
+      item.input.checked = item.checked;
+    }
     item.input.disabled = item.disabled;
     item.input.title = item.title;
     item.row.classList.remove("full-flow-locked");
