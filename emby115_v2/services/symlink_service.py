@@ -248,12 +248,8 @@ class ScanAndLinkService:
         return None
 
     def _dangerous_clear_target_reason(self, pair: PathPair) -> str:
-        try:
-            source = pair.source.resolve(strict=False)
-            target = pair.target.resolve(strict=False)
-        except OSError as exc:
-            return f"无法确认本地 symlink 工作区清空范围是否安全: {exc}"
-
+        source = self._normalized_absolute_path(pair.source)
+        target = self._normalized_absolute_path(pair.target)
         if len(target.parts) <= 1:
             return "拒绝自动清空磁盘根目录；请配置到具体的本地 symlink 工作区。"
         if source == target:
@@ -263,6 +259,9 @@ class ScanAndLinkService:
         if target.is_relative_to(source):
             return "拒绝自动清空：本地 symlink 工作区位于源目录内部，可能污染扫描结果。"
         return ""
+
+    def _normalized_absolute_path(self, path: Path) -> Path:
+        return Path(os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(path)))))
 
     def _clear_target_workspace(self, pair: PathPair) -> OperationRecord:
         try:

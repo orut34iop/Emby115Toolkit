@@ -154,6 +154,26 @@ def test_auto_clear_workspace_refuses_to_clear_source_path(tmp_path, mock_logger
     assert "拒绝自动清空" in result.records[0].reason
 
 
+def test_auto_clear_workspace_does_not_resolve_virtual_drive_source(tmp_path, mock_logger, monkeypatch):
+    context = _context(tmp_path)
+    stale = tmp_path / "target" / "old.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale", encoding="utf-8")
+
+    def fail_resolve(self, strict=False):
+        raise OSError("virtual drive resolve failed")
+
+    monkeypatch.setattr("emby115_v2.services.symlink_service.Path.resolve", fail_resolve)
+
+    with patch("os.symlink") as mock_symlink:
+        result = ScanAndLinkService().run(context, mock_logger)
+
+    assert result.status == "success"
+    assert result.summary["workspace_cleared"] == 1
+    assert not stale.exists()
+    mock_symlink.assert_called_once()
+
+
 def test_target_workspace_file_path_fails_precheck(tmp_path, mock_logger):
     context = _context(tmp_path)
     (tmp_path / "target").write_text("not a directory", encoding="utf-8")
