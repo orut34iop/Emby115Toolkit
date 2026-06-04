@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260604-responsive-workflow-layout">
+  <link rel="stylesheet" href="/static/styles.css?v=20260604-full-flow-path-source">
 </head>
 <body>
   <header class="topbar">
@@ -101,6 +101,7 @@
         </div>
 
         <form id="metadataForm">
+          <p class="workflow-note">单独运行本卡片时使用下方目录；执行完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入。</p>
           <div class="metadata-library-table" aria-label="元数据媒体库列表">
             <div class="metadata-library-head">
               <span>启用</span>
@@ -243,6 +244,7 @@
         </div>
 
         <form id="cloudLibraryForm">
+          <p class="workflow-note">单独运行本卡片时使用“本地 symlink 工作区”；执行完整流程时，该输入由“构建本地软链接工作区”的输出自动传入，网盘新媒体库目录仍使用下方目标目录。</p>
           <div class="cloud-library-table" aria-label="网盘已刮削媒体库列表">
             <div class="cloud-library-head">
               <span>启用</span>
@@ -357,6 +359,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260604-empty-workspace-precheck"></script>
+  <script src="/static/app.js?v=20260604-full-flow-path-source"></script>
 </body>
 </html>

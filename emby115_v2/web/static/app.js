@@ -590,6 +590,38 @@ function cloudLibrariesFromPathPairs(pathPairs) {
     .filter((library) => library.source && library.target);
 }
 
+function normalizePathForCompare(value) {
+  return (value || "").trim().replace(/[\\/]+$/, "").replace(/\//g, "\\").toLowerCase();
+}
+
+function logFullFlowPathSources(pathPairs) {
+  const metadataInputsByType = new Map(
+    collectMetadataLibraries().map((library) => [library.media_type, library.library_path])
+  );
+  const cloudInputsByType = new Map(
+    collectCloudLibraries().map((library) => [library.media_type, library])
+  );
+
+  appendLog("完整流程路径规则：使用上游输出作为下游输入；下游卡片中的输入路径仅用于单独运行。");
+  for (const pair of pathPairs || []) {
+    if (!pair.name || !pair.target) continue;
+    const label = MEDIA_TYPE_LABELS[pair.name] || pair.name;
+    const upstreamTarget = pair.target;
+    const metadataInput = metadataInputsByType.get(pair.name) || "";
+    const cloudInput = cloudInputsByType.get(pair.name) || {};
+    const cloudSource = cloudInput.source || "";
+    const cloudTarget = cloudInput.target || "";
+
+    appendLog(`完整流程路径链路 ${label}: metadata library_path=${upstreamTarget}; cloud source=${upstreamTarget}; cloud target=${cloudTarget || "未配置网盘目标"}`);
+    if (metadataInput && normalizePathForCompare(metadataInput) !== normalizePathForCompare(upstreamTarget)) {
+      appendLog(`完整流程已覆盖${label}元数据输入：${metadataInput} -> ${upstreamTarget}`);
+    }
+    if (cloudSource && normalizePathForCompare(cloudSource) !== normalizePathForCompare(upstreamTarget)) {
+      appendLog(`完整流程已覆盖${label}网盘导入 source：${cloudSource} -> ${upstreamTarget}`);
+    }
+  }
+}
+
 function cloudMoveNeedsConfirmation(payload) {
   return Boolean(
     payload
@@ -982,6 +1014,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
   }
 
   appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库。");
+  logFullFlowPathSources(pairs);
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
     reportLabel: "软链接工作区",

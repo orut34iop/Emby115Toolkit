@@ -23,6 +23,7 @@ def test_webui_serves_index():
     assert "metadataTvshowsEnabled" in response.text
     assert "metadataMoviesPath" in response.text
     assert "metadataTvshowsPath" in response.text
+    assert "执行完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入" in response.text
     assert "symlinkMoviesEnabled" in response.text
     assert "symlinkTvshowsEnabled" in response.text
     assert "symlinkMoviesSource" in response.text
@@ -33,6 +34,7 @@ def test_webui_serves_index():
     assert "cloudTvshowsEnabled" in response.text
     assert "cloudWaitStrategy" in response.text
     assert "testCloudDrive2Button" in response.text
+    assert "执行完整流程时，该输入由“构建本地软链接工作区”的输出自动传入" in response.text
     assert "需要管理员权限" not in response.text
 
 
@@ -65,6 +67,8 @@ def test_webui_metadata_uses_fixed_library_checklist():
     script = client.get("/static/app.js").text
 
     assert "元数据媒体库列表" in html
+    assert "单独运行本卡片时使用下方目录" in html
+    assert "完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入" in html
     assert "metadataMoviesEnabled" in html
     assert "metadataTvshowsEnabled" in html
     assert "metadataMoviesPath" in html
@@ -92,6 +96,8 @@ def test_webui_cloud_library_card_uses_fixed_checklist_and_probe():
     script = client.get("/static/app.js").text
 
     assert "构建网盘已刮削媒体库" in html
+    assert "单独运行本卡片时使用“本地 symlink 工作区”" in html
+    assert "网盘新媒体库目录仍使用下方目标目录" in html
     assert "cloudMoviesEnabled" in html
     assert "cloudTvshowsEnabled" in html
     assert "cloudMoviesSource" in html
@@ -117,7 +123,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "responsive-workflow-layout" in html
+    assert "full-flow-path-source" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
     assert "overflow-wrap: anywhere" in css
@@ -137,6 +143,11 @@ def test_webui_uses_background_runs_and_sse():
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
     assert "构建本地软链接工作区 -> 刮削媒体元数据 -> 构建网盘已刮削媒体库" in script
+    assert "完整流程路径规则：使用上游输出作为下游输入" in script
+    assert "完整流程路径链路" in script
+    assert "metadata library_path=" in script
+    assert "cloud source=" in script
+    assert "完整流程已覆盖" in script
     assert "library_path: pair.target" in script
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script
