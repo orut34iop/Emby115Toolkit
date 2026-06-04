@@ -125,6 +125,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     css = client.get("/static/styles.css").text
 
     assert "full-flow-lock-inputs" in html
+    assert "full-flow-lock-inputs-toggle-layout" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
@@ -133,6 +134,9 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     assert ".run-panel" in css
     assert "position: sticky" in css
     assert ".compact-lock-badge" in css
+    assert "grid-template-columns: 124px 88px minmax(180px, 1fr)" in css
+    assert "grid-template-columns: 124px 88px minmax(150px, 1fr) minmax(150px, 1fr)" in css
+    assert ".compact-check .compact-lock-badge" in css
 
 
 def test_webui_uses_background_runs_and_sse():

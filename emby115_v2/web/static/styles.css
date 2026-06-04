@@ -254,7 +254,7 @@ button:disabled {
 .metadata-library-head,
 .metadata-library-row {
   display: grid;
-  grid-template-columns: 76px 88px minmax(180px, 1fr);
+  grid-template-columns: 124px 88px minmax(180px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -275,7 +275,7 @@ button:disabled {
 .cloud-library-head,
 .cloud-library-row {
   display: grid;
-  grid-template-columns: 76px 88px minmax(150px, 1fr) minmax(150px, 1fr);
+  grid-template-columns: 124px 88px minmax(150px, 1fr) minmax(150px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -402,7 +402,18 @@ button:disabled {
 }
 
 .compact-check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 4px 6px;
+  align-items: center;
   color: var(--text);
+  white-space: nowrap;
+}
+
+.compact-check .compact-lock-badge {
+  grid-column: 1 / -1;
+  margin-left: 0;
+  justify-self: start;
 }
 
 .result-list {
