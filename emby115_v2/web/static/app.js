@@ -1109,7 +1109,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
 
-  appendLog("开始完整流程：构建本地软链接工作区 -> 刮削媒体元数据 -> 网盘同步。");
+  appendLog("开始完整流程：构建本地软链接工作区 -> 元数据刮削 -> 网盘同步。");
   logFullFlowPathSources(pairs);
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,

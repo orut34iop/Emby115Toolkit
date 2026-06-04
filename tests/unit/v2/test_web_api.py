@@ -14,7 +14,7 @@ def test_webui_serves_index():
     assert response.status_code == 200
     assert "Emby115Toolkit V2" in response.text
     assert "媒体类型" in response.text
-    assert "刮削媒体元数据" in response.text
+    assert "元数据刮削" in response.text
     assert "测试 TMDB 配置" in response.text
     assert "测试 LLM 配置" in response.text
     assert "metadataAutoRename" in response.text
@@ -124,7 +124,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "cloud-sync-label" in html
+    assert "metadata-scrape-label" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
@@ -148,7 +148,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "streamRunEvents" in script
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
-    assert "构建本地软链接工作区 -> 刮削媒体元数据 -> 网盘同步" in script
+    assert "构建本地软链接工作区 -> 元数据刮削 -> 网盘同步" in script
     assert "完整流程路径规则：使用上游输出作为下游输入" in script
     assert "完整流程路径链路" in script
     assert "metadata library_path=" in script
