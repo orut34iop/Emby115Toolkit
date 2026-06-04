@@ -34,7 +34,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["fixed", "clouddrive2", "clouddrive2_or_fixed"],
         help="阶段 A 后等待策略：fixed 固定等待，clouddrive2 轮询 CloudDrive2 上传任务，clouddrive2_or_fixed 探测失败时回退固定等待",
     )
-    parser.add_argument("--cloud-metadata-only", action="store_true", help="网盘同步时只复制非 symlink 文件，不移动真实视频")
     parser.add_argument("--overwrite-metadata", action="store_true", help="网盘同步时覆盖已存在的元数据文件")
     parser.add_argument("--overwrite-videos", action="store_true", help="网盘同步时覆盖已存在的视频文件")
     parser.add_argument("--cd2-endpoint", help="CloudDrive2 gRPC 地址，例如 127.0.0.1:19798")
@@ -74,8 +73,6 @@ def context_from_args(args: argparse.Namespace) -> AppContext:
         cli_overrides.setdefault("cloud_library_output", {})["wait_minutes"] = args.cloud_wait_minutes
     if args.cloud_upload_wait_strategy:
         cli_overrides.setdefault("cloud_library_output", {})["upload_wait_strategy"] = args.cloud_upload_wait_strategy
-    if args.cloud_metadata_only:
-        cli_overrides.setdefault("cloud_library_output", {})["move_videos_after_wait"] = False
     if args.overwrite_metadata:
         cli_overrides.setdefault("cloud_library_output", {})["overwrite_metadata"] = True
     if args.overwrite_videos:

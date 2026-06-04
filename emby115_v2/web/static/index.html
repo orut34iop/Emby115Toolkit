@@ -336,10 +336,6 @@
               dry-run 仅生成复制/移动计划
             </label>
             <label class="checkline">
-              <input id="cloudMetadataOnly" type="checkbox" checked>
-              metadata-only 只复制元数据，不移动真实视频
-            </label>
-            <label class="checkline">
               <input id="cloudOverwriteMetadata" type="checkbox">
               覆盖已存在元数据
             </label>
@@ -350,7 +346,7 @@
           </div>
 
           <div class="actions">
-            <span class="muted-text">真实移动视频前请先完成 CloudDrive2 上传探测和 metadata-only 测试</span>
+            <span class="muted-text">真实移动视频前请先完成 CloudDrive2 上传探测和 dry-run 测试</span>
             <button type="submit" id="cloudRunButton">执行网盘导入</button>
           </div>
         </form>
@@ -375,6 +371,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260604-symlink-export-label"></script>
+  <script src="/static/app.js?v=20260605-cloud-sync-always-move"></script>
 </body>
 </html>

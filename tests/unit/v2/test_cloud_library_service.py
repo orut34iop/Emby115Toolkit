@@ -88,6 +88,31 @@ def test_cloud_library_copies_non_symlink_files_and_moves_real_video(tmp_path, m
     assert result.summary["videos_moved"] == 1
 
 
+def test_cloud_library_ignores_legacy_config_that_disabled_video_move(tmp_path, mock_logger):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    movie_dir = workspace / "Movie (2026)"
+    origin.mkdir()
+    movie_dir.mkdir(parents=True)
+    real_video = origin / "movie.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    link = movie_dir / "movie.mkv"
+    _make_symlink(link, real_video)
+    (movie_dir / "movie.nfo").write_text("nfo", encoding="utf-8")
+
+    result = CloudScrapedLibraryService().run(
+        _context(workspace, target, move_videos_after_wait=False),
+        mock_logger,
+    )
+
+    assert result.status == "success"
+    assert (target / "Movie (2026)" / "movie.mkv").read_text(encoding="utf-8") == "video"
+    assert not real_video.exists()
+    assert result.summary["move_videos_after_wait"] is True
+    assert result.summary["videos_moved"] == 1
+
+
 def test_cloud_library_uses_readlink_when_resolve_fails_on_virtual_drive(tmp_path, mock_logger, monkeypatch):
     workspace = tmp_path / "workspace"
     target = tmp_path / "organized"

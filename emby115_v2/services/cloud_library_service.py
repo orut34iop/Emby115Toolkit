@@ -52,7 +52,7 @@ class CloudScrapedLibraryService:
             "videos_failed": 0,
             "cloud_upload_wait_unconfirmed": False,
             "wait_minutes": context.cloud_library_output.wait_minutes,
-            "move_videos_after_wait": context.cloud_library_output.move_videos_after_wait,
+            "move_videos_after_wait": True,
             "upload_wait_strategy": context.cloud_library_output.upload_wait_strategy,
             "dry_run": context.dry_run,
         }
@@ -73,7 +73,7 @@ class CloudScrapedLibraryService:
                 records.append(self._record_video_plan(plan, "planned", "dry-run 仅生成真实视频移动计划"))
             return StepResult(self.step_id, self._status(summary), summary, records)
 
-        if context.cloud_library_output.move_videos_after_wait and move_plans:
+        if move_plans:
             wait_result = self._wait_before_move(context, logger, records)
             if wait_result:
                 wait_status, wait_reason = wait_result
@@ -98,7 +98,7 @@ class CloudScrapedLibraryService:
                 OperationRecord(
                     action="move_videos",
                     status="skipped",
-                    reason="配置为不移动真实视频或没有可移动视频计划",
+                    reason="没有可移动视频计划",
                 )
             )
 

@@ -105,12 +105,14 @@ def test_webui_cloud_library_card_uses_fixed_checklist_and_probe():
     assert "cloudTvshowsTarget" in html
     assert "cloudWaitStrategy" in html
     assert "clouddrive2_or_fixed" in html
-    assert "cloudMetadataOnly" in html
+    assert "cloudMetadataOnly" not in html
+    assert "metadata-only" not in html
     assert "testCloudDrive2Button" in html
     assert "emby115_v2.webui.cloud.form.v1" in script
     assert "collectCloudLibraries()" in script
     assert "normalizeCloudLibraries" in script
     assert "build_cloud_scraped_library" in script
+    assert "move_videos_after_wait: true" in script
     assert "test_clouddrive2_upload_wait" in script
     assert "cloud_library_output" in script
     assert "clouddrive2" in script
@@ -124,7 +126,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "symlink-export-label" in html
+    assert "cloud-sync-always-move" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css

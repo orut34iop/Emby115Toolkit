@@ -506,7 +506,6 @@ function applyCloudConfig(config = {}) {
   }
   document.querySelector("#cloudWaitStrategy").value = output.upload_wait_strategy || "fixed";
   document.querySelector("#cloudWaitMinutes").value = output.wait_minutes ?? 60;
-  document.querySelector("#cloudMetadataOnly").checked = !(output.move_videos_after_wait ?? false);
   document.querySelector("#cloudOverwriteMetadata").checked = output.overwrite_metadata ?? false;
   document.querySelector("#cloudOverwriteVideos").checked = output.overwrite_videos ?? false;
   document.querySelector("#cloudDryRun").checked = config.dry_run ?? true;
@@ -525,7 +524,7 @@ function cloudConfigFromForm() {
     cloud_libraries: collectCloudLibraries(),
     cloud_library_output: {
       wait_minutes: Number(document.querySelector("#cloudWaitMinutes").value || 0),
-      move_videos_after_wait: !document.querySelector("#cloudMetadataOnly").checked,
+      move_videos_after_wait: true,
       overwrite_metadata: document.querySelector("#cloudOverwriteMetadata").checked,
       overwrite_videos: document.querySelector("#cloudOverwriteVideos").checked,
       upload_wait_strategy: document.querySelector("#cloudWaitStrategy").value,

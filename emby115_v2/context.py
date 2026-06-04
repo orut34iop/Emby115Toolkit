@@ -188,7 +188,7 @@ class CloudLibraryOutputConfig:
             upload_wait_strategy = "fixed"
         return cls(
             wait_minutes=max(0, int(data.get("wait_minutes", 60))),
-            move_videos_after_wait=bool(data.get("move_videos_after_wait", True)),
+            move_videos_after_wait=True,
             overwrite_metadata=bool(data.get("overwrite_metadata", False)),
             overwrite_videos=bool(data.get("overwrite_videos", False)),
             upload_wait_strategy=upload_wait_strategy,

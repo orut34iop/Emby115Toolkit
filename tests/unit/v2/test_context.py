@@ -62,7 +62,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
     assert context.metadata_output.download_season_posters is True
     assert context.metadata_output.auto_rename is True
     assert context.cloud_library_output.wait_minutes == 0
-    assert context.cloud_library_output.move_videos_after_wait is False
+    assert context.cloud_library_output.move_videos_after_wait is True
     assert context.cloud_library_output.overwrite_metadata is True
     assert context.cloud_library_output.overwrite_videos is False
     assert context.cloud_library_output.upload_wait_strategy == "clouddrive2_or_fixed"
