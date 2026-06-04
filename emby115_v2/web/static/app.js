@@ -147,7 +147,7 @@ function lockInputFromPair(row, inputSelector, pair, label) {
   const badge = input.closest(".locked-input-cell")?.querySelector(".full-flow-lock-badge");
   lockFullFlowControl(row, input, badge, {
     value: pair.target,
-    title: `执行完整流程时由“构建本地软链接工作区”的${label}输出接管`,
+    title: `执行完整流程时由“软链接导出”的${label}输出接管`,
   });
 }
 
@@ -167,7 +167,7 @@ function lockFullFlowPathInputs(pathPairs) {
       row,
       ".metadata-library-enabled",
       Boolean(pair),
-      "执行完整流程时由“构建本地软链接工作区”的启用状态接管"
+      "执行完整流程时由“软链接导出”的启用状态接管"
     );
     lockInputFromPair(row, ".metadata-library-path", pair, "本地 symlink 工作区");
   }
@@ -1109,11 +1109,11 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
 
-  appendLog("开始完整流程：构建本地软链接工作区 -> 元数据刮削 -> 网盘同步。");
+  appendLog("开始完整流程：软链接导出 -> 元数据刮削 -> 网盘同步。");
   logFullFlowPathSources(pairs);
   const symlinkResult = await executePayload(symlinkPayload, {
     clearReports: true,
-    reportLabel: "软链接工作区",
+    reportLabel: "软链接导出",
   });
   if (symlinkResult.requiresDeveloperMode) {
     appendLog("完整流程已暂停：请到系统设置中打开开发者模式后重新执行。");
@@ -1124,7 +1124,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     return;
   }
   if (!symlinkResult.ok) {
-    appendLog("软链接工作区步骤未成功完成，完整流程已停止；请先处理报告中的前置条件问题。");
+    appendLog("软链接导出步骤未成功完成，完整流程已停止；请先处理报告中的前置条件问题。");
     return;
   }
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260604-metadata-scrape-label">
+  <link rel="stylesheet" href="/static/styles.css?v=20260604-symlink-export-label">
 </head>
 <body>
   <header class="topbar">
@@ -21,7 +21,7 @@
   <main class="shell">
     <section class="workspace">
       <div class="section-title">
-        <h2>构建本地软链接工作区</h2>
+        <h2>软链接导出</h2>
         <button type="button" id="fullRunButton">执行完整流程</button>
       </div>
 
@@ -101,7 +101,7 @@
         </div>
 
         <form id="metadataForm">
-          <p class="workflow-note">单独运行本卡片时使用下方目录；执行完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入。</p>
+          <p class="workflow-note">单独运行本卡片时使用下方目录；执行完整流程时，媒体库目录由“软链接导出”的本地 symlink 工作区自动传入。</p>
           <div class="metadata-library-table" aria-label="元数据媒体库列表">
             <div class="metadata-library-head">
               <span>启用</span>
@@ -252,7 +252,7 @@
         </div>
 
         <form id="cloudLibraryForm">
-          <p class="workflow-note">单独运行本卡片时使用“本地 symlink 工作区”；执行完整流程时，该输入由“构建本地软链接工作区”的输出自动传入，网盘新媒体库目录仍使用下方目标目录。</p>
+          <p class="workflow-note">单独运行本卡片时使用“本地 symlink 工作区”；执行完整流程时，该输入由“软链接导出”的输出自动传入，网盘新媒体库目录仍使用下方目标目录。</p>
           <div class="cloud-library-table" aria-label="网盘同步列表">
             <div class="cloud-library-head">
               <span>启用</span>
@@ -375,6 +375,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260604-metadata-scrape-label"></script>
+  <script src="/static/app.js?v=20260604-symlink-export-label"></script>
 </body>
 </html>

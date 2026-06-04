@@ -24,7 +24,7 @@ def test_webui_serves_index():
     assert "metadataMoviesPath" in response.text
     assert "metadataTvshowsPath" in response.text
     assert "完整流程锁定，使用上游输出" in response.text
-    assert "执行完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入" in response.text
+    assert "执行完整流程时，媒体库目录由“软链接导出”的本地 symlink 工作区自动传入" in response.text
     assert "symlinkMoviesEnabled" in response.text
     assert "symlinkTvshowsEnabled" in response.text
     assert "symlinkMoviesSource" in response.text
@@ -35,7 +35,7 @@ def test_webui_serves_index():
     assert "cloudTvshowsEnabled" in response.text
     assert "cloudWaitStrategy" in response.text
     assert "testCloudDrive2Button" in response.text
-    assert "执行完整流程时，该输入由“构建本地软链接工作区”的输出自动传入" in response.text
+    assert "执行完整流程时，该输入由“软链接导出”的输出自动传入" in response.text
     assert "需要管理员权限" not in response.text
 
 
@@ -58,7 +58,7 @@ def test_webui_symlink_uses_fixed_library_checklist():
     assert "请至少勾选一个源目录和目标目录都有效的媒体库" in script
     assert "addPair(" not in script
     assert "runFullWorkflow" in script
-    assert "软链接工作区" in script
+    assert "软链接导出" in script
 
 
 def test_webui_metadata_uses_fixed_library_checklist():
@@ -69,7 +69,7 @@ def test_webui_metadata_uses_fixed_library_checklist():
 
     assert "元数据媒体库列表" in html
     assert "单独运行本卡片时使用下方目录" in html
-    assert "完整流程时，媒体库目录由“构建本地软链接工作区”的本地 symlink 工作区自动传入" in html
+    assert "完整流程时，媒体库目录由“软链接导出”的本地 symlink 工作区自动传入" in html
     assert "metadataMoviesEnabled" in html
     assert "metadataTvshowsEnabled" in html
     assert "metadataMoviesPath" in html
@@ -124,7 +124,7 @@ def test_webui_layout_css_prevents_horizontal_overflow():
     html = client.get("/").text
     css = client.get("/static/styles.css").text
 
-    assert "metadata-scrape-label" in html
+    assert "symlink-export-label" in html
     assert "compact-lock-badge" in html
     assert "overflow-x: hidden" in css
     assert "grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)" in css
@@ -148,7 +148,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "streamRunEvents" in script
     assert "pollRunStatus" in script
     assert "完整流程开始" in script
-    assert "构建本地软链接工作区 -> 元数据刮削 -> 网盘同步" in script
+    assert "软链接导出 -> 元数据刮削 -> 网盘同步" in script
     assert "完整流程路径规则：使用上游输出作为下游输入" in script
     assert "完整流程路径链路" in script
     assert "metadata library_path=" in script
@@ -159,8 +159,8 @@ def test_webui_uses_background_runs_and_sse():
     assert "unlockFullFlowPathInputs" in script
     assert "fullFlowLockedInputs" in script
     assert "full-flow-locked" in script
-    assert "执行完整流程时由“构建本地软链接工作区”" in script
-    assert "执行完整流程时由“构建本地软链接工作区”的启用状态接管" in script
+    assert "执行完整流程时由“软链接导出”" in script
+    assert "执行完整流程时由“软链接导出”的启用状态接管" in script
     assert "执行完整流程时按当前网盘导入勾选状态锁定" in script
     assert ".metadata-library-enabled" in script
     assert ".cloud-library-enabled" in script
@@ -169,7 +169,7 @@ def test_webui_uses_background_runs_and_sse():
     assert "cloudLibrariesFromPathPairs" in script
     assert "完整流程开始网盘导入：自动进入第三阶段" in script
     assert "网盘同步" in script
-    assert "软链接工作区步骤未成功完成，完整流程已停止" in script
+    assert "软链接导出步骤未成功完成，完整流程已停止" in script
     assert "confirmCloudMoveIfNeeded" in script
     assert "window.confirm" in script
     assert "网盘导入即将开始" in script
