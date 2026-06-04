@@ -420,6 +420,16 @@ class QueryAwareMovieClient:
             return [{"id": 44225, "title": "Boston Girls", "original_title": "Boston Girls", "release_date": "2010-01-01"}]
         if query.title == "囡囡":
             return [{"id": 47992, "title": "囡囡", "original_title": "囡囡", "release_date": "2010-09-02"}]
+        if query.title == "禁春":
+            return [{"id": 415383, "title": "禁春", "original_title": "禁春", "release_date": "1993-10-21"}]
+        if query.title == "色模":
+            return [{"id": 367207, "title": "色模", "original_title": "色模", "release_date": "2015-10-22"}]
+        if query.title == "欲望之翼":
+            return [{"id": 28468, "title": "欲望之翼", "original_title": "La chiave", "release_date": "1983-10-19"}]
+        if query.title == "93女爱男欢":
+            return [{"id": 439486, "title": "93女爱男欢", "original_title": "93女愛男歡", "release_date": "1992-10-29"}]
+        if query.title == "女爱男欢":
+            return [{"id": 639, "title": "当哈利遇到莎莉", "original_title": "When Harry Met Sally...", "release_date": "1989-07-12"}]
         return []
 
     def movie_details(self, tmdb_id, language):
@@ -463,6 +473,46 @@ class QueryAwareMovieClient:
                 "original_title": "화끈한 써비스: 어느 잔인한 미용사의",
                 "release_date": "2015-01-29",
                 "overview": "一名理发师展开复仇。",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 415383:
+            return {
+                "id": 415383,
+                "title": "禁春",
+                "original_title": "禁春",
+                "release_date": "1993-10-21",
+                "overview": "Forbidden love.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 367207:
+            return {
+                "id": 367207,
+                "title": "色模",
+                "original_title": "色模",
+                "release_date": "2015-10-22",
+                "overview": "Super models.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 28468:
+            return {
+                "id": 28468,
+                "title": "欲望之翼",
+                "original_title": "La chiave",
+                "release_date": "1983-10-19",
+                "overview": "A complicated relationship.",
+                "poster_path": "",
+                "backdrop_path": "",
+            }
+        if tmdb_id == 439486:
+            return {
+                "id": 439486,
+                "title": "93女爱男欢",
+                "original_title": "93女愛男歡",
+                "release_date": "1992-10-29",
+                "overview": "A Hong Kong drama.",
                 "poster_path": "",
                 "backdrop_path": "",
             }
@@ -729,6 +779,72 @@ def test_movie_metadata_uses_known_tmdb_id_when_search_cannot_find_title(tmp_pat
     assert result.records[0].year == "2015"
     assert result.records[0].extra["tmdb_id"] == 322587
     assert result.records[0].extra["candidates"][0]["match_source"] == "known_tmdb_id"
+
+
+def run_single_movie_metadata_case(tmp_path, folder_name: str, video_name: str, add_mixed_placeholder: bool = False):
+    library = tmp_path / "movies"
+    movie_dir = library / folder_name
+    movie_dir.mkdir(parents=True)
+    video = movie_dir / video_name
+    video.write_text("x", encoding="utf-8")
+    if add_mixed_placeholder:
+        (movie_dir / f"placeholder{video.suffix}").write_text("x", encoding="utf-8")
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "movies",
+                "library_path": str(library),
+                "download_images": False,
+                "auto_rename": False,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [video.suffix]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_movie_rule_query_case", context.logging.log_dir, context.run_id)
+    fake_tmdb = QueryAwareMovieClient()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+    return result, fake_tmdb
+
+
+def test_movie_metadata_uses_known_alias_for_jinchun(tmp_path):
+    result, fake_tmdb = run_single_movie_metadata_case(
+        tmp_path,
+        "JinChun (1993)",
+        "JinChun(1993)MSK04.mkv",
+    )
+
+    assert fake_tmdb.search_calls[0][0].title == "禁春"
+    assert result.records[0].status == "written"
+    assert result.records[0].title == "禁春"
+    assert result.records[0].year == "1993"
+
+
+def test_movie_metadata_extracts_cjk_title_from_mixed_release_name(tmp_path):
+    cases = [
+        ("movies", "18P2P色模SuperModels[粵語簡中].avi", "色模", "2015"),
+        ("movies", "1983欲望之翼BD720P中字内嵌.mp4", "欲望之翼", "1983"),
+        ("movies", "93女爱男欢（国语繁字.5.61G）-93女爱男欢.mkv", "93女爱男欢", "1992"),
+    ]
+
+    for index, (folder, filename, expected_title, expected_year) in enumerate(cases):
+        result, fake_tmdb = run_single_movie_metadata_case(
+            tmp_path / str(index),
+            folder,
+            filename,
+            add_mixed_placeholder=True,
+        )
+        searched_titles = [query.title for query, _language in fake_tmdb.search_calls]
+
+        assert searched_titles[0] == expected_title
+        assert result.records[0].status == "written"
+        assert result.records[0].title == expected_title
+        assert result.records[0].year == expected_year
 
 
 def test_movie_auto_rename_moves_each_movie_out_of_category_folder(tmp_path):

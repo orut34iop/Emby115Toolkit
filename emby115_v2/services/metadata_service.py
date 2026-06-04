@@ -24,10 +24,26 @@ INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
 KNOWN_MOVIE_QUERY_ALIASES = {
     ("girls", "2010"): ("囡囡", "Girl$"),
+    ("jinchun", "1993"): ("禁春",),
+    ("supermodels", ""): ("色模", "Super Models"),
+    ("supermodels", "2015"): ("色模", "Super Models"),
 }
 KNOWN_MOVIE_TMDB_IDS = {
     ("janinhanmiyongsaui", "2014"): 322587,
     ("janinhanmiyongsaui", "2015"): 322587,
+}
+CJK_TITLE_NOISE_FRAGMENTS = {
+    "中字",
+    "内嵌",
+    "簡中",
+    "简中",
+    "繁字",
+    "繁中",
+    "字幕",
+    "国语",
+    "國語",
+    "粤语",
+    "粵語",
 }
 
 
@@ -1219,6 +1235,9 @@ def parse_episode_from_filename(stem: str) -> tuple[int, int] | None:
 
 
 def extract_year(value: str) -> str:
+    leading = re.match(r"^((?:19|20)\d{2})", value)
+    if leading:
+        return leading.group(1)
     match = re.search(r"(?:^|[ ._\-])((?:19|20)\d{2})(?:[ ._\-]|$)", value)
     return match.group(1) if match else ""
 
@@ -1226,7 +1245,8 @@ def extract_year(value: str) -> str:
 def clean_release_title(value: str) -> str:
     year = extract_year(value)
     if year:
-        value = value.split(year, 1)[0]
+        before, after = value.split(year, 1)
+        value = before if before.strip(" ._-") else after
     return re.sub(r"[._]+", " ", value).strip()
 
 
@@ -1490,20 +1510,52 @@ def movie_search_title_variants(title: str, year: str) -> list[str]:
     normalized = normalize_latin_key(title)
     for alias in KNOWN_MOVIE_QUERY_ALIASES.get((normalized, year), ()):
         append_unique_text(variants, alias)
-    for candidate in cjk_title_prefix_variants(title):
+    for candidate in cjk_title_prefix_variants(title, year):
         append_unique_text(variants, candidate)
     return variants
 
 
-def cjk_title_prefix_variants(title: str) -> list[str]:
+def cjk_title_prefix_variants(title: str, year: str = "") -> list[str]:
     if not contains_cjk(title):
         return []
     variants: list[str] = []
     for part in re.split(r"[-_/|]+", title):
         cleaned = clean_movie_search_title(part)
-        if contains_cjk(cleaned) and len(cleaned) >= 2:
-            append_unique_text(variants, cleaned)
+        append_cjk_title_candidate(variants, cleaned, year)
+        for fragment in cjk_title_fragments(cleaned, year):
+            append_cjk_title_candidate(variants, fragment, year)
     return variants
+
+
+def cjk_title_fragments(value: str, year: str) -> list[str]:
+    fragments = []
+    for match in re.finditer(r"(?:\d{2,4})?[\u3400-\u9fff]+(?:\d+)?", value):
+        fragment = normalize_cjk_title_fragment(match.group(0), year)
+        if fragment:
+            fragments.append(fragment)
+    return fragments
+
+
+def normalize_cjk_title_fragment(value: str, year: str) -> str:
+    value = value.strip(" ._-")
+    if year and value.startswith(year):
+        value = value[len(year) :]
+    return value.strip(" ._-")
+
+
+def append_cjk_title_candidate(values: list[str], value: str, year: str) -> None:
+    value = normalize_cjk_title_fragment(value, year)
+    if re.search(r"[A-Za-z]", value):
+        return
+    if not value or len(value) < 2 or not contains_cjk(value):
+        return
+    if is_cjk_title_noise(value):
+        return
+    append_unique_text(values, value)
+
+
+def is_cjk_title_noise(value: str) -> bool:
+    return value in CJK_TITLE_NOISE_FRAGMENTS or any(value.endswith(fragment) for fragment in CJK_TITLE_NOISE_FRAGMENTS)
 
 
 def normalize_latin_key(value: str) -> str:
