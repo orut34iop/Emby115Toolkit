@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emby115Toolkit V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260605-auto-clear-workspace">
+  <link rel="stylesheet" href="/static/styles.css?v=20260605-auto-clear-visible">
 </head>
 <body>
   <header class="topbar">
@@ -34,10 +34,6 @@
           <label>
             线程数
             <input id="threadCount" type="number" min="1" max="32" value="4">
-          </label>
-          <label class="checkline">
-            <input id="autoClearWorkspace" type="checkbox" checked>
-            自动清空工作区
           </label>
         </div>
 
@@ -90,6 +86,10 @@
           <label class="checkline">
             <input id="dryRun" type="checkbox" checked>
             dry-run 仅生成计划和报告
+          </label>
+          <label class="checkline">
+            <input id="autoClearWorkspace" type="checkbox" checked>
+            自动清空工作区
           </label>
           <button type="submit" id="runButton">执行</button>
         </div>
@@ -375,6 +375,6 @@
     </aside>
   </main>
 
-  <script src="/static/app.js?v=20260605-auto-clear-workspace"></script>
+  <script src="/static/app.js?v=20260605-auto-clear-visible"></script>
 </body>
 </html>
