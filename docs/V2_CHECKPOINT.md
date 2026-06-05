@@ -4,6 +4,7 @@ This document records the current V2 development baseline. Keep it updated whene
 
 ## Latest Checkpoint
 
+- 2026-06-05: `v2.0-checkpoint-20260605-tv-artwork` records the current baseline after TV metadata artwork expansion and cloud-sync metadata completeness safeguards. This checkpoint includes TV show-level `poster/fanart/clearlogo/logo/thumb/banner`, best-effort `clearart`, season poster/thumb artwork, TMDB ID tag direct matching, no-year TV retry, full-flow path locking, cloud sync skips for unscripted TV folders, and the existing report filtering toolbar. Full test suite status at checkpoint creation: `python -m pytest -q` -> 195 passed.
 - 2026-06-04: `v2.0-checkpoint-20260604-reviewed-movie-metadata` records the current baseline after the full workflow/cloud-import milestone and the latest manual-review movie metadata corrections. This checkpoint includes mixed-folder per-video scraping, CJK/bracket search cleanup, rule-based aliases, known TMDB-ID direct matches, the local title override for `96超级床上接班人`, and the WebUI full-flow/cloud-import behavior already documented below. Full test suite status at checkpoint creation: `python -m pytest -q` -> 182 passed.
 
 ## Confirmed Product Direction
@@ -15,6 +16,10 @@ This document records the current V2 development baseline. Keep it updated whene
 - WebUI and CLI are facade entrances. They must call the same core service layer through Context Objects.
 - Every run must produce auditable artifacts: HTML report, JSON report, and log file.
 - HTML reports include local operation-record filtering controls for status, action, media type, keyword search, and quick filters for `manual_review` and `failed`, so audit work can focus on rows that need review.
+
+## Next Development Focus
+
+- Optimize advanced HTML report filtering performance. The next work should focus on large report datasets: reducing initial render cost, making status/action/media/keyword filters responsive with many operation records, preserving fast quick filters for `manual_review` and `failed`, and keeping the JSON report shape unchanged.
 
 ## Current Implemented Foundation
 
