@@ -48,6 +48,7 @@ class CloudScrapedLibraryService:
             "videos_moved": 0,
             "videos_skipped_existing": 0,
             "videos_skipped_missing_nfo": 0,
+            "tvshows_skipped_missing_tvshow_nfo": 0,
             "videos_skipped_wait_unconfirmed": 0,
             "videos_failed": 0,
             "cloud_upload_wait_unconfirmed": False,
@@ -152,6 +153,29 @@ class CloudScrapedLibraryService:
             relative_dir = root_path.relative_to(pair.source)
             target_dir = pair.target / relative_dir
 
+            if media_type == "tvshows" and root_path == pair.source:
+                for dirname in list(dirs):
+                    show_dir = root_path / dirname
+                    if show_dir.is_symlink():
+                        continue
+                    if not self._tvshow_has_root_metadata(show_dir):
+                        dirs.remove(dirname)
+                        summary["tvshows_skipped_missing_tvshow_nfo"] += 1
+                        records.append(
+                            OperationRecord(
+                                action="skip_tvshow_without_metadata",
+                                status="skipped",
+                                source_path=str(show_dir),
+                                target_path=str(target_dir / dirname),
+                                media_type=media_type,
+                                title=dirname,
+                                confidence="high",
+                                reason="电视剧一级目录缺少 tvshow.nfo，未上传该目录到网盘",
+                                extra={"path_pair": pair.name, "required_nfo_path": str(show_dir / "tvshow.nfo")},
+                            )
+                        )
+                        logger.info("跳过缺少 tvshow.nfo 的电视剧目录: %s", show_dir)
+
             for dirname in list(dirs):
                 dir_path = root_path / dirname
                 if dir_path.is_symlink():
@@ -205,29 +229,26 @@ class CloudScrapedLibraryService:
                             summary["videos_skipped_missing_nfo"] += 1
                     if move_plan:
                         move_plans.append(move_plan)
-                    reason = (
-                        "阶段 A 排除 symlink 文件；真实视频将在阶段 B 移动"
-                        if move_plan
-                        else "阶段 A 排除 symlink 文件；同目录缺少同名 NFO，未创建真实视频移动计划"
-                        if missing_nfo_path
-                        else "阶段 A 排除 symlink 文件；不是配置的视频后缀"
-                    )
-                    records.append(
-                        OperationRecord(
-                            action="skip_symlink_copy",
-                            status="skipped",
-                            source_path=str(source_file),
-                            target_path=str(target_file),
-                            media_type=media_type,
-                            reason=reason,
-                            extra={
-                                "path_pair": pair.name,
-                                "real_video_path": str(move_plan.real_video_path) if move_plan and move_plan.real_video_path else "",
-                                "real_video_resolve_reason": move_plan.reason if move_plan else "",
-                                "required_nfo_path": str(missing_nfo_path) if missing_nfo_path else "",
-                            },
+                    if not move_plan:
+                        reason = (
+                            "阶段 A 排除 symlink 文件；同目录缺少同名 NFO，未创建真实视频移动计划"
+                            if missing_nfo_path
+                            else "阶段 A 排除 symlink 文件；不是配置的视频后缀"
                         )
-                    )
+                        records.append(
+                            OperationRecord(
+                                action="skip_symlink_copy",
+                                status="skipped",
+                                source_path=str(source_file),
+                                target_path=str(target_file),
+                                media_type=media_type,
+                                reason=reason,
+                                extra={
+                                    "path_pair": pair.name,
+                                    "required_nfo_path": str(missing_nfo_path) if missing_nfo_path else "",
+                                },
+                            )
+                        )
                     continue
 
                 summary["metadata_planned"] += 1
@@ -329,6 +350,10 @@ class CloudScrapedLibraryService:
         except OSError:
             pass
         return expected_nfo
+
+    def _tvshow_has_root_metadata(self, show_dir: Path) -> bool:
+        tvshow_nfo = show_dir / "tvshow.nfo"
+        return tvshow_nfo.exists() or tvshow_nfo.is_symlink()
 
     def _resolve_symlink_target(self, workspace_symlink_path: Path) -> tuple[Path | None, str]:
         try:
@@ -501,6 +526,7 @@ class CloudScrapedLibraryService:
             extra={
                 "path_pair": plan.pair_name,
                 "real_video_path": str(plan.real_video_path) if plan.real_video_path else "",
+                "real_video_resolve_reason": plan.reason,
             },
         )
 
@@ -554,11 +580,12 @@ class CloudScrapedLibraryService:
         failures = int(summary.get("metadata_failed", 0)) + int(summary.get("videos_failed", 0))
         successes = int(summary.get("metadata_copied", 0)) + int(summary.get("videos_moved", 0))
         missing_nfo = int(summary.get("videos_skipped_missing_nfo", 0))
-        if failures and (successes or missing_nfo):
+        skipped_tvshows = int(summary.get("tvshows_skipped_missing_tvshow_nfo", 0))
+        if failures and (successes or missing_nfo or skipped_tvshows):
             return "partial"
         if failures:
             return "failed"
-        if missing_nfo:
+        if missing_nfo or skipped_tvshows:
             return "partial"
         return "success"
 
