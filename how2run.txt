@@ -9,10 +9,17 @@ uv pip install -r requirements.txt
 ## 3. 运行 tkinter 版本（Windows）
 uv run python main.py
 
-## 4. 或运行 PyQt5 版本（macOS）
+## 4. 运行 V2 WebUI（Windows）
+start_webui.bat
+
+或手动启动后端：
+uv run python main.py --serve-web
+
+## 5. 或运行 PyQt5 版本（macOS）
 uv run python qt_main.py
 
 # ---
 # 旧方式（pip 全局安装）
 # pip install -r requirements.txt
 # python main.py
+# python main.py --serve-web

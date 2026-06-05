@@ -175,6 +175,14 @@ Start local WebUI:
 python main.py --serve-web
 ```
 
+Windows one-click startup:
+
+```bat
+start_webui.bat
+```
+
+`start_webui.bat` starts the local WebUI backend, waits for `/health`, then opens `http://127.0.0.1:8765/`. The underlying `scripts/start_webui.ps1` supports `-Port`, `-BindAddress`, `-NoOpen`, and `-Restart` for local troubleshooting.
+
 Start LAN WebUI with token:
 
 ```bash

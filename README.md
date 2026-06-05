@@ -89,6 +89,14 @@
 
 下载代码到本地，然后 cd Emby115Toolkit 目录
 
+V2 WebUI（Windows）：
+
+1. 安装依赖：`pip install -r requirements.txt`
+
+2. 一键启动后端并打开网页：双击 `start_webui.bat`
+
+3. 或手动启动：`python main.py --serve-web`
+
 Windows系统：
 
 1. 安装依赖：  pip install -r requirements.txt
