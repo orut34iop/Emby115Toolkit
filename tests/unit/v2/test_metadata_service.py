@@ -232,6 +232,14 @@ class FakeTmdbClient:
                 "poster_path": "/tv-poster.jpg",
                 "backdrop_path": "/tv-fanart.jpg",
                 "images": {
+                    "backdrops": [
+                        {
+                            "file_path": "/tv-thumb.jpg",
+                            "iso_639_1": "zh",
+                            "vote_average": 8.0,
+                            "vote_count": 2,
+                        }
+                    ],
                     "logos": [
                         {
                             "file_path": "/tv-logo-en.png",
@@ -245,7 +253,15 @@ class FakeTmdbClient:
                             "vote_average": 7.0,
                             "vote_count": 1,
                         },
-                    ]
+                    ],
+                    "cleararts": [
+                        {
+                            "file_path": "/tv-clearart.png",
+                            "iso_639_1": "zh",
+                            "vote_average": 8.0,
+                            "vote_count": 1,
+                        }
+                    ],
                 },
                 "seasons": [
                     {"season_number": 0, "poster_path": "/specials-poster.jpg"},
@@ -334,6 +350,8 @@ class FakeTmdbClient:
 
     def download_image(self, image_path, target_path, overwrite):
         self.download_calls.append((image_path, target_path, overwrite))
+        if not image_path:
+            return "missing"
         target_path.write_text("image", encoding="utf-8")
         return "downloaded"
 
@@ -1284,8 +1302,14 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     episode_nfo = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p.nfo"
     thumb = renamed / "Season 01" / "Inside.No.9.S01E01.Sardines.1080p-thumb.jpg"
     clearlogo = renamed / "clearlogo.png"
+    logo = renamed / "logo.png"
+    clearart = renamed / "clearart.png"
+    show_thumb = renamed / "thumb.jpg"
+    banner = renamed / "banner.jpg"
     season_poster = renamed / "season01-poster.jpg"
+    season_thumb = renamed / "season01-thumb.jpg"
     specials_poster = renamed / "season-specials-poster.jpg"
+    specials_thumb = renamed / "season-specials-thumb.jpg"
     assert result.status == "success"
     assert result.summary["matched"] == 2
     assert result.summary["auto_rename"]["renamed"] == 1
@@ -1293,8 +1317,14 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     assert episode_nfo.exists()
     assert thumb.exists()
     assert clearlogo.exists()
+    assert logo.exists()
+    assert clearart.exists()
+    assert show_thumb.exists()
+    assert banner.exists()
     assert season_poster.exists()
+    assert season_thumb.exists()
     assert specials_poster.exists()
+    assert specials_thumb.exists()
     tvshow_text = tvshow_nfo.read_text(encoding="utf-8")
     episode_text = episode_nfo.read_text(encoding="utf-8")
     assert "<title>9号秘事</title>" in tvshow_text
@@ -1324,12 +1354,23 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
     show_record = next(record for record in result.records if record.target_path.endswith("tvshow.nfo"))
     assert show_record.extra["clearlogo_status"] == "downloaded"
     assert Path(show_record.extra["clearlogo_path"]).name == "clearlogo.png"
+    assert show_record.extra["logo_status"] == "downloaded"
+    assert Path(show_record.extra["logo_path"]).name == "logo.png"
+    assert show_record.extra["clearart_status"] == "downloaded"
+    assert Path(show_record.extra["clearart_path"]).name == "clearart.png"
+    assert show_record.extra["thumb_status"] == "downloaded"
+    assert Path(show_record.extra["thumb_path"]).name == "thumb.jpg"
+    assert show_record.extra["banner_status"] == "downloaded"
+    assert Path(show_record.extra["banner_path"]).name == "banner.jpg"
     assert [
         {
             "season_number": item["season_number"],
             "status": item["status"],
             "tmdb_image_path": item["tmdb_image_path"],
             "target_name": Path(item["target_path"]).name,
+            "thumb_status": item["thumb_status"],
+            "thumb_tmdb_image_path": item["thumb_tmdb_image_path"],
+            "thumb_target_name": Path(item["thumb_target_path"]).name,
         }
         for item in show_record.extra["season_posters"]
     ] == [
@@ -1338,12 +1379,18 @@ def test_tvshow_metadata_writes_tvshow_and_episode_nfo_with_thumbs(tmp_path):
             "status": "downloaded",
             "tmdb_image_path": "/specials-poster.jpg",
             "target_name": "season-specials-poster.jpg",
+            "thumb_status": "downloaded",
+            "thumb_tmdb_image_path": "/tv-thumb.jpg",
+            "thumb_target_name": "season-specials-thumb.jpg",
         },
         {
             "season_number": 1,
             "status": "downloaded",
             "tmdb_image_path": "/season-1-poster.jpg",
             "target_name": "season01-poster.jpg",
+            "thumb_status": "downloaded",
+            "thumb_tmdb_image_path": "/tv-thumb.jpg",
+            "thumb_target_name": "season01-thumb.jpg",
         },
     ]
     log_text = (context.logging.log_dir / f"{context.run_id}.log").read_text(encoding="utf-8")

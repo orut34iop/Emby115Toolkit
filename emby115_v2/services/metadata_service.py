@@ -44,11 +44,15 @@ def tmdb_image_language_preferences(language: str) -> tuple[str, ...]:
     return tuple(values)
 
 
-def clearlogo_target_path(target_stem: Path, image_path: str) -> Path:
+def artwork_target_path(target_stem: Path, image_path: str, default_suffix: str) -> Path:
     suffix = Path(urllib.parse.urlparse(image_path).path).suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
-        suffix = ".png"
+        suffix = default_suffix
     return target_stem.parent / f"{target_stem.name}{suffix}"
+
+
+def clearlogo_target_path(target_stem: Path, image_path: str) -> Path:
+    return artwork_target_path(target_stem, image_path, ".png")
 KNOWN_MOVIE_TMDB_IDS = {
     ("96超级床上接班人", ""): 926910,
     ("96超级床上接班人", "1998"): 926910,
@@ -120,6 +124,7 @@ class ActorMetadata:
 class SeasonPosterMetadata:
     season_number: int
     poster_path: str = ""
+    thumb_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -179,6 +184,10 @@ class TvShowMetadata:
     poster_path: str = ""
     backdrop_path: str = ""
     clearlogo_path: str = ""
+    logo_path: str = ""
+    clearart_path: str = ""
+    thumb_path: str = ""
+    banner_path: str = ""
     season_posters: tuple[SeasonPosterMetadata, ...] = ()
     language: str = ""
     fallback_used: bool = False
@@ -853,12 +862,24 @@ class MetadataScraperService:
         fanart_status = "not_requested"
         clearlogo_path = clearlogo_target_path(show_dir / "clearlogo", metadata.clearlogo_path)
         clearlogo_status = "not_requested"
+        logo_path = clearlogo_target_path(show_dir / "logo", metadata.logo_path)
+        logo_status = "not_requested"
+        clearart_path = clearlogo_target_path(show_dir / "clearart", metadata.clearart_path)
+        clearart_status = "not_requested"
+        thumb_path = show_dir / "thumb.jpg"
+        thumb_status = "not_requested"
+        banner_path = show_dir / "banner.jpg"
+        banner_status = "not_requested"
         season_poster_statuses: list[dict[str, Any]] = []
         if context.metadata_output.download_images:
             if context.dry_run:
                 poster_status = "planned" if metadata.poster_path else "missing"
                 fanart_status = "planned" if metadata.backdrop_path else "missing"
                 clearlogo_status = "planned" if metadata.clearlogo_path else "missing"
+                logo_status = "planned" if metadata.logo_path else "missing"
+                clearart_status = "planned" if metadata.clearart_path else "missing"
+                thumb_status = "planned" if metadata.thumb_path else "missing"
+                banner_status = "planned" if metadata.banner_path else "missing"
                 if context.metadata_output.download_season_posters:
                     season_poster_statuses = plan_season_poster_downloads(show_dir, metadata)
             else:
@@ -875,6 +896,26 @@ class MetadataScraperService:
                 clearlogo_status = client.download_image(
                     metadata.clearlogo_path,
                     clearlogo_path,
+                    context.metadata_output.overwrite_existing,
+                )
+                logo_status = client.download_image(
+                    metadata.logo_path,
+                    logo_path,
+                    context.metadata_output.overwrite_existing,
+                )
+                clearart_status = client.download_image(
+                    metadata.clearart_path,
+                    clearart_path,
+                    context.metadata_output.overwrite_existing,
+                )
+                thumb_status = client.download_image(
+                    metadata.thumb_path,
+                    thumb_path,
+                    context.metadata_output.overwrite_existing,
+                )
+                banner_status = client.download_image(
+                    metadata.banner_path,
+                    banner_path,
                     context.metadata_output.overwrite_existing,
                 )
                 if context.metadata_output.download_season_posters:
@@ -914,9 +955,17 @@ class MetadataScraperService:
                 "poster_path": str(show_dir / "poster.jpg"),
                 "fanart_path": str(show_dir / "fanart.jpg"),
                 "clearlogo_path": str(clearlogo_path),
+                "logo_path": str(logo_path),
+                "clearart_path": str(clearart_path),
+                "thumb_path": str(thumb_path),
+                "banner_path": str(banner_path),
                 "poster_status": poster_status,
                 "fanart_status": fanart_status,
                 "clearlogo_status": clearlogo_status,
+                "logo_status": logo_status,
+                "clearart_status": clearart_status,
+                "thumb_status": thumb_status,
+                "banner_status": banner_status,
                 "season_posters": season_poster_statuses,
                 "llm_resolution": llm_resolution_for_report(llm_resolution or {}),
             },
@@ -1919,8 +1968,13 @@ def extract_named_values(details: dict[str, Any], fallback: dict[str, Any], key:
     return tuple(names)
 
 
-def extract_season_posters(details: dict[str, Any], fallback: dict[str, Any]) -> tuple[SeasonPosterMetadata, ...]:
+def extract_season_posters(
+    details: dict[str, Any],
+    fallback: dict[str, Any],
+    default_thumb_path: str = "",
+) -> tuple[SeasonPosterMetadata, ...]:
     by_season: dict[int, str] = {}
+    by_season_thumb: dict[int, str] = {}
     for source in (fallback, details):
         for item in source.get("seasons") or []:
             if not isinstance(item, dict):
@@ -1932,8 +1986,21 @@ def extract_season_posters(details: dict[str, Any], fallback: dict[str, Any]) ->
             poster_path = str(item.get("poster_path") or "").strip()
             if poster_path or season_number not in by_season:
                 by_season[season_number] = poster_path
+            thumb_path = str(
+                item.get("thumb_path")
+                or item.get("thumbnail_path")
+                or item.get("backdrop_path")
+                or item.get("still_path")
+                or ""
+            ).strip()
+            if thumb_path or season_number not in by_season_thumb:
+                by_season_thumb[season_number] = thumb_path
     return tuple(
-        SeasonPosterMetadata(season_number=season_number, poster_path=poster_path)
+        SeasonPosterMetadata(
+            season_number=season_number,
+            poster_path=poster_path,
+            thumb_path=by_season_thumb.get(season_number) or default_thumb_path,
+        )
         for season_number, poster_path in sorted(by_season.items())
     )
 
@@ -1944,6 +2011,12 @@ def season_poster_filename(season_number: int) -> str:
     return f"season{season_number:02d}-poster.jpg"
 
 
+def season_thumb_filename(season_number: int) -> str:
+    if season_number == 0:
+        return "season-specials-thumb.jpg"
+    return f"season{season_number:02d}-thumb.jpg"
+
+
 def plan_season_poster_downloads(show_dir: Path, metadata: TvShowMetadata) -> list[dict[str, Any]]:
     return [
         {
@@ -1951,6 +2024,9 @@ def plan_season_poster_downloads(show_dir: Path, metadata: TvShowMetadata) -> li
             "target_path": str(show_dir / season_poster_filename(season.season_number)),
             "status": "planned" if season.poster_path else "missing",
             "tmdb_image_path": season.poster_path,
+            "thumb_target_path": str(show_dir / season_thumb_filename(season.season_number)),
+            "thumb_status": "planned" if season.thumb_path else "missing",
+            "thumb_tmdb_image_path": season.thumb_path,
         }
         for season in metadata.season_posters
     ]
@@ -1970,12 +2046,21 @@ def download_season_posters(
             target_path,
             context.metadata_output.overwrite_existing,
         )
+        thumb_target_path = show_dir / season_thumb_filename(season.season_number)
+        thumb_status = client.download_image(
+            season.thumb_path,
+            thumb_target_path,
+            context.metadata_output.overwrite_existing,
+        )
         statuses.append(
             {
                 "season_number": season.season_number,
                 "target_path": str(target_path),
                 "status": status,
                 "tmdb_image_path": season.poster_path,
+                "thumb_target_path": str(thumb_target_path),
+                "thumb_status": thumb_status,
+                "thumb_tmdb_image_path": season.thumb_path,
             }
         )
     return statuses
@@ -2021,26 +2106,38 @@ def extract_tv_certification(details: dict[str, Any], fallback: dict[str, Any]) 
     return ""
 
 
-def extract_clearlogo_path(details: dict[str, Any], fallback: dict[str, Any], language: str) -> str:
-    logos: list[dict[str, Any]] = []
+def collect_tmdb_images(details: dict[str, Any], fallback: dict[str, Any], image_type: str) -> list[dict[str, Any]]:
+    images: list[dict[str, Any]] = []
     seen: set[str] = set()
     for payload in (details, fallback):
-        for item in (payload.get("images") or {}).get("logos") or []:
+        for item in (payload.get("images") or {}).get(image_type) or []:
             file_path = str(item.get("file_path") or "").strip()
             if not file_path or file_path in seen:
                 continue
             seen.add(file_path)
-            logos.append(item)
-    if not logos:
+            images.append(item)
+    return images
+
+
+def select_tmdb_image_path(
+    details: dict[str, Any],
+    fallback: dict[str, Any],
+    image_type: str,
+    language: str,
+    suffix_preference: tuple[str, ...] = (),
+) -> str:
+    images = collect_tmdb_images(details, fallback, image_type)
+    if not images:
         return ""
 
     preferences = tmdb_image_language_preferences(language)
+    suffix_rank = {suffix: index for index, suffix in enumerate(suffix_preference)}
 
     def image_score(item: dict[str, Any]) -> tuple[int, int, float, int]:
         item_language = str(item.get("iso_639_1") or "null").lower()
         language_rank = preferences.index(item_language) if item_language in preferences else len(preferences)
         suffix = Path(str(item.get("file_path") or "")).suffix.lower()
-        raster_rank = 0 if suffix == ".png" else 1
+        raster_rank = suffix_rank.get(suffix, len(suffix_rank))
         try:
             vote_average = float(item.get("vote_average") or 0.0)
         except (TypeError, ValueError):
@@ -2051,8 +2148,23 @@ def extract_clearlogo_path(details: dict[str, Any], fallback: dict[str, Any], la
             vote_count = 0
         return (language_rank, raster_rank, -vote_average, -vote_count)
 
-    selected = sorted(logos, key=image_score)[0]
+    selected = sorted(images, key=image_score)[0]
     return str(selected.get("file_path") or "").strip()
+
+
+def extract_clearlogo_path(details: dict[str, Any], fallback: dict[str, Any], language: str) -> str:
+    return select_tmdb_image_path(details, fallback, "logos", language, (".png", ".webp", ".jpg", ".jpeg", ".svg"))
+
+
+def extract_backdrop_artwork_path(details: dict[str, Any], fallback: dict[str, Any], language: str) -> str:
+    return (
+        select_tmdb_image_path(details, fallback, "backdrops", language, (".jpg", ".jpeg", ".webp", ".png"))
+        or str(details.get("backdrop_path") or fallback.get("backdrop_path") or "")
+    )
+
+
+def extract_clearart_path(details: dict[str, Any], fallback: dict[str, Any], language: str) -> str:
+    return select_tmdb_image_path(details, fallback, "cleararts", language, (".png", ".webp"))
 
 
 def movie_metadata_from_details(
@@ -2104,6 +2216,8 @@ def tvshow_metadata_from_details(
 ) -> TvShowMetadata:
     first_air_date = str(details.get("first_air_date") or fallback.get("first_air_date") or "")
     external_ids = extract_external_ids(details, fallback)
+    clearlogo_path = extract_clearlogo_path(details, fallback, language)
+    backdrop_artwork_path = extract_backdrop_artwork_path(details, fallback, language)
     return TvShowMetadata(
         tmdb_id=int(details.get("id") or fallback.get("id")),
         title=str(details.get("name") or fallback.get("name") or ""),
@@ -2126,9 +2240,13 @@ def tvshow_metadata_from_details(
         spoken_languages=extract_named_values(details, fallback, "spoken_languages"),
         original_language=str(details.get("original_language") or fallback.get("original_language") or ""),
         poster_path=str(details.get("poster_path") or fallback.get("poster_path") or ""),
-        backdrop_path=str(details.get("backdrop_path") or fallback.get("backdrop_path") or ""),
-        clearlogo_path=extract_clearlogo_path(details, fallback, language),
-        season_posters=extract_season_posters(details, fallback),
+        backdrop_path=backdrop_artwork_path,
+        clearlogo_path=clearlogo_path,
+        logo_path=clearlogo_path,
+        clearart_path=extract_clearart_path(details, fallback, language),
+        thumb_path=backdrop_artwork_path,
+        banner_path=backdrop_artwork_path,
+        season_posters=extract_season_posters(details, fallback, backdrop_artwork_path),
         language=language,
         fallback_used=fallback_used,
     )
