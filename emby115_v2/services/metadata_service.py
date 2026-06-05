@@ -22,6 +22,7 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
 TMDB_REQUEST_RETRIES = 3
 INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
+TMDB_ID_TAG_RE = r"(?i)\{tmdb-(\d{1,10})\}"
 KNOWN_MOVIE_QUERY_ALIASES = {
     ("girls", "2010"): ("囡囡", "Girl$"),
     ("jinchun", "1993"): ("禁春",),
@@ -88,6 +89,7 @@ class MovieQuery:
 class TvShowQuery:
     title: str
     year: str = ""
+    tmdb_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -1280,7 +1282,34 @@ def infer_tvshow_query(show_dir: Path) -> TvShowQuery:
     title = re.sub(r"\(\d{4}\)", "", raw_title).strip(" ._-")
     if year and title == raw_title:
         title = raw_title.split(year, 1)[0]
-    return TvShowQuery(title=title.strip(" ._-"), year=year)
+    return TvShowQuery(
+        title=title.strip(" ._-"),
+        year=year,
+        tmdb_id=extract_tmdb_id_from_tree(show_dir),
+    )
+
+
+def extract_tmdb_id_from_text(value: str) -> int:
+    match = re.search(TMDB_ID_TAG_RE, value)
+    return int(match.group(1)) if match else 0
+
+
+def extract_tmdb_id_from_tree(root: Path, max_items: int = 300) -> int:
+    tmdb_id = extract_tmdb_id_from_text(root.name)
+    if tmdb_id:
+        return tmdb_id
+    scanned = 0
+    try:
+        for path in root.rglob("*"):
+            tmdb_id = extract_tmdb_id_from_text(path.name)
+            if tmdb_id:
+                return tmdb_id
+            scanned += 1
+            if scanned >= max_items:
+                break
+    except OSError:
+        return 0
+    return 0
 
 
 def parse_episode_from_filename(stem: str) -> tuple[int, int] | None:
@@ -1656,13 +1685,24 @@ def fetch_tvshow_metadata(
     language: str,
     fallback_language: str,
 ) -> tuple[TvShowMetadata | None, list[dict[str, Any]]]:
-    candidates = client.search_tv(query, language)
-    used_language = language
-    fallback_used = False
-    if not candidates and fallback_language != language:
-        candidates = client.search_tv(query, fallback_language)
-        used_language = fallback_language
-        fallback_used = True
+    if query.tmdb_id:
+        metadata = fetch_tvshow_metadata_by_id(client, query.tmdb_id, language, fallback_language)
+        return metadata, [
+            {
+                "id": metadata.tmdb_id,
+                "name": metadata.title,
+                "original_name": metadata.original_title,
+                "first_air_date": metadata.first_air_date,
+                "match_source": "tmdb_id_tag",
+            }
+        ]
+
+    candidates, used_language, fallback_used = search_tv_candidates_with_year_fallback(
+        client,
+        query,
+        language,
+        fallback_language,
+    )
     if not candidates:
         return None, []
 
@@ -1675,6 +1715,42 @@ def fetch_tvshow_metadata(
         fallback_used = True
     metadata = tvshow_metadata_from_details(details, fallback_details, used_language, fallback_used)
     return metadata, summarize_tv_candidates(candidates)
+
+
+def fetch_tvshow_metadata_by_id(
+    client: TmdbClient,
+    tmdb_id: int,
+    language: str,
+    fallback_language: str,
+) -> TvShowMetadata:
+    details = client.tv_details(tmdb_id, language)
+    fallback_details = {}
+    fallback_used = False
+    if fallback_language != language and missing_tv_core_fields(details):
+        fallback_details = client.tv_details(tmdb_id, fallback_language)
+        fallback_used = True
+    return tvshow_metadata_from_details(details, fallback_details, language, fallback_used)
+
+
+def search_tv_candidates_with_year_fallback(
+    client: TmdbClient,
+    query: TvShowQuery,
+    language: str,
+    fallback_language: str,
+) -> tuple[list[dict[str, Any]], str, bool]:
+    search_queries = [query]
+    if query.year:
+        search_queries.append(TvShowQuery(title=query.title, year=""))
+
+    for search_query in search_queries:
+        candidates = client.search_tv(search_query, language)
+        if candidates:
+            return candidates, language, search_query.year != query.year
+        if fallback_language != language:
+            candidates = client.search_tv(search_query, fallback_language)
+            if candidates:
+                return candidates, fallback_language, True
+    return [], language, False
 
 
 def fetch_episode_metadata(

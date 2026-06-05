@@ -6,6 +6,9 @@ from emby115_v2.logging_setup import setup_run_logger
 import urllib.error
 
 from emby115_v2.services.metadata_service import (
+    TvShowQuery,
+    fetch_tvshow_metadata,
+    infer_tvshow_query,
     LlmConfigTestService,
     MetadataScraperService,
     TmdbClient,
@@ -421,6 +424,90 @@ class FakeTmdbMovieClientWithLlmRetry:
 
     def tv_details(self, tmdb_id, language):
         return {}
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        return {}
+
+    def download_image(self, image_path, target_path, overwrite):
+        return "missing"
+
+
+class FakeTmdbTvClientWithDirectId:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+
+    def search_movie(self, query, language):
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        return {}
+
+    def search_tv(self, query, language):
+        self.search_calls.append((query, language))
+        return []
+
+    def tv_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        return {
+            "id": tmdb_id,
+            "name": "德爷的登阶奇旅",
+            "original_name": "Ed Stafford's Rite of Passage",
+            "first_air_date": "2026-02-19",
+            "overview": "德爷参与世界各地成人礼与生存挑战。",
+            "genres": [{"name": "纪录"}],
+            "poster_path": "",
+            "backdrop_path": "",
+        }
+
+    def tv_episode_details(self, tmdb_id, season, episode, language):
+        return {
+            "name": f"第 {episode} 集",
+            "overview": "单集剧情。",
+            "air_date": "2026-02-19",
+            "still_path": "",
+        }
+
+    def download_image(self, image_path, target_path, overwrite):
+        return "missing"
+
+
+class FakeTmdbTvClientWithWrongYear:
+    def __init__(self):
+        self.search_calls = []
+        self.detail_calls = []
+
+    def search_movie(self, query, language):
+        return []
+
+    def movie_details(self, tmdb_id, language):
+        return {}
+
+    def search_tv(self, query, language):
+        self.search_calls.append((query, language))
+        if query.title == "德爷的登阶奇旅" and not query.year and language == "zh-CN":
+            return [
+                {
+                    "id": 309548,
+                    "name": "德爷的登阶奇旅",
+                    "original_name": "Ed Stafford's Rite of Passage",
+                    "first_air_date": "2026-02-19",
+                }
+            ]
+        return []
+
+    def tv_details(self, tmdb_id, language):
+        self.detail_calls.append((tmdb_id, language))
+        return {
+            "id": tmdb_id,
+            "name": "德爷的登阶奇旅",
+            "original_name": "Ed Stafford's Rite of Passage",
+            "first_air_date": "2026-02-19",
+            "overview": "德爷参与世界各地成人礼与生存挑战。",
+            "genres": [{"name": "纪录"}],
+            "poster_path": "",
+            "backdrop_path": "",
+        }
 
     def tv_episode_details(self, tmdb_id, season, episode, language):
         return {}
@@ -1379,15 +1466,80 @@ def test_tvshow_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):
     assert result.summary["manual_review"] == 0
     assert tvshow_nfo.exists()
     assert "<title>黑皮记事本</title>" in tvshow_nfo.read_text(encoding="utf-8")
-    assert [call[0].title for call in fake_tmdb.search_calls] == [
-        "黑皮记事本",
-        "黑皮记事本",
-        "黒革の手帖",
+    assert [(call[0].title, call[0].year, call[1]) for call in fake_tmdb.search_calls] == [
+        ("黑皮记事本", "2017", "zh-CN"),
+        ("黑皮记事本", "2017", "en-US"),
+        ("黑皮记事本", "", "zh-CN"),
+        ("黑皮记事本", "", "en-US"),
+        ("黒革の手帖", "2017", "zh-CN"),
     ]
     show_record = next(record for record in result.records if record.target_path == str(tvshow_nfo))
     assert show_record.extra["query"]["title"] == "黒革の手帖"
     assert show_record.extra["llm_resolution"]["status"] == "suggested"
     assert show_record.extra["llm_resolution"]["query_candidates"][0]["title"] == "黒革の手帖"
+
+
+def test_tvshow_uses_tmdb_id_tag_from_episode_filename(tmp_path):
+    library = tmp_path / "tvshows"
+    show_dir = library / "德爷的登阶奇旅 (2025)"
+    season_dir = show_dir / "Season 01"
+    season_dir.mkdir(parents=True)
+    episode = season_dir / "德爷的登阶奇旅.2025 - S01E01 - 第 1 集.{tmdb-309548}.mp4"
+    episode.write_text("x", encoding="utf-8")
+    query = infer_tvshow_query(show_dir)
+    assert query == TvShowQuery(title="德爷的登阶奇旅", year="2025", tmdb_id=309548)
+    context = AppContext.from_dict(
+        {
+            "action": "scrape_metadata",
+            "dry_run": False,
+            "metadata_output": {
+                "media_type": "tvshows",
+                "library_path": str(library),
+                "download_images": False,
+                "download_episode_thumbs": False,
+                "auto_rename": False,
+            },
+            "tmdb": {"api_key": "key", "language": "zh-CN", "fallback_language": "en-US"},
+            "symlink": {"video_extensions": [".mp4"]},
+            "report": {"output_dir": str(tmp_path / "reports")},
+            "logging": {"log_dir": str(tmp_path / "logs")},
+        }
+    )
+    logger = setup_run_logger("test_tvshow_tmdb_id_tag", context.logging.log_dir, context.run_id)
+    fake_tmdb = FakeTmdbTvClientWithDirectId()
+
+    result = MetadataScraperService(tmdb_client=fake_tmdb).run(context, logger)
+
+    tvshow_nfo = show_dir / "tvshow.nfo"
+    assert result.status == "success"
+    assert tvshow_nfo.exists()
+    assert "<title>德爷的登阶奇旅</title>" in tvshow_nfo.read_text(encoding="utf-8")
+    assert fake_tmdb.search_calls == []
+    assert fake_tmdb.detail_calls[0] == (309548, "zh-CN")
+    show_record = next(record for record in result.records if record.target_path == str(tvshow_nfo))
+    assert show_record.extra["query"]["tmdb_id"] == 309548
+    assert show_record.extra["candidates"][0]["match_source"] == "tmdb_id_tag"
+
+
+def test_tvshow_retries_search_without_year_when_year_filter_has_no_candidates():
+    fake_tmdb = FakeTmdbTvClientWithWrongYear()
+
+    metadata, candidates = fetch_tvshow_metadata(
+        fake_tmdb,
+        TvShowQuery(title="德爷的登阶奇旅", year="2025"),
+        "zh-CN",
+        "en-US",
+    )
+
+    assert metadata is not None
+    assert metadata.tmdb_id == 309548
+    assert metadata.year == "2026"
+    assert candidates[0]["id"] == 309548
+    assert [(call[0].title, call[0].year, call[1]) for call in fake_tmdb.search_calls] == [
+        ("德爷的登阶奇旅", "2025", "zh-CN"),
+        ("德爷的登阶奇旅", "2025", "en-US"),
+        ("德爷的登阶奇旅", "", "zh-CN"),
+    ]
 
 
 def test_movie_uses_llm_alias_retry_when_tmdb_returns_no_candidates(tmp_path):
