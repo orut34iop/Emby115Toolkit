@@ -84,7 +84,8 @@ WebUI also provides a one-click full flow. This is front-end orchestration only,
 
 - first phase uses TMDB as the primary metadata provider, with provider abstraction reserved for future sources;
 - default TMDB metadata language is `zh-CN`, with `en-US` fallback for failed searches or missing fields;
-- TMDB JSON requests and image downloads retry transient timeout, HTTP 429, and HTTP 5xx failures before marking the affected record failed;
+- TMDB JSON requests and image downloads retry transient timeout, HTTP 429, and HTTP 5xx failures with progressive backoff before marking the affected record failed. Default TMDB attempts are `5`, HTTP `Retry-After` is honored when present, and image download failures are recorded as failed artwork status without failing the whole movie/show by themselves;
+- video discovery in the metadata stage treats symlink paths with configured video suffixes as video files directly and no longer calls `path_is_file_or_symlink()` or probes the symlink target with `Path.is_file()`, avoiding CloudDrive2/WinFSP transient unsupported-operation errors during metadata scraping;
 - matching strategy is rules first, then TMDB search, then LLM-assisted title expansion for movie and TV no-candidate cases; LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage;
 - movie TMDB search/details are implemented; movie NFO and image filenames follow each video file stem, not the first-level folder name;
 - movie search source keeps the normal standardized-library behavior of using the single-movie parent folder, but a first-level folder without a year that contains multiple videos is treated as a mixed/category folder and each video is searched from its own filename;

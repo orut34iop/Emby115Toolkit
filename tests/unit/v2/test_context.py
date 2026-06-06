@@ -16,7 +16,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
                 }
             ],
             "symlink": {"thread_count": 99, "video_extensions": [".mkv"], "auto_clear_workspace": False},
-            "tmdb": {"api_key": "tmdb-key", "language": "zh-CN", "fallback_language": "en-US"},
+            "tmdb": {"api_key": "tmdb-key", "language": "zh-CN", "fallback_language": "en-US", "retries": 4},
             "llm": {
                 "provider": "deepseek",
                 "base_url": "https://api.deepseek.com/v1",
@@ -57,6 +57,7 @@ def test_context_from_dict_builds_typed_objects(tmp_path):
     assert context.symlink.auto_clear_workspace is False
     assert context.tmdb.language == "zh-CN"
     assert context.tmdb.fallback_language == "en-US"
+    assert context.tmdb.retries == 4
     assert context.llm.provider == "deepseek"
     assert context.metadata_output.media_type == "tvshows"
     assert context.metadata_output.library_path == tmp_path / "library"
@@ -91,6 +92,7 @@ def test_context_to_dict_serializes_paths(tmp_path):
     assert data["path_pairs"][0]["target"] == str(Path(tmp_path / "t"))
     assert data["metadata_output"]["library_path"] == "."
     assert data["metadata_output"]["auto_rename"] is True
+    assert data["tmdb"]["retries"] == 5
     assert data["cloud_library_output"]["wait_minutes"] == 60
     assert data["cloud_library_output"]["upload_wait_strategy"] == "fixed"
     assert data["clouddrive2"]["endpoint"] == "127.0.0.1:19798"

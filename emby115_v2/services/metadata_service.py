@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -19,7 +20,8 @@ from emby115_v2.reports.writer import OperationRecord, StepResult
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/original"
-TMDB_REQUEST_RETRIES = 3
+TMDB_REQUEST_RETRIES = 5
+TMDB_RETRYABLE_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 INVALID_WINDOWS_NAME_CHARS = r'<>:"/\|?*'
 PARENTHESIZED_YEAR_RE = r"[\(（]((?:19|20)\d{2})[\)）]"
 TMDB_ID_TAG_RE = r"(?i)\{tmdb-(\d{1,10})\}"
@@ -222,11 +224,9 @@ class TmdbConfigTestService:
                 ],
             )
 
-        params = urllib.parse.urlencode({"api_key": context.tmdb.api_key})
-        url = f"https://api.themoviedb.org/3/configuration?{params}"
         try:
-            with urllib.request.urlopen(url, timeout=context.tmdb.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
+            client = TmdbClient(context.tmdb.api_key, context.tmdb.timeout, context.tmdb.retries)
+            data = client._get("/configuration", {"api_key": context.tmdb.api_key})
             elapsed_ms = round((time.perf_counter() - started) * 1000)
             logger.info("TMDB 配置测试成功 elapsed_ms=%s", elapsed_ms)
             return StepResult(
@@ -247,7 +247,7 @@ class TmdbConfigTestService:
                     )
                 ],
             )
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (urllib.error.URLError, TimeoutError, TmdbRequestError, json.JSONDecodeError) as exc:
             elapsed_ms = round((time.perf_counter() - started) * 1000)
             logger.warning("TMDB 配置测试失败: %s", exc)
             return StepResult(
@@ -416,9 +416,12 @@ class TmdbClient:
             return "missing"
         if target_path.exists() and not overwrite:
             return "skipped_existing"
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(self._urlopen_with_retry(TMDB_IMAGE_BASE + image_path))
-        return "downloaded"
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(self._urlopen_with_retry(TMDB_IMAGE_BASE + image_path))
+            return "downloaded"
+        except Exception as exc:
+            return f"failed: {exc}"
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         url = TMDB_API_BASE + endpoint + "?" + urllib.parse.urlencode(params)
@@ -432,16 +435,48 @@ class TmdbClient:
                     return response.read()
             except urllib.error.HTTPError as exc:
                 last_error = exc
-                if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == self.retries:
-                    raise
-            except (TimeoutError, urllib.error.URLError) as exc:
+                if exc.code not in TMDB_RETRYABLE_HTTP_CODES or attempt == self.retries:
+                    raise TmdbRequestError(url, attempt, exc) from exc
+                retry_after = parse_retry_after_seconds(exc.headers.get("Retry-After") if exc.headers else "")
+                time.sleep(retry_after if retry_after is not None else retry_sleep_seconds(attempt))
+                continue
+            except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
                 last_error = exc
                 if attempt == self.retries:
-                    raise
-            time.sleep(min(0.2 * attempt, 1.0))
+                    raise TmdbRequestError(url, self.retries, exc) from exc
+            time.sleep(retry_sleep_seconds(attempt))
         if last_error:
             raise last_error
         raise RuntimeError("TMDB 请求失败")
+
+
+class TmdbRequestError(RuntimeError):
+    def __init__(self, url: str, attempts: int, cause: Exception):
+        super().__init__(f"TMDB 请求失败，已重试 {attempts} 次: {redact_url(url)}: {cause}")
+
+
+def retry_sleep_seconds(attempt: int) -> float:
+    return min(0.5 * (2 ** max(0, attempt - 1)), 4.0)
+
+
+def parse_retry_after_seconds(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return max(0.0, min(float(value), 10.0))
+    except ValueError:
+        return None
+
+
+def redact_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    redacted_items = [(key, "***" if key.lower() == "api_key" else value) for key, value in query]
+    redacted_query = urllib.parse.urlencode(
+        redacted_items,
+        safe="*",
+    )
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, redacted_query, parsed.fragment))
 
 
 class OpenAICompatibleLlmClient:
@@ -742,7 +777,7 @@ class MetadataScraperService:
             ]
 
         try:
-            client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout)
+            client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout, context.tmdb.retries)
             show_metadata, candidates = fetch_tvshow_metadata(
                 client,
                 query,
@@ -1093,7 +1128,7 @@ class MetadataScraperService:
             )
 
         try:
-            client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout)
+            client = self.tmdb_client or TmdbClient(context.tmdb.api_key, context.tmdb.timeout, context.tmdb.retries)
             metadata, candidates = fetch_movie_metadata(client, query, context.tmdb.language, context.tmdb.fallback_language)
             if metadata is None:
                 llm_resolution = infer_movie_queries_with_llm(context, self.llm_client, video_path, query, logger)
@@ -1228,8 +1263,16 @@ class MetadataScraperService:
 
 def iter_video_files(root: Path, extensions: set[str]):
     for path in root.rglob("*"):
-        if path_is_file_or_symlink(path) and path.suffix.lower() in extensions:
+        if path.suffix.lower() not in extensions:
+            continue
+        if path.is_symlink():
             yield path
+            continue
+        try:
+            if path.is_file():
+                yield path
+        except OSError:
+            continue
 
 
 def infer_movie_query(
@@ -1313,15 +1356,20 @@ def has_year_marker(value: str) -> bool:
 def count_video_files(folder: Path, extensions: set[str], limit: int = 2) -> int:
     count = 0
     for path in folder.rglob("*"):
-        if path_is_file_or_symlink(path) and path.suffix.lower() in extensions:
+        if path.suffix.lower() not in extensions:
+            continue
+        if path.is_symlink():
             count += 1
-            if count >= limit:
-                return count
+        else:
+            try:
+                if not path.is_file():
+                    continue
+            except OSError:
+                continue
+            count += 1
+        if count >= limit:
+            return count
     return count
-
-
-def path_is_file_or_symlink(path: Path) -> bool:
-    return path.is_file() or path.is_symlink()
 
 
 def infer_tvshow_query(show_dir: Path) -> TvShowQuery:
@@ -2614,8 +2662,14 @@ def movie_sidecar_paths(video_path: Path, nfo_path: Path) -> list[Path]:
             seen.add(candidate)
     stem = video_path.stem
     for child in video_path.parent.iterdir():
-        if child in seen or not path_is_file_or_symlink(child):
+        if child in seen:
             continue
+        if not child.is_symlink():
+            try:
+                if not child.is_file():
+                    continue
+            except OSError:
+                continue
         if child.name.startswith(f"{stem}.") or child.name.startswith(f"{stem}-"):
             paths.append(child)
             seen.add(child)

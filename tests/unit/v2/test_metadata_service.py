@@ -1,14 +1,18 @@
 from pathlib import Path
+import socket
 
 from emby115_v2 import cancellation
 from emby115_v2.context import AppContext
 from emby115_v2.logging_setup import setup_run_logger
+import pytest
 import urllib.error
 
 from emby115_v2.services.metadata_service import (
     TvShowQuery,
+    TmdbRequestError,
     fetch_tvshow_metadata,
     infer_tvshow_query,
+    iter_video_files,
     LlmConfigTestService,
     MetadataScraperService,
     TmdbClient,
@@ -758,6 +762,7 @@ def test_tmdb_client_retries_timed_out_json_request(monkeypatch):
         return FakeHttpResponse(b'{"results":[{"id":42}]}')
 
     monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("emby115_v2.services.metadata_service.time.sleep", lambda seconds: None)
 
     client = TmdbClient("key", timeout=1, retries=2)
     result = client.search_movie(type("Query", (), {"title": "Movie", "year": ""})(), "zh-CN")
@@ -776,6 +781,7 @@ def test_tmdb_client_retries_timed_out_image_download(tmp_path, monkeypatch):
         return FakeHttpResponse(b"image")
 
     monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("emby115_v2.services.metadata_service.time.sleep", lambda seconds: None)
 
     target = tmp_path / "poster.jpg"
     client = TmdbClient("key", timeout=1, retries=2)
@@ -784,6 +790,112 @@ def test_tmdb_client_retries_timed_out_image_download(tmp_path, monkeypatch):
     assert status == "downloaded"
     assert target.read_bytes() == b"image"
     assert len(calls) == 2
+
+
+def test_tmdb_client_uses_growing_retry_intervals(monkeypatch):
+    calls = []
+    sleeps = []
+
+    def fake_urlopen(url, timeout):
+        calls.append((url, timeout))
+        if len(calls) < 4:
+            raise socket.timeout("timed out")
+        return FakeHttpResponse(b'{"results":[{"id":42}]}')
+
+    monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("emby115_v2.services.metadata_service.time.sleep", sleeps.append)
+
+    client = TmdbClient("secret-key", timeout=1, retries=4)
+    result = client.search_tv(type("Query", (), {"title": "Show", "year": ""})(), "zh-CN")
+
+    assert result == [{"id": 42}]
+    assert len(calls) == 4
+    assert sleeps == [0.5, 1.0, 2.0]
+
+
+def test_tmdb_client_reports_failed_image_after_timeout_retries(tmp_path, monkeypatch):
+    calls = []
+    sleeps = []
+
+    def fake_urlopen(url, timeout):
+        calls.append((url, timeout))
+        raise urllib.error.URLError("timed out")
+
+    monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("emby115_v2.services.metadata_service.time.sleep", sleeps.append)
+
+    target = tmp_path / "poster.jpg"
+    client = TmdbClient("secret-key", timeout=1, retries=3)
+    status = client.download_image("/poster.jpg", target, overwrite=False)
+
+    assert status.startswith("failed: TMDB 请求失败")
+    assert "已重试 3 次" in status
+    assert len(calls) == 3
+    assert sleeps == [0.5, 1.0]
+    assert not target.exists()
+
+
+def test_tmdb_client_redacts_api_key_after_timeout_retries(monkeypatch):
+    def fake_urlopen(url, timeout):
+        raise urllib.error.URLError("timed out")
+
+    monkeypatch.setattr("emby115_v2.services.metadata_service.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("emby115_v2.services.metadata_service.time.sleep", lambda seconds: None)
+
+    client = TmdbClient("secret-key", timeout=1, retries=3)
+    with pytest.raises(TmdbRequestError) as exc_info:
+        client.search_movie(type("Query", (), {"title": "Movie", "year": ""})(), "zh-CN")
+
+    message = str(exc_info.value)
+    assert "已重试 3 次" in message
+    assert "api_key=***" in message
+    assert "secret-key" not in message
+
+
+def test_iter_video_files_treats_symlink_as_video_without_file_probe(monkeypatch, tmp_path):
+    video = tmp_path / "show.mkv"
+    video.write_text("x", encoding="utf-8")
+
+    original_is_symlink = Path.is_symlink
+    original_is_file = Path.is_file
+
+    def fake_is_symlink(path):
+        if path == video:
+            return True
+        return original_is_symlink(path)
+
+    def fake_is_file(path):
+        if path == video:
+            raise AssertionError("is_file should not be called for symlink videos")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+
+    assert list(iter_video_files(tmp_path, {".mkv"})) == [video]
+
+
+def test_iter_video_files_skips_non_symlink_file_probe_errors(monkeypatch, tmp_path):
+    video = tmp_path / "show.mkv"
+    video.write_text("x", encoding="utf-8")
+
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_file(path):
+        if path == video:
+            raise OSError("WinFSP path probe failed")
+        return False
+
+    monkeypatch.setattr(Path, "is_symlink", lambda path: False if path == video else original_is_symlink(path))
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+
+    assert list(iter_video_files(tmp_path, {".mkv"})) == []
+
+
+def test_metadata_video_scan_no_longer_uses_path_is_file_or_symlink_interface():
+    import emby115_v2.services.metadata_service as metadata_service
+
+    assert not hasattr(metadata_service, "path_is_file_or_symlink")
 
 
 def test_llm_config_test_reports_missing_required_fields(tmp_path):

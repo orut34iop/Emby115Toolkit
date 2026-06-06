@@ -98,7 +98,8 @@ Current V2 action names:
 - `scrape_metadata` — Metadata scraping workflow for the standardized symlink media library.
   - First phase uses TMDB as the primary metadata provider and reserves provider abstraction for future sources.
   - Default TMDB language is `zh-CN`; fallback language is `en-US`.
-  - TMDB JSON requests and image downloads retry transient timeout, rate-limit, and 5xx failures before marking an item failed.
+  - TMDB JSON requests and image downloads retry transient timeout, rate-limit, and 5xx failures with a progressive backoff. The default is five total attempts, which satisfies the product requirement of at least three retries; HTTP `Retry-After` is honored when present. Image download failures are recorded as failed artwork status and must not fail the whole movie/show by themselves.
+  - Metadata scraping treats symlink paths with configured video suffixes as video files without probing the symlink target through `Path.is_file()` or the removed `path_is_file_or_symlink()` helper, because CloudDrive2/WinFSP target probes can raise transient unsupported-operation errors.
   - TMDB metadata NFO output should collect actor lists as completely as TMDB provides, including TV aggregate credits when available. Rating and certification/MPAA are optional enrichment fields; missing values must not fail scraping. Episode NFO inherits show actors and includes episode rating when available.
   - TMDB NFO output should preserve available director, writer, producer, IMDb/TVDB/Wikidata IDs, movie collection, production companies/countries, spoken languages, original language, and release/first-air dates.
   - Matching strategy is rules first, TMDB search second, and LLM-assisted title expansion for movie/TV no-candidate cases. LLM-assisted decision between ambiguous TMDB candidates is reserved for a later stage.

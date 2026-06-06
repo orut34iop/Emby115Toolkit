@@ -438,6 +438,7 @@ function metadataConfigFromForm() {
         .map((item) => item.trim())
         .filter(Boolean),
       timeout: Number(document.querySelector("#tmdbTimeout").value || 10),
+      retries: 5,
       rate_limit_per_second: 4,
     },
     llm: {

@@ -71,6 +71,7 @@ def default_metadata_config() -> dict[str, Any]:
             "fallback_language": "en-US",
             "image_language_priority": ["zh-CN", "en-US", "null"],
             "timeout": 10,
+            "retries": 5,
             "rate_limit_per_second": 4,
         },
         "llm": {

@@ -97,6 +97,7 @@ class TmdbConfig:
     fallback_language: str = "en-US"
     image_language_priority: tuple[str, ...] = ("zh-CN", "en-US", "null")
     timeout: float = 10.0
+    retries: int = 5
     rate_limit_per_second: float = 4.0
 
     @classmethod
@@ -112,6 +113,7 @@ class TmdbConfig:
             fallback_language=str(data.get("fallback_language") or "en-US"),
             image_language_priority=tuple(str(item) for item in image_languages),
             timeout=max(1.0, float(data.get("timeout", 10.0))),
+            retries=max(1, min(int(data.get("retries", 5)), 10)),
             rate_limit_per_second=max(0.1, float(data.get("rate_limit_per_second", 4.0))),
         )
 
