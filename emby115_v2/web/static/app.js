@@ -173,12 +173,13 @@ function lockFullFlowPathInputs(pathPairs) {
   }
   for (const row of document.querySelectorAll(".cloud-library-row")) {
     const pair = pairsByType.get(row.dataset.mediaType);
-    const enabled = Boolean(pair) && Boolean(row.querySelector(".cloud-library-enabled")?.checked);
+    const cloudTarget = row.querySelector(".cloud-library-target")?.value.trim();
+    const enabled = Boolean(pair) && Boolean(cloudTarget);
     lockFullFlowCheckbox(
       row,
       ".cloud-library-enabled",
       enabled,
-      "执行完整流程时按当前网盘导入勾选状态锁定"
+      "执行完整流程时由“软链接导出”的启用状态接管"
     );
     lockInputFromPair(row, ".cloud-library-source", pair, "本地 symlink 工作区");
   }
@@ -687,7 +688,7 @@ function metadataLibrariesFromPathPairs(pathPairs) {
 function cloudLibrariesFromPathPairs(pathPairs) {
   const cloudTargetsByType = new Map(
     collectCloudLibraries()
-      .filter((library) => library.enabled && library.target)
+      .filter((library) => library.target)
       .map((library) => [library.media_type, library.target])
   );
   return (pathPairs || [])
@@ -1166,7 +1167,7 @@ async function runFullWorkflowPayload(symlinkPayload, metadataLibraries = null) 
     const cloudLibraries = cloudLibrariesFromPathPairs(pairs);
     if (!cloudLibraries.length) {
       skippedCount += 1;
-      appendLog("完整流程跳过网盘导入：网盘导入卡片中没有勾选且目标路径有效的对应媒体库。");
+      appendLog("完整流程跳过网盘导入：网盘同步卡片中没有目标路径有效的对应媒体库。");
     } else {
       const cloudPayload = buildCloudPayload("build_cloud_scraped_library", cloudLibraries);
       if (state.fullWorkflowCancelRequested) {

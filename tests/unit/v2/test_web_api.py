@@ -168,12 +168,16 @@ def test_webui_uses_background_runs_and_sse():
     assert "full-flow-locked" in script
     assert "执行完整流程时由“软链接导出”" in script
     assert "执行完整流程时由“软链接导出”的启用状态接管" in script
-    assert "执行完整流程时按当前网盘导入勾选状态锁定" in script
+    assert "执行完整流程时按当前网盘导入勾选状态锁定" not in script
     assert ".metadata-library-enabled" in script
     assert ".cloud-library-enabled" in script
     assert "library_path: pair.target" in script
     assert "source: pair.target" in script
     assert "cloudLibrariesFromPathPairs" in script
+    cloud_function = script.split("function cloudLibrariesFromPathPairs", 1)[1].split("function normalizePathForCompare", 1)[0]
+    assert ".filter((library) => library.target)" in cloud_function
+    assert ".filter((library) => library.enabled && library.target)" not in cloud_function
+    assert "完整流程跳过网盘导入：网盘同步卡片中没有目标路径有效的对应媒体库。" in script
     assert "完整流程开始网盘导入：自动进入第三阶段" in script
     assert "网盘同步" in script
     assert "软链接导出步骤未成功完成，完整流程已停止" in script
