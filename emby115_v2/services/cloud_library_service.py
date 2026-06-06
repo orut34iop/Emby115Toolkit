@@ -158,23 +158,61 @@ class CloudScrapedLibraryService:
                     show_dir = root_path / dirname
                     if show_dir.is_symlink():
                         continue
-                    if not self._tvshow_has_root_metadata(show_dir):
+                    missing_requirements = self._missing_tvshow_requirements(show_dir, context)
+                    if missing_requirements:
                         dirs.remove(dirname)
-                        summary["tvshows_skipped_missing_tvshow_nfo"] += 1
+                        summary["metadata_failed"] += 1
+                        if any(item.lower().endswith("tvshow.nfo") for item in missing_requirements):
+                            summary["tvshows_skipped_missing_tvshow_nfo"] += 1
+                        summary["videos_skipped_missing_nfo"] += sum(
+                            1
+                            for item in missing_requirements
+                            if item.lower().endswith(".nfo") and not item.lower().endswith("tvshow.nfo")
+                        )
                         records.append(
                             OperationRecord(
-                                action="skip_tvshow_without_metadata",
-                                status="skipped",
+                                action="validate_media_folder",
+                                status="failed",
                                 source_path=str(show_dir),
                                 target_path=str(target_dir / dirname),
                                 media_type=media_type,
                                 title=dirname,
                                 confidence="high",
-                                reason="电视剧一级目录缺少 tvshow.nfo，未上传该目录到网盘",
-                                extra={"path_pair": pair.name, "required_nfo_path": str(show_dir / "tvshow.nfo")},
+                                reason="电视剧一级目录元数据不完整，未上传该目录到网盘",
+                                extra={
+                                    "path_pair": pair.name,
+                                    "missing_requirements": missing_requirements,
+                                },
                             )
                         )
-                        logger.info("跳过缺少 tvshow.nfo 的电视剧目录: %s", show_dir)
+                        logger.info("跳过元数据不完整的电视剧目录: %s missing=%s", show_dir, missing_requirements)
+            elif media_type == "movies" and root_path == pair.source:
+                for dirname in list(dirs):
+                    movie_dir = root_path / dirname
+                    if movie_dir.is_symlink():
+                        continue
+                    missing_requirements = self._missing_movie_requirements(movie_dir, context)
+                    if missing_requirements:
+                        dirs.remove(dirname)
+                        summary["metadata_failed"] += 1
+                        summary["videos_skipped_missing_nfo"] += len(missing_requirements)
+                        records.append(
+                            OperationRecord(
+                                action="validate_media_folder",
+                                status="failed",
+                                source_path=str(movie_dir),
+                                target_path=str(target_dir / dirname),
+                                media_type=media_type,
+                                title=dirname,
+                                confidence="high",
+                                reason="电影一级目录元数据不完整，未上传该目录到网盘",
+                                extra={
+                                    "path_pair": pair.name,
+                                    "missing_requirements": missing_requirements,
+                                },
+                            )
+                        )
+                        logger.info("跳过元数据不完整的电影目录: %s missing=%s", movie_dir, missing_requirements)
 
             for dirname in list(dirs):
                 dir_path = root_path / dirname
@@ -351,9 +389,40 @@ class CloudScrapedLibraryService:
             pass
         return expected_nfo
 
-    def _tvshow_has_root_metadata(self, show_dir: Path) -> bool:
+    def _missing_movie_requirements(self, movie_dir: Path, context: AppContext) -> list[str]:
+        missing: list[str] = []
+        for video_path in self._iter_workspace_video_symlinks(movie_dir, context):
+            required_nfo = self._matching_nfo_path(video_path)
+            if not required_nfo.exists():
+                missing.append(str(required_nfo))
+        return missing
+
+    def _missing_tvshow_requirements(self, show_dir: Path, context: AppContext) -> list[str]:
+        missing: list[str] = []
         tvshow_nfo = show_dir / "tvshow.nfo"
-        return tvshow_nfo.exists() or tvshow_nfo.is_symlink()
+        if not tvshow_nfo.exists():
+            missing.append(str(tvshow_nfo))
+        if not self._has_poster_image(show_dir):
+            missing.append(str(show_dir / "poster.jpg"))
+        for video_path in self._iter_workspace_video_symlinks(show_dir, context):
+            required_nfo = self._matching_nfo_path(video_path)
+            if not required_nfo.exists():
+                missing.append(str(required_nfo))
+        return missing
+
+    def _iter_workspace_video_symlinks(self, media_dir: Path, context: AppContext):
+        for root, _dirs, files in os.walk(media_dir, followlinks=False):
+            for filename in files:
+                path = Path(root) / filename
+                if path.is_symlink() and path.suffix.lower() in context.symlink.video_extensions:
+                    yield path
+
+    def _has_poster_image(self, show_dir: Path) -> bool:
+        for suffix in (".jpg", ".jpeg", ".png", ".webp"):
+            poster = show_dir / f"poster{suffix}"
+            if poster.exists() and not poster.is_symlink():
+                return True
+        return False
 
     def _resolve_symlink_target(self, workspace_symlink_path: Path) -> tuple[Path | None, str]:
         try:
@@ -581,7 +650,7 @@ class CloudScrapedLibraryService:
         successes = int(summary.get("metadata_copied", 0)) + int(summary.get("videos_moved", 0))
         missing_nfo = int(summary.get("videos_skipped_missing_nfo", 0))
         skipped_tvshows = int(summary.get("tvshows_skipped_missing_tvshow_nfo", 0))
-        if failures and (successes or missing_nfo or skipped_tvshows):
+        if failures and successes:
             return "partial"
         if failures:
             return "failed"

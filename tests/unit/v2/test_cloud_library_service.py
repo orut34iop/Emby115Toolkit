@@ -208,18 +208,20 @@ def test_cloud_library_does_not_plan_real_video_move_without_same_stem_nfo(
         mock_logger,
     )
 
-    assert result.status == "partial"
+    assert result.status == "failed"
     assert result.summary["videos_planned"] == 0
     assert result.summary["videos_moved"] == 0
     assert result.summary["videos_skipped_missing_nfo"] == 1
+    assert result.summary["metadata_failed"] == 1
     assert real_video.exists()
+    assert not (target / "Movie (2026)" / "other.nfo").exists()
     assert not (target / "Movie (2026)" / "movie.mkv").exists()
     assert not any(record.action == "move_real_video" for record in result.records)
     assert any(
-        record.action == "skip_symlink_copy"
-        and record.status == "skipped"
-        and "同目录缺少同名 NFO" in record.reason
-        and record.extra.get("required_nfo_path", "").endswith("movie.nfo")
+        record.action == "validate_media_folder"
+        and record.status == "failed"
+        and "元数据不完整" in record.reason
+        and any(path.endswith("movie.nfo") for path in record.extra.get("missing_requirements", []))
         for record in result.records
     )
 
@@ -248,17 +250,95 @@ def test_cloud_library_skips_tvshow_folder_without_tvshow_nfo(tmp_path, mock_log
 
     result = CloudScrapedLibraryService().run(context, mock_logger)
 
-    assert result.status == "partial"
+    assert result.status == "failed"
     assert result.summary["tvshows_skipped_missing_tvshow_nfo"] == 1
     assert result.summary["metadata_copied"] == 0
+    assert result.summary["metadata_failed"] == 1
     assert result.summary["videos_planned"] == 0
     assert real_video.exists()
     assert not (target / "德爷的登阶奇旅 (2025)").exists()
     assert any(
-        record.action == "skip_tvshow_without_metadata"
-        and record.status == "skipped"
+        record.action == "validate_media_folder"
+        and record.status == "failed"
         and record.source_path.endswith("德爷的登阶奇旅 (2025)")
-        and "缺少 tvshow.nfo" in record.reason
+        and any(path.endswith("tvshow.nfo") for path in record.extra.get("missing_requirements", []))
+        for record in result.records
+    )
+
+
+def test_cloud_library_skips_tvshow_folder_without_poster(tmp_path, mock_logger):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    show_dir = workspace / "何以故人梦 (2026)"
+    season_dir = show_dir / "Season 01"
+    origin.mkdir()
+    season_dir.mkdir(parents=True)
+    real_video = origin / "episode.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    _make_symlink(season_dir / "episode.mkv", real_video)
+    (show_dir / "tvshow.nfo").write_text("show metadata", encoding="utf-8")
+    (season_dir / "episode.nfo").write_text("episode metadata", encoding="utf-8")
+
+    context = AppContext.from_dict(
+        {
+            "action": "build_cloud_scraped_library",
+            "path_pairs": [{"name": "tvshows", "source": str(workspace), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"]},
+            "cloud_library_output": {"wait_minutes": 0},
+        }
+    )
+
+    result = CloudScrapedLibraryService().run(context, mock_logger)
+
+    assert result.status == "failed"
+    assert result.summary["metadata_failed"] == 1
+    assert result.summary["videos_planned"] == 0
+    assert real_video.exists()
+    assert not (target / "何以故人梦 (2026)").exists()
+    assert any(
+        record.action == "validate_media_folder"
+        and record.status == "failed"
+        and any(path.endswith("poster.jpg") for path in record.extra.get("missing_requirements", []))
+        for record in result.records
+    )
+
+
+def test_cloud_library_skips_whole_tvshow_folder_when_episode_nfo_missing(tmp_path, mock_logger):
+    workspace = tmp_path / "workspace"
+    target = tmp_path / "organized"
+    origin = tmp_path / "origin"
+    show_dir = workspace / "在你被判死刑之前 (2026)"
+    season_dir = show_dir / "Season 01"
+    origin.mkdir()
+    season_dir.mkdir(parents=True)
+    real_video = origin / "episode.mkv"
+    real_video.write_text("video", encoding="utf-8")
+    _make_symlink(season_dir / "episode.mkv", real_video)
+    (show_dir / "tvshow.nfo").write_text("show metadata", encoding="utf-8")
+    (show_dir / "poster.jpg").write_text("poster", encoding="utf-8")
+
+    context = AppContext.from_dict(
+        {
+            "action": "build_cloud_scraped_library",
+            "path_pairs": [{"name": "tvshows", "source": str(workspace), "target": str(target)}],
+            "symlink": {"video_extensions": [".mkv"]},
+            "cloud_library_output": {"wait_minutes": 0},
+        }
+    )
+
+    result = CloudScrapedLibraryService().run(context, mock_logger)
+
+    assert result.status == "failed"
+    assert result.summary["metadata_failed"] == 1
+    assert result.summary["videos_skipped_missing_nfo"] == 1
+    assert result.summary["videos_planned"] == 0
+    assert real_video.exists()
+    assert not (target / "在你被判死刑之前 (2026)").exists()
+    assert any(
+        record.action == "validate_media_folder"
+        and record.status == "failed"
+        and any(path.endswith("episode.nfo") for path in record.extra.get("missing_requirements", []))
         for record in result.records
     )
 
@@ -456,6 +536,7 @@ def test_cloud_library_records_directory_creation_failure_without_crashing(tmp_p
     show_dir = workspace / "证词 (2026)" / "Season 01"
     show_dir.mkdir(parents=True)
     (workspace / "证词 (2026)" / "tvshow.nfo").write_text("show metadata", encoding="utf-8")
+    (workspace / "证词 (2026)" / "poster.jpg").write_text("poster", encoding="utf-8")
     (show_dir / "episode.nfo").write_text("nfo", encoding="utf-8")
 
     def fake_ensure_directory(path, logger=None):
