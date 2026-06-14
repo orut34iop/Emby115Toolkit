@@ -1,0 +1,269 @@
+"""
+PyQt5 frontend smoke and workflow tests.
+"""
+import os
+import threading
+import time
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PyQt5")
+
+from PyQt5.QtWidgets import QApplication
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+@pytest.fixture
+def isolated_config(tmp_path, monkeypatch):
+    from utils.config import Config
+
+    def initialize(self):
+        self.config_dir = str(tmp_path)
+        self.config_file = str(tmp_path / "config.yaml")
+        if not os.path.exists(self.config_file):
+            self._create_default_config()
+        self._load_config()
+
+    Config._instance = None
+    Config._config = None
+    monkeypatch.setattr(Config, "_initialize", initialize)
+    yield tmp_path
+    Config._instance = None
+    Config._config = None
+
+
+def wait_until(qapp, predicate, timeout=3):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def test_main_window_initializes_all_tabs(qapp, isolated_config):
+    from qt_gui.main_window import MainWindow
+
+    window = MainWindow()
+
+    assert window.tabs.count() == 7
+    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == [
+        "导出软链接",
+        "文件夹操作",
+        "Emby影剧查重",
+        "文件合并",
+        "Emby合并版本",
+        "Emby更新流派",
+        "115目录树镜像",
+    ]
+
+    window.close()
+
+
+def test_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+    (source / "movie.nfo").write_text("<movie />", encoding="utf-8")
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+    tab.spin_interval.setValue(0)
+
+    tab.create_symlink()
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+
+    tab.download_metadata()
+    copied_metadata = target / "source" / "movie.nfo"
+    assert wait_until(qapp, copied_metadata.exists)
+
+
+def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, monkeypatch):
+    from qt_gui.export_tab import ExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+
+    started = threading.Event()
+    release = threading.Event()
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+
+    def slow_metadata(config):
+        started.set()
+        release.wait(timeout=2)
+
+    monkeypatch.setattr(tab, "_run_metadata_copy", slow_metadata)
+    monkeypatch.setattr(tab, "_run_symlink_create", lambda config: None)
+
+    start_time = time.time()
+    tab.sync_all()
+
+    assert time.time() - start_time < 0.2
+    assert wait_until(qapp, started.is_set)
+    assert not tab.btn_sync_all.isEnabled()
+
+    release.set()
+    assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
+def test_folder_tab_operations_do_not_raise(qapp, isolated_config, tmp_path):
+    from qt_gui.folder_tab import FolderTab
+
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    real_file = folder / "real.mp4"
+    real_file.write_text("video", encoding="utf-8")
+    link_file = folder / "linked.mp4"
+    os.symlink(real_file, link_file)
+
+    tab = FolderTab(str(tmp_path / "logs"))
+    tab.target_edit.setText(str(folder))
+
+    tab.combo_op.setCurrentText("删除软链接")
+    tab.execute()
+    assert not os.path.lexists(link_file)
+
+    tab.combo_op.setCurrentText("删除所有视频文件")
+    tab.execute()
+    assert wait_until(qapp, lambda: not real_file.exists())
+
+    tab.combo_op.setCurrentText("检查刮削数据完整性")
+    tab.execute()
+    qapp.processEvents()
+
+
+def test_merge_and_mirror_tabs_run_backends(qapp, isolated_config, tmp_path):
+    from qt_gui.merge_tab import MergeTab
+    from qt_gui.mirror_tab import MirrorTab
+
+    scrap = tmp_path / "scrap"
+    video = tmp_path / "video"
+    scrap.mkdir()
+    video.mkdir()
+    (scrap / "movie.nfo").write_text("<movie />", encoding="utf-8")
+    (video / "movie.mp4").write_text("video", encoding="utf-8")
+
+    merge_tab = MergeTab(str(tmp_path / "logs"))
+    merge_tab.scrap_edit.setText(str(scrap))
+    merge_tab.video_edit.setText(str(video))
+    merge_tab.merge_files()
+    assert (video / "movie.nfo").exists()
+
+    tree_file = tmp_path / "tree.txt"
+    export = tmp_path / "mirror"
+    export.mkdir()
+    tree_file.write_text("Root\n|——电影\n| |- Movie.2024.mp4\n", encoding="utf-8")
+
+    mirror_tab = MirrorTab(str(tmp_path / "logs"))
+    mirror_tab.tree_edit.setText(str(tree_file))
+    mirror_tab.export_edit.setText(str(export))
+    mirror_tab.start_mirror()
+    assert (export / "电影" / "Movie.2024.mp4").exists()
+
+
+def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkeypatch):
+    from emby.EmbyOperator import EmbyOperator
+    from qt_gui.duplicate_tab import DuplicateTab
+    from qt_gui.genres_tab import GenresTab
+    from qt_gui.version_tab import VersionTab
+
+    calls = []
+
+    def fake_check_duplicate(self, folder, callback):
+        calls.append(("check_duplicate", folder, self.server_url, self.api_key))
+        callback("duplicate done")
+
+    def fake_merge_versions(self, callback):
+        calls.append(("merge_versions", self.server_url, self.api_key))
+        callback("merge done")
+
+    def fake_update_genress(self, callback=None):
+        calls.append(("update_genress", self.server_url, self.api_key, self.user_name))
+        if callback:
+            callback("genres done")
+
+    monkeypatch.setattr(EmbyOperator, "check_duplicate", fake_check_duplicate)
+    monkeypatch.setattr(EmbyOperator, "merge_versions", fake_merge_versions)
+    monkeypatch.setattr(EmbyOperator, "update_genress", fake_update_genress)
+
+    media_folder = tmp_path / "media"
+    media_folder.mkdir()
+
+    duplicate_tab = DuplicateTab(str(tmp_path / "logs"))
+    duplicate_tab.target_edit.setText(str(media_folder))
+    duplicate_tab.edit_url.setText("http://emby.local")
+    duplicate_tab.edit_api.setText("api")
+    duplicate_tab.check_duplicate()
+
+    version_tab = VersionTab(str(tmp_path / "logs"))
+    version_tab.edit_url.setText("http://emby.local")
+    version_tab.edit_api.setText("api")
+    version_tab.merge_versions()
+
+    genres_tab = GenresTab(str(tmp_path / "logs"))
+    genres_tab.edit_url.setText("http://emby.local")
+    genres_tab.edit_api.setText("api")
+    genres_tab.edit_user.setText("user")
+    genres_tab.update_genres()
+
+    assert calls == [
+        ("check_duplicate", str(media_folder), "http://emby.local", "api"),
+        ("merge_versions", "http://emby.local", "api"),
+        ("update_genress", "http://emby.local", "api", "user"),
+    ]
+
+
+def test_qt_slot_exception_guard_logs_instead_of_raising(qapp, isolated_config, tmp_path, monkeypatch):
+    import qt_gui.merge_tab as merge_module
+    from qt_gui.merge_tab import MergeTab
+
+    class FailingMerger:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    scrap = tmp_path / "scrap"
+    video = tmp_path / "video"
+    scrap.mkdir()
+    video.mkdir()
+
+    monkeypatch.setattr(merge_module, "FileMerger", FailingMerger)
+
+    tab = MergeTab(str(tmp_path / "logs"))
+    tab.scrap_edit.setText(str(scrap))
+    tab.video_edit.setText(str(video))
+
+    tab.merge_files()
+    assert "boom" in tab.log_text.toPlainText()
+
+
+def test_qtextedit_log_handler_swallows_widget_slot_errors(qapp):
+    from qt_gui.qt_utils import QTextEditLogHandler
+
+    class FailingWidget:
+        def append(self, message):
+            raise KeyboardInterrupt()
+
+    handler = QTextEditLogHandler(FailingWidget())
+
+    handler._append_message("hello")

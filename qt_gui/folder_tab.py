@@ -13,6 +13,9 @@ from PyQt5.QtCore import Qt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
+from autosync.SymlinkDeleter import SymlinkDeleter
+from emby.EmbyOperator import EmbyOperator
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class DropLineEdit(QLineEdit):
@@ -107,18 +110,51 @@ class FolderTab(QWidget):
 
         layout.addStretch()
 
+        self.logger = setup_qt_logger(
+            'manipulate_folder',
+            self.log_text,
+            os.path.join(self.log_dir, 'manipulate_folder.log')
+        )
+        self.target_edit.setText(self.config.get('manipulate_folder', 'target_folder', ''))
+        self.target_edit.textChanged.connect(self.save_config)
+
     def browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "选择文件夹")
         if folder:
             self.target_edit.setText(folder)
 
+    def save_config(self):
+        self.config.set('manipulate_folder', 'target_folder', self.target_edit.text().strip())
+        self.config.save()
+
     def execute(self):
+        return run_with_error_dialog(self, self.logger, "执行文件夹操作", self._execute)
+
+    def _execute(self):
         folder = self.target_edit.text()
         if not folder:
             QMessageBox.warning(self, "警告", "请先选择文件夹")
             return
+        if not os.path.isdir(folder):
+            QMessageBox.warning(self, "警告", "请选择有效的文件夹")
+            return
 
         operation = self.combo_op.currentText()
-        self.log_text.append(f"执行操作: {operation}")
-        self.log_text.append(f"目标文件夹: {folder}")
-        # 实际执行逻辑在这里实现
+        self.logger.info(f"执行操作: {operation}")
+        self.logger.info(f"目标文件夹: {folder}")
+
+        if operation == "删除软链接":
+            deleter = SymlinkDeleter(target_folder=folder, logger=self.logger)
+            _, message = deleter.run()
+            self.logger.info(message)
+        elif operation == "删除所有视频文件":
+            EmbyOperator(logger=self.logger).clear_files_by_type(
+                folder,
+                'VIDEO',
+                lambda message: self.logger.info(message)
+            )
+        elif operation == "检查刮削数据完整性":
+            EmbyOperator(logger=self.logger).check_metadata_integrity(
+                folder,
+                lambda message: self.logger.info(message)
+            )

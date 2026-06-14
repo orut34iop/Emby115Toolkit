@@ -6,11 +6,13 @@ import os
 import sys
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QLineEdit, QTextEdit, QGroupBox
+    QPushButton, QLineEdit, QTextEdit, QGroupBox, QMessageBox
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
+from emby.EmbyOperator import EmbyOperator
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class GenresTab(QWidget):
@@ -71,5 +73,44 @@ class GenresTab(QWidget):
 
         layout.addStretch()
 
+        self.logger = setup_qt_logger(
+            'update_genres',
+            self.log_text,
+            os.path.join(self.log_dir, 'update_genres.log')
+        )
+        self.load_config()
+        self.edit_url.textChanged.connect(self.save_config)
+        self.edit_api.textChanged.connect(self.save_config)
+        self.edit_user.textChanged.connect(self.save_config)
+
+    def load_config(self):
+        self.edit_url.setText(self.config.get('update_genres', 'emby_url', ''))
+        self.edit_api.setText(self.config.get('update_genres', 'emby_api', ''))
+        self.edit_user.setText(self.config.get('update_genres', 'emby_username', ''))
+
+    def save_config(self):
+        self.config.set('update_genres', 'emby_url', self.edit_url.text().strip())
+        self.config.set('update_genres', 'emby_api', self.edit_api.text().strip())
+        self.config.set('update_genres', 'emby_username', self.edit_user.text().strip())
+        self.config.save()
+
     def update_genres(self):
-        self.log_text.append("开始更新流派...")
+        return run_with_error_dialog(self, self.logger, "Emby更新流派", self._update_genres)
+
+    def _update_genres(self):
+        server_url = self.edit_url.text().strip()
+        api_key = self.edit_api.text().strip()
+        user_name = self.edit_user.text().strip()
+
+        if not server_url or not api_key or not user_name:
+            QMessageBox.warning(self, "警告", "请先填写 Emby 服务器地址、API Key 和用户名")
+            return
+
+        self.logger.info("开始更新流派...")
+        operator = EmbyOperator(
+            server_url=server_url,
+            api_key=api_key,
+            user_name=user_name,
+            logger=self.logger
+        )
+        operator.update_genress(lambda message: self.logger.info(message))

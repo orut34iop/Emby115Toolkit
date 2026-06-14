@@ -1,9 +1,9 @@
 # GUI依赖
 ttkthemes>=3.2.2  # 美化GUI主题
 tkinterdnd2>=0.3.0  # 拖放功能支持
+PyQt5>=5.15.0  # macOS PyQt5 界面
 
 # 文件处理
-pathlib>=1.0.1    # 文件路径处理
 watchdog>=2.1.9   # 文件系统事件监控
 
 # 工具库

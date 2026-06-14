@@ -6,11 +6,13 @@ import os
 import sys
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QLineEdit, QTextEdit, QGroupBox
+    QPushButton, QLineEdit, QTextEdit, QGroupBox, QMessageBox
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
+from emby.EmbyOperator import EmbyOperator
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class VersionTab(QWidget):
@@ -65,5 +67,39 @@ class VersionTab(QWidget):
 
         layout.addStretch()
 
+        self.logger = setup_qt_logger(
+            'merge_version',
+            self.log_text,
+            os.path.join(self.log_dir, 'merge_version.log')
+        )
+        self.load_config()
+        self.edit_url.textChanged.connect(self.save_config)
+        self.edit_api.textChanged.connect(self.save_config)
+
+    def load_config(self):
+        self.edit_url.setText(self.config.get('merge_version', 'emby_url', ''))
+        self.edit_api.setText(self.config.get('merge_version', 'emby_api', ''))
+
+    def save_config(self):
+        self.config.set('merge_version', 'emby_url', self.edit_url.text().strip())
+        self.config.set('merge_version', 'emby_api', self.edit_api.text().strip())
+        self.config.save()
+
     def merge_versions(self):
-        self.log_text.append("开始合并版本...")
+        return run_with_error_dialog(self, self.logger, "Emby合并版本", self._merge_versions)
+
+    def _merge_versions(self):
+        server_url = self.edit_url.text().strip()
+        api_key = self.edit_api.text().strip()
+
+        if not server_url or not api_key:
+            QMessageBox.warning(self, "警告", "请先填写 Emby 服务器地址和 API Key")
+            return
+
+        self.logger.info("开始合并版本...")
+        operator = EmbyOperator(
+            server_url=server_url,
+            api_key=api_key,
+            logger=self.logger
+        )
+        operator.merge_versions(lambda message: self.logger.info(message))

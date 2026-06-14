@@ -33,6 +33,17 @@ class EmbyOperator:
         self.delete_nfo_folder = delete_nfo_folder
         self.logger = logger or logging.getLogger(__name__)
 
+    def _start_background_task(self, target, task_name):
+        def safe_target():
+            try:
+                target()
+            except Exception as e:
+                self.logger.exception(f"{task_name}执行异常: {e}")
+
+        thread = threading.Thread(target=safe_target, daemon=True)
+        thread.start()
+        return thread
+
     def check_duplicate(self, target_folder, callback):
         def run_check():
             total_items = 0
@@ -97,8 +108,7 @@ class EmbyOperator:
             if callback:
                 callback(message)
 
-        thread = threading.Thread(target=run_check)
-        thread.start()
+        return self._start_background_task(run_check, "影剧查重")
 
     # 获取所有影剧的信息
     def get_all_media(self):
@@ -266,8 +276,7 @@ class EmbyOperator:
 
             return merged_movies
         
-        thread = threading.Thread(target=run_merge_versions_check)
-        thread.start()
+        return self._start_background_task(run_merge_versions_check, "合并版本")
 
     def emby_get_item_info(self, movie_id):
         headers = {
@@ -2269,8 +2278,7 @@ class EmbyOperator:
 
             return message
         
-        thread = threading.Thread(target=run_update_genress_check)
-        thread.start()
+        return self._start_background_task(run_update_genress_check, "更新流派")
 
 
     def clear_files_by_type(self, folderPath, filetype= 'VIDEO', callback=None):
@@ -2300,8 +2308,7 @@ class EmbyOperator:
 
             return
         
-        thread = threading.Thread(target=run_clear_files_by_type_check)
-        thread.start()
+        return self._start_background_task(run_clear_files_by_type_check, "删除视频文件")
 
     def check_metadata_integrity(self, folderPath, callback=None):
         def run_check_metadata_integrity_check():
@@ -2329,8 +2336,7 @@ class EmbyOperator:
 
             return
         
-        thread = threading.Thread(target=run_check_metadata_integrity_check)
-        thread.start()
+        return self._start_background_task(run_check_metadata_integrity_check, "检查刮削数据完整性")
 
 
     def find_related_videos(self, nfo_file_path):

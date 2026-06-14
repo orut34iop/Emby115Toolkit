@@ -114,44 +114,46 @@ class MetadataCopyer:
 
     def run(self,callback):
         def run_meta_copy_check():
-            start_time = time.time()
-            self.logger.info("开始更新元数据...")
-            
-            # 确保目标文件夹存在
-            os.makedirs(self.target_folder, exist_ok=True)
-            
+            try:
+                start_time = time.time()
+                self.logger.info("开始更新元数据...")
 
+                # 确保目标文件夹存在
+                os.makedirs(self.target_folder, exist_ok=True)
 
-            threads = []
-            for i in range(self.num_threads):
-                thread_name = f"Thread-{i + 1}"
-                thread = threading.Thread(target=self.start_to_copy_metadata, args=(thread_name,))
-                threads.append(thread)
-                thread.start()
+                threads = []
+                for i in range(self.num_threads):
+                    thread_name = f"Thread-{i + 1}"
+                    thread = threading.Thread(target=self.start_to_copy_metadata, args=(thread_name,))
+                    threads.append(thread)
+                    thread.start()
 
-            # 添加所有源文件到队列
-            for source_file, source_folder, root_directory in self.get_source_files():
-                self.file_queue.put((source_file, source_folder, root_directory))
+                # 添加所有源文件到队列
+                for source_file, source_folder, root_directory in self.get_source_files():
+                    self.file_queue.put((source_file, source_folder, root_directory))
 
-            # 添加停止任务
-            for _ in range(self.num_threads):
-                self.file_queue.put(None)
+                # 添加停止任务
+                for _ in range(self.num_threads):
+                    self.file_queue.put(None)
 
-            for thread in threads:
-                thread.join()
+                for thread in threads:
+                    thread.join()
 
-            end_time = time.time()
-            total_time = end_time - start_time
-            message = (f"下载元数据完成\n"
-                    f"总耗时: {total_time:.2f} 秒\n"
-                    f"处理元数据总数: {self.copied_metadatas + self.existing_links}\n"
-                    f"新复制元数据数: {self.copied_metadatas}\n"
-                    f"跳过元数据数: {self.existing_links}")
-            
-            if callback:
-                callback(message)
+                end_time = time.time()
+                total_time = end_time - start_time
+                message = (f"下载元数据完成\n"
+                        f"总耗时: {total_time:.2f} 秒\n"
+                        f"处理元数据总数: {self.copied_metadatas + self.existing_links}\n"
+                        f"新复制元数据数: {self.copied_metadatas}\n"
+                        f"跳过元数据数: {self.existing_links}")
 
-            return message
+                if callback:
+                    callback(message)
 
-        thread = threading.Thread(target=run_meta_copy_check)
+                return message
+            except Exception as e:
+                self.logger.exception(f"下载元数据执行异常: {e}")
+
+        thread = threading.Thread(target=run_meta_copy_check, daemon=True)
         thread.start()
+        return thread

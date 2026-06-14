@@ -13,6 +13,8 @@ from PyQt5.QtCore import Qt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
+from autosync.FileMerger import FileMerger
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class DropLineEdit(QLineEdit):
@@ -117,10 +119,53 @@ class MergeTab(QWidget):
 
         layout.addStretch()
 
+        self.logger = setup_qt_logger(
+            'merge_file',
+            self.log_text,
+            os.path.join(self.log_dir, 'merge_file.log')
+        )
+        self.load_config()
+        self.scrap_edit.textChanged.connect(self.save_config)
+        self.video_edit.textChanged.connect(self.save_config)
+        self.chk_protect.stateChanged.connect(self.save_config)
+        self.spin_interval.valueChanged.connect(self.save_config)
+
     def browse_folder(self, edit):
         folder = QFileDialog.getExistingDirectory(self, "选择文件夹")
         if folder:
             edit.setText(folder)
 
+    def load_config(self):
+        self.scrap_edit.setText(self.config.get('merge_file', 'scrap_folder', ''))
+        self.video_edit.setText(self.config.get('merge_file', 'target_folder', ''))
+        self.chk_protect.setChecked(self.config.get('merge_file', 'enable_115_protect', False))
+        self.spin_interval.setValue(self.config.get('merge_file', 'op_interval_sec', 4))
+
+    def save_config(self):
+        self.config.set('merge_file', 'scrap_folder', self.scrap_edit.text().strip())
+        self.config.set('merge_file', 'target_folder', self.video_edit.text().strip())
+        self.config.set('merge_file', 'enable_115_protect', self.chk_protect.isChecked())
+        self.config.set('merge_file', 'op_interval_sec', self.spin_interval.value())
+        self.config.save()
+
     def merge_files(self):
-        self.log_text.append("开始合并文件...")
+        return run_with_error_dialog(self, self.logger, "文件合并", self._merge_files)
+
+    def _merge_files(self):
+        scrap_folder = self.scrap_edit.text().strip()
+        video_folder = self.video_edit.text().strip()
+
+        if not scrap_folder or not os.path.isdir(scrap_folder):
+            QMessageBox.warning(self, "警告", "请先选择有效的刮削文件夹")
+            return
+        if not video_folder or not os.path.isdir(video_folder):
+            QMessageBox.warning(self, "警告", "请先选择有效的视频文件夹")
+            return
+
+        self.logger.info("开始合并文件...")
+        merger = FileMerger(
+            scrap_folder=scrap_folder,
+            target_folder=video_folder,
+            logger=self.logger
+        )
+        merger.run(lambda message: self.logger.info(message))
