@@ -10,7 +10,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PyQt5")
 
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 
 
 @pytest.fixture(scope="module")
@@ -108,23 +108,78 @@ def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, mon
     tab.link_list.clear()
     tab.link_list.addItem(str(source))
     tab.target_edit.setText(str(target))
+    tab.spin_interval.setValue(0)
 
     def slow_metadata(config):
         started.set()
         release.wait(timeout=2)
 
     monkeypatch.setattr(tab, "_run_metadata_copy", slow_metadata)
-    monkeypatch.setattr(tab, "_run_symlink_create", lambda config: None)
 
     start_time = time.time()
     tab.sync_all()
 
     assert time.time() - start_time < 0.2
     assert wait_until(qapp, started.is_set)
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
     assert not tab.btn_sync_all.isEnabled()
 
     release.set()
     assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
+def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+    (source / "movie.nfo").write_text("<movie />", encoding="utf-8")
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+    tab.spin_interval.setValue(0)
+
+    tab.sync_all()
+
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+    assert wait_until(qapp, lambda: (target / "source" / "movie.nfo").exists())
+    assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
+def test_export_metadata_overwrite_checkbox_controls_existing_files(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    existing_target = target / "source" / "movie.nfo"
+    source.mkdir()
+    existing_target.parent.mkdir(parents=True)
+    (source / "movie.nfo").write_text("new content", encoding="utf-8")
+    existing_target.write_text("existing content", encoding="utf-8")
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+
+    assert not tab.chk_overwrite_meta.isChecked()
+
+    tab.download_metadata()
+    assert wait_until(qapp, tab.btn_download_meta.isEnabled)
+    assert existing_target.read_text(encoding="utf-8") == "existing content"
+
+    (source / "movie.nfo").write_text("overwritten content", encoding="utf-8")
+    tab.chk_overwrite_meta.setChecked(True)
+    tab.download_metadata()
+    assert wait_until(qapp, tab.btn_download_meta.isEnabled)
+    assert existing_target.read_text(encoding="utf-8") == "overwritten content"
 
 
 def test_folder_tab_operations_do_not_raise(qapp, isolated_config, tmp_path):
@@ -267,3 +322,35 @@ def test_qtextedit_log_handler_swallows_widget_slot_errors(qapp):
     handler = QTextEditLogHandler(FailingWidget())
 
     handler._append_message("hello")
+
+
+def test_main_window_confirms_close_while_export_task_running(qapp, isolated_config, monkeypatch):
+    from qt_gui.main_window import MainWindow
+
+    class FakeCloseEvent:
+        def __init__(self):
+            self.accepted = False
+            self.ignored = False
+
+        def accept(self):
+            self.accepted = True
+
+        def ignore(self):
+            self.ignored = True
+
+    window = MainWindow()
+    monkeypatch.setattr(window.export_tab, "is_task_running", lambda: True)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.No)
+    cancel_event = FakeCloseEvent()
+    window.closeEvent(cancel_event)
+    assert cancel_event.ignored
+    assert not cancel_event.accepted
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
+    accept_event = FakeCloseEvent()
+    window.closeEvent(accept_event)
+    assert accept_event.accepted
+    assert not accept_event.ignored
+
+    window.close()

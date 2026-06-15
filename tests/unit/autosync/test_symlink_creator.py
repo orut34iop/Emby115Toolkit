@@ -115,13 +115,13 @@ class TestSymlinkCreatorScan:
         
         result = creator.scan(os.path.join(temp_dir, 'movies'))
         
-        # 应该找到视频文件和元数据文件
-        assert len(result) == 4
+        # 软链接流程只处理配置的视频后缀，元数据由 MetadataCopyer 负责
+        assert len(result) == 2
         names = [item['name'] for item in result]
         assert 'movie1.mp4' in names
         assert 'movie2.mkv' in names
-        assert 'poster.jpg' in names
-        assert 'movie.nfo' in names
+        assert 'poster.jpg' not in names
+        assert 'movie.nfo' not in names
     
     def test_scan_with_subfolders(self, temp_dir, create_test_file_structure):
         """测试扫描包含子文件夹的目录"""
@@ -143,8 +143,8 @@ class TestSymlinkCreatorScan:
         
         result = creator.scan(os.path.join(temp_dir, 'tvshow'))
         
-        # 应该递归找到所有文件
-        assert len(result) == 4
+        # 只匹配视频文件，tvshow.nfo 不属于软链接创建流程
+        assert len(result) == 3
     
     def test_scan_with_symlinks(self, temp_dir, create_test_file_structure):
         """测试扫描时跳过符号链接"""
@@ -205,6 +205,62 @@ class TestSymlinkCreatorCreate:
         link_path = os.path.join(target_folder, 'movie.mp4')
         assert os.path.islink(link_path)
         assert os.path.exists(link_path)
+
+    def test_create_skips_non_video_metadata_files(self, temp_dir, create_test_file_structure):
+        """测试软链接流程只处理视频后缀"""
+        from autosync.SymlinkCreator import SymlinkCreator
+
+        structure = {
+            'source/movie.mp4': 'video content',
+            'source/movie.nfo': 'metadata',
+            'source/poster.jpg': 'image',
+        }
+        create_test_file_structure(structure)
+
+        source_folder = os.path.join(temp_dir, 'source')
+        target_folder = os.path.join(temp_dir, 'target')
+        os.makedirs(target_folder, exist_ok=True)
+
+        creator = SymlinkCreator(
+            link_folders=[source_folder],
+            target_folder=target_folder,
+            symlink_mode='symlink'
+        )
+
+        creator.run()
+
+        assert os.path.islink(os.path.join(target_folder, 'movie.mp4'))
+        assert not os.path.exists(os.path.join(target_folder, 'movie.nfo'))
+        assert not os.path.exists(os.path.join(target_folder, 'poster.jpg'))
+        assert creator.scanned_files == 3
+        assert creator.matched_files == 1
+
+    def test_create_skips_existing_broken_symlink(self, temp_dir, create_test_file_structure):
+        """测试损坏符号链接也按已存在目标处理"""
+        from autosync.SymlinkCreator import SymlinkCreator
+
+        structure = {
+            'source/movie.mp4': 'video content',
+        }
+        create_test_file_structure(structure)
+
+        source_folder = os.path.join(temp_dir, 'source')
+        target_folder = os.path.join(temp_dir, 'target')
+        os.makedirs(target_folder, exist_ok=True)
+        broken_target = os.path.join(target_folder, 'movie.mp4')
+        os.symlink(os.path.join(temp_dir, 'missing.mp4'), broken_target)
+
+        creator = SymlinkCreator(
+            link_folders=[source_folder],
+            target_folder=target_folder,
+            symlink_mode='symlink'
+        )
+
+        creator.run()
+
+        assert os.path.islink(broken_target)
+        assert creator.existing_links == 1
+        assert creator.error_count == 0
     
     def test_create_strm_file(self, temp_dir, create_test_file_structure):
         """测试创建 strm 文件"""
@@ -329,8 +385,8 @@ class TestSymlinkCreatorOnlyTvshowNfo:
         files = creator.scan(source_folder)
         creator.create(files, target_folder)
         
-        # 验证只有 tvshow.nfo 被创建
-        assert os.path.islink(os.path.join(target_folder, 'tvshow.nfo'))
+        # 验证 nfo 不由软链接流程处理
+        assert not os.path.exists(os.path.join(target_folder, 'tvshow.nfo'))
         assert not os.path.exists(os.path.join(target_folder, 'Season 1', 'episode01.nfo'))
         assert os.path.islink(os.path.join(target_folder, 'Season 1', 'episode01.mp4'))
     
@@ -360,9 +416,10 @@ class TestSymlinkCreatorOnlyTvshowNfo:
         files = creator.scan(source_folder)
         creator.create(files, target_folder)
         
-        # 验证所有 nfo 文件都被创建
-        assert os.path.islink(os.path.join(target_folder, 'tvshow.nfo'))
-        assert os.path.islink(os.path.join(target_folder, 'Season 1', 'episode01.nfo'))
+        # 验证 nfo 不由软链接流程处理
+        assert not os.path.exists(os.path.join(target_folder, 'tvshow.nfo'))
+        assert not os.path.exists(os.path.join(target_folder, 'Season 1', 'episode01.nfo'))
+        assert os.path.islink(os.path.join(target_folder, 'Season 1', 'episode01.mp4'))
 
 
 class TestSymlinkCreatorCallback:

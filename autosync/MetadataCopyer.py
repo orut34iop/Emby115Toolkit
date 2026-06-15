@@ -8,7 +8,16 @@ from typing import List
 
 
 class MetadataCopyer:
-    def __init__(self, source_folders: List[str], target_folder: str, allowed_extensions, num_threads=1, only_tvshow_nfo=False, logger=None):
+    def __init__(
+        self,
+        source_folders: List[str],
+        target_folder: str,
+        allowed_extensions,
+        num_threads=1,
+        only_tvshow_nfo=False,
+        overwrite_existing=False,
+        logger=None
+    ):
         """
         初始化MetadataCopyer
         Args:
@@ -16,6 +25,7 @@ class MetadataCopyer:
             target_folder: 目标文件夹路径
             allowed_extensions: 允许的文件扩展名
             num_threads: 线程数
+            overwrite_existing: 已存在元数据文件时是否覆盖
             logger: 日志记录器
         """
         self.source_folders = source_folders
@@ -26,15 +36,24 @@ class MetadataCopyer:
         self.existing_links = 0
         self.file_queue = queue.Queue()
         self.only_tvshow_nfo = only_tvshow_nfo
+        self.overwrite_existing = overwrite_existing
+        self.overwritten_metadatas = 0
         self.logger = logger or logging.getLogger(__name__)
         self._counter_lock = threading.Lock()  # 线程锁保护计数器
 
     def copy_metadata(self, source, target_file, thread_name):
         try:
             if os.path.exists(target_file):
-                self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
-                with self._counter_lock:
-                    self.existing_links += 1
+                if self.overwrite_existing:
+                    os.makedirs(os.path.dirname(target_file), exist_ok=True)
+                    shutil.copy2(source, target_file)
+                    self.logger.info(f"线程 {thread_name} 覆盖元数据: {source} 到 {target_file}")
+                    with self._counter_lock:
+                        self.overwritten_metadatas += 1
+                else:
+                    self.logger.info(f"线程 {thread_name} 元数据已存在，跳过:{target_file}")
+                    with self._counter_lock:
+                        self.existing_links += 1
             else:
                 os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 shutil.copy2(source, target_file)
@@ -143,8 +162,9 @@ class MetadataCopyer:
                 total_time = end_time - start_time
                 message = (f"下载元数据完成\n"
                         f"总耗时: {total_time:.2f} 秒\n"
-                        f"处理元数据总数: {self.copied_metadatas + self.existing_links}\n"
+                        f"处理元数据总数: {self.copied_metadatas + self.overwritten_metadatas + self.existing_links}\n"
                         f"新复制元数据数: {self.copied_metadatas}\n"
+                        f"覆盖元数据数: {self.overwritten_metadatas}\n"
                         f"跳过元数据数: {self.existing_links}")
 
                 if callback:

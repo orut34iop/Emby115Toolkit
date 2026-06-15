@@ -56,12 +56,12 @@ class TestSymlinkWorkflow:
         
         # 验证目录结构
         assert os.path.islink(os.path.join(target_folder, 'Movies', 'Action', 'Movie1.2023.mp4'))
-        # .nfo 文件在 only_tvshow_nfo=True 时只有 tvshow.nfo 会被创建
-        assert os.path.islink(os.path.join(target_folder, 'TVShows', 'Show1', 'tvshow.nfo'))
+        # 元数据不由软链接流程创建
+        assert not os.path.exists(os.path.join(target_folder, 'TVShows', 'Show1', 'tvshow.nfo'))
 
         # 验证剧集的 episode nfo 未被创建（only_tvshow_nfo=True）
         assert not os.path.exists(os.path.join(target_folder, 'TVShows', 'Show1', 'Season 1', 'Ep01.nfo'))
-        # 验证普通 nfo 在 only_tvshow_nfo=True 时被跳过
+        # 验证普通 nfo 被跳过
         assert not os.path.exists(os.path.join(target_folder, 'Movies', 'Action', 'Movie1.2023.nfo'))
     
     def test_strm_workflow(self, temp_dir, create_test_file_structure):

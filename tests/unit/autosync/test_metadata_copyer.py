@@ -23,6 +23,7 @@ class TestMetadataCopyerInit:
         assert copyer.metadata_extensions == ('.nfo', '.jpg')
         assert copyer.num_threads == 1
         assert copyer.only_tvshow_nfo == False
+        assert copyer.overwrite_existing == False
 
     def test_init_with_custom_values(self, temp_dir):
         """测试使用自定义值初始化"""
@@ -33,11 +34,13 @@ class TestMetadataCopyerInit:
             target_folder=temp_dir,
             allowed_extensions=('.nfo',),
             num_threads=4,
-            only_tvshow_nfo=True
+            only_tvshow_nfo=True,
+            overwrite_existing=True
         )
 
         assert copyer.num_threads == 4
         assert copyer.only_tvshow_nfo == True
+        assert copyer.overwrite_existing == True
 
 
 class TestMetadataCopyerGetSourceFiles:
@@ -180,6 +183,34 @@ class TestMetadataCopyerCopy:
         # 验证现有文件未被覆盖
         with open(os.path.join(temp_dir, 'target', 'movie.nfo'), 'r') as f:
             assert f.read() == 'existing content'
+
+    def test_overwrite_existing_file(self, temp_dir, create_test_file_structure):
+        """测试覆盖已存在的文件"""
+        from autosync.MetadataCopyer import MetadataCopyer
+
+        structure = {
+            'source/movie.nfo': 'new content',
+            'target/movie.nfo': 'existing content',
+        }
+        create_test_file_structure(structure)
+
+        copyer = MetadataCopyer(
+            source_folders=[os.path.join(temp_dir, 'source')],
+            target_folder=os.path.join(temp_dir, 'target'),
+            allowed_extensions=('.nfo',),
+            overwrite_existing=True
+        )
+
+        copyer.copy_metadata(
+            os.path.join(temp_dir, 'source', 'movie.nfo'),
+            os.path.join(temp_dir, 'target', 'movie.nfo'),
+            'TestThread'
+        )
+
+        with open(os.path.join(temp_dir, 'target', 'movie.nfo'), 'r') as f:
+            assert f.read() == 'new content'
+        assert copyer.overwritten_metadatas == 1
+        assert copyer.existing_links == 0
 
 
 class TestMetadataCopyerRun:

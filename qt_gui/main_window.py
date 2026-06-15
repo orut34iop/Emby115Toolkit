@@ -148,6 +148,22 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """关闭事件"""
+        if (
+            hasattr(self, "export_tab")
+            and hasattr(self.export_tab, "is_task_running")
+            and self.export_tab.is_task_running()
+        ):
+            reply = QMessageBox.question(
+                self,
+                "任务正在运行",
+                "导出/全同步任务正在运行，关闭会中断任务，是否继续？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+
         # 保存配置
         self.config.save()
         event.accept()

@@ -266,6 +266,11 @@ class ExportTab(QWidget):
         btn_layout.addWidget(self.btn_download_meta)
 
         btn_layout.addStretch()
+
+        self.chk_overwrite_meta = QCheckBox("覆盖nfo和图片文件")
+        self.chk_overwrite_meta.stateChanged.connect(self.save_config)
+        btn_layout.addWidget(self.chk_overwrite_meta)
+
         layout.addLayout(btn_layout)
 
         # === 日志区域 ===
@@ -337,6 +342,7 @@ class ExportTab(QWidget):
         self.chk_protect.setChecked(self.config.get('export_symlink', 'enable_115_protect', False))
         self.chk_replace.setChecked(self.config.get('export_symlink', 'enable_replace_path', False))
         self.chk_tvshow.setChecked(self.config.get('export_symlink', 'only_tvshow_nfo', True))
+        self.chk_overwrite_meta.setChecked(self.config.get('export_symlink', 'overwrite_metadata', False))
 
         # 路径替换
         self.original_edit.setText(self.config.get('export_symlink', 'original_path', ''))
@@ -369,6 +375,7 @@ class ExportTab(QWidget):
         self.config.set('export_symlink', 'enable_115_protect', self.chk_protect.isChecked())
         self.config.set('export_symlink', 'enable_replace_path', self.chk_replace.isChecked())
         self.config.set('export_symlink', 'only_tvshow_nfo', self.chk_tvshow.isChecked())
+        self.config.set('export_symlink', 'overwrite_metadata', self.chk_overwrite_meta.isChecked())
         self.config.set('export_symlink', 'original_path', self.original_edit.text())
         self.config.set('export_symlink', 'replace_path', self.replace_edit.text())
 
@@ -393,8 +400,40 @@ class ExportTab(QWidget):
 
         def task():
             self.logger.info("=== 开始全同步操作 ===")
-            self._run_metadata_copy(config)
-            self._run_symlink_create(config)
+            errors = []
+
+            def run_child(child_name, child_task):
+                try:
+                    self.logger.info(f"=== {child_name}任务启动 ===")
+                    child_task(config)
+                    self.logger.info(f"=== {child_name}任务完成 ===")
+                except Exception as e:
+                    errors.append((child_name, e))
+                    self.logger.exception(f"{child_name}执行异常: {e}")
+
+            child_threads = [
+                threading.Thread(
+                    target=run_child,
+                    args=("创建软链接", self._run_symlink_create),
+                    daemon=True,
+                ),
+                threading.Thread(
+                    target=run_child,
+                    args=("下载元数据", self._run_metadata_copy),
+                    daemon=True,
+                ),
+            ]
+
+            for child_thread in child_threads:
+                child_thread.start()
+
+            for child_thread in child_threads:
+                child_thread.join()
+
+            if errors:
+                failed_tasks = "、".join(name for name, _ in errors)
+                raise RuntimeError(f"全同步子任务失败: {failed_tasks}")
+
             self.logger.info("=== 全同步操作完成 ===")
 
         self._start_background_task("全同步", task)
@@ -443,12 +482,14 @@ class ExportTab(QWidget):
             "original_path": self.original_edit.text(),
             "replace_path": self.replace_edit.text(),
             "only_tvshow_nfo": self.chk_tvshow.isChecked(),
+            "overwrite_metadata": self.chk_overwrite_meta.isChecked(),
         }
 
     def _set_buttons_enabled(self, enabled):
         self.btn_sync_all.setEnabled(enabled)
         self.btn_create_link.setEnabled(enabled)
         self.btn_download_meta.setEnabled(enabled)
+        self.chk_overwrite_meta.setEnabled(enabled)
         self.btn_add_link.setEnabled(enabled)
         self.btn_clear_link.setEnabled(enabled)
         self.btn_browse_target.setEnabled(enabled)
@@ -471,6 +512,9 @@ class ExportTab(QWidget):
 
         self._active_task = threading.Thread(target=run_task, daemon=True)
         self._active_task.start()
+
+    def is_task_running(self):
+        return bool(self._active_task and self._active_task.is_alive())
 
     def _on_task_finished(self, task_name):
         self._set_buttons_enabled(True)
@@ -502,6 +546,7 @@ class ExportTab(QWidget):
             allowed_extensions=config["meta_extensions"],
             num_threads=config["thread_count"],
             only_tvshow_nfo=config["only_tvshow_nfo"],
+            overwrite_existing=config["overwrite_metadata"],
             logger=self.logger
         )
         thread = copyer.run(lambda message: self.logger.info(message))

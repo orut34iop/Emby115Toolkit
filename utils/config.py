@@ -50,7 +50,8 @@ class Config:
                 'enable_replace_path': False,
                 'original_path': '',
                 'replace_path': '',
-                'only_tvshow_nfo': True
+                'only_tvshow_nfo': True,
+                'overwrite_metadata': False
             },
             'delete_symlink': {
                 'target_folder': ''

@@ -1,5 +1,4 @@
 import os
-import os
 import threading
 import time
 import queue
@@ -54,7 +53,9 @@ class SymlinkCreator:
         self.original_path = original_path
         self.replace_path = replace_path
         self.only_tvshow_nfo = only_tvshow_nfo
-        self.allowed_extensions = allowed_extensions or ('.mp4', '.mkv', '.avi', '.ts')
+        self.allowed_extensions = self._normalize_extensions(
+            allowed_extensions or ('.mp4', '.mkv', '.avi', '.ts')
+        )
         self.symlink_size = symlink_size
         self.enable_115_protect = enable_115_protect
         self.op_interval_sec = op_interval_sec
@@ -71,6 +72,9 @@ class SymlinkCreator:
         self.error_count = 0
         self.created_links = 0
         self.existing_links = 0
+        self.scanned_files = 0
+        self.matched_files = 0
+        self._last_scan_total_files = 0
         
         # 停止标志
         self.stop_flag = threading.Event()
@@ -84,6 +88,20 @@ class SymlinkCreator:
             raise ValueError(f"无效的 symlink_mode: {symlink_mode}，必须是 'symlink' 或 'strm'")
         
         self.symlink_name = symlink_name_dict.get(self.symlink_mode, '链接')
+
+    def _normalize_extensions(self, extensions):
+        if isinstance(extensions, str):
+            extensions = [extensions]
+
+        normalized = []
+        for extension in extensions:
+            extension = str(extension).strip().lower()
+            if not extension:
+                continue
+            if not extension.startswith("."):
+                extension = f".{extension}"
+            normalized.append(extension)
+        return tuple(normalized)
 
     def _protect_interval(self) -> None:
         """115 防封模式下，在文件操作之间加入间隔。"""
@@ -105,7 +123,9 @@ class SymlinkCreator:
         :return: 文件列表，每个元素是包含 name, path, is_symlink 的字典
         """
         result = []
+        scanned_count = 0
         if not os.path.exists(folder_path):
+            self._last_scan_total_files = scanned_count
             return result
             
         for root, dirs, files in os.walk(folder_path):
@@ -114,14 +134,19 @@ class SymlinkCreator:
                 # 跳过符号链接
                 if os.path.islink(file_path):
                     continue
+                scanned_count += 1
+                ext = os.path.splitext(filename)[1].lower()
+                if self.allowed_extensions and ext not in self.allowed_extensions:
+                    continue
                 rel_path = os.path.relpath(file_path, folder_path)
                 result.append({
                     'name': filename,
                     'path': file_path,
                     'rel_path': rel_path,
                     'stem': os.path.splitext(filename)[0],
-                    'ext': os.path.splitext(filename)[1].lower()
+                    'ext': ext
                 })
+        self._last_scan_total_files = scanned_count
         return result
 
     def create(self, files: list, target_folder: str) -> None:
@@ -161,19 +186,24 @@ class SymlinkCreator:
             if self.enable_replace_path and self.original_path and self.replace_path:
                 link_src = src.replace(self.original_path, self.replace_path)
             
-            if os.path.exists(dst):
-                self.existing_links += 1
+            if os.path.lexists(dst):
+                with self._counter_lock:
+                    self.existing_links += 1
+                    self.processed_files += 1
+                self.logger.info(f"软链接已存在，跳过: {dst}")
                 return
             
             os.symlink(link_src, dst)
-            self.created_links += 1
-            self.success_count += 1
-            self.processed_files += 1
+            with self._counter_lock:
+                self.created_links += 1
+                self.success_count += 1
+                self.processed_files += 1
             self.logger.info(f"创建软链接: {dst} -> {link_src}")
             self._protect_interval()
         except Exception as e:
-            self.error_count += 1
-            self.processed_files += 1
+            with self._counter_lock:
+                self.error_count += 1
+                self.processed_files += 1
             self.logger.error(f"创建软链接失败: {e}")
 
     def _create_strm(self, src: str, dst: str) -> None:
@@ -199,20 +229,25 @@ class SymlinkCreator:
             if not dst.lower().endswith('.strm'):
                 strm_path = os.path.splitext(dst)[0] + '.strm'
             
-            if os.path.exists(strm_path):
-                self.existing_links += 1
+            if os.path.lexists(strm_path):
+                with self._counter_lock:
+                    self.existing_links += 1
+                    self.processed_files += 1
+                self.logger.info(f"strm 文件已存在，跳过: {strm_path}")
                 return
             
             with open(strm_path, 'w') as f:
                 f.write(content)
-            self.created_links += 1
-            self.success_count += 1
-            self.processed_files += 1
+            with self._counter_lock:
+                self.created_links += 1
+                self.success_count += 1
+                self.processed_files += 1
             self.logger.info(f"创建 strm 文件: {strm_path}")
             self._protect_interval()
         except Exception as e:
-            self.error_count += 1
-            self.processed_files += 1
+            with self._counter_lock:
+                self.error_count += 1
+                self.processed_files += 1
             self.logger.error(f"创建 strm 文件失败: {e}")
 
     def run(self, callback=None):
@@ -248,8 +283,13 @@ class SymlinkCreator:
             
             send_message(f"扫描源文件夹: {source_folder}")
             files = self.scan(source_folder)
+            scanned_count = self._last_scan_total_files
             self.total_files += len(files)
-            send_message(f"发现 {len(files)} 个文件")
+            self.scanned_files += scanned_count
+            self.matched_files += len(files)
+            send_message(
+                f"扫描 {scanned_count} 个文件，匹配 {len(files)} 个{self.symlink_name}候选"
+            )
             
             if self.stop_flag.is_set():
                 send_message("操作已停止")
@@ -262,6 +302,8 @@ class SymlinkCreator:
         
         message = (
             f"创建{self.symlink_name}完成\n"
+            f"扫描文件: {self.scanned_files}\n"
+            f"匹配文件: {self.matched_files}\n"
             f"共创建: {self.success_count}\n"
             f"已存在: {self.existing_links}\n"
             f"失败: {self.error_count}"
