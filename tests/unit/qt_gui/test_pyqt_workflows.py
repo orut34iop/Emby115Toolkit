@@ -4,6 +4,7 @@ PyQt5 frontend smoke and workflow tests.
 import os
 import threading
 import time
+import yaml
 
 import pytest
 
@@ -86,10 +87,123 @@ def test_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, t
 
     tab.create_symlink()
     assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+    assert wait_until(qapp, tab.btn_create_link.isEnabled)
 
     tab.download_metadata()
     copied_metadata = target / "source" / "movie.nfo"
     assert wait_until(qapp, copied_metadata.exists)
+
+
+def test_export_tab_load_preserves_saved_config(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+    from utils.config import Config
+
+    saved_config = Config()
+    saved_config.set('export_symlink', 'link_folders', ['/saved/source'])
+    saved_config.set('export_symlink', 'target_folder', '/saved/target')
+    saved_config.set('export_symlink', 'thread_count', 9)
+    saved_config.set('export_symlink', 'op_interval_sec', 11)
+    saved_config.set('export_symlink', 'enable_115_protect', True)
+    saved_config.set('export_symlink', 'enable_replace_path', True)
+    saved_config.set('export_symlink', 'only_tvshow_nfo', False)
+    saved_config.set('export_symlink', 'overwrite_metadata', True)
+    saved_config.set('export_symlink', 'original_path', '/old/root')
+    saved_config.set('export_symlink', 'replace_path', '/new/root')
+    saved_config.set('export_symlink', 'link_suffixes', ['.mp4', '.mkv'])
+    saved_config.set('export_symlink', 'meta_suffixes', ['.nfo', '.jpg'])
+    saved_config.save()
+
+    tab = ExportTab(str(tmp_path / "logs"))
+
+    assert tab.link_list.item(0).text() == '/saved/source'
+    assert tab.target_edit.text() == '/saved/target'
+    assert tab.spin_threads.value() == 9
+    assert tab.spin_interval.value() == 11
+    assert tab.chk_protect.isChecked()
+    assert tab.chk_replace.isChecked()
+    assert not tab.chk_tvshow.isChecked()
+    assert tab.chk_overwrite_meta.isChecked()
+    assert tab.original_edit.text() == '/old/root'
+    assert tab.replace_edit.text() == '/new/root'
+    assert tab.edit_link_suffix.text() == '.mp4;.mkv'
+    assert tab.edit_meta_suffix.text() == '.nfo;.jpg'
+
+    with open(saved_config.config_file, 'r', encoding='utf-8') as f:
+        reloaded = yaml.safe_load(f)
+    assert reloaded['export_symlink']['target_folder'] == '/saved/target'
+    assert reloaded['export_symlink']['enable_115_protect'] is True
+    assert reloaded['export_symlink']['enable_replace_path'] is True
+    assert reloaded['export_symlink']['overwrite_metadata'] is True
+
+
+def test_export_tab_path_edits_persist_to_config(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+    from utils.config import Config
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.target_edit.setText('/manual/target')
+    qapp.processEvents()
+
+    saved_config = Config()
+    with open(saved_config.config_file, 'r', encoding='utf-8') as f:
+        reloaded = yaml.safe_load(f)
+    assert reloaded['export_symlink']['target_folder'] == '/manual/target'
+
+
+def test_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+    from utils.config import Config
+
+    first_tab = ExportTab(str(tmp_path / "logs"))
+    first_tab.link_list.clear()
+    first_tab.link_list.addItem('/runtime/source')
+    first_tab.target_edit.setText('/runtime/target')
+    first_tab.spin_threads.setValue(7)
+    first_tab.chk_protect.setChecked(True)
+    first_tab.chk_tvshow.setChecked(False)
+    first_tab.edit_link_suffix.setText('.mp4;.mkv')
+    first_tab.save_config()
+
+    Config._instance = None
+    Config._config = None
+
+    second_tab = ExportTab(str(tmp_path / "logs"))
+
+    assert second_tab.link_list.item(0).text() == '/runtime/source'
+    assert second_tab.target_edit.text() == '/runtime/target'
+    assert second_tab.spin_threads.value() == 7
+    assert second_tab.chk_protect.isChecked()
+    assert not second_tab.chk_tvshow.isChecked()
+    assert second_tab.edit_link_suffix.text() == '.mp4;.mkv'
+
+
+def test_export_create_symlink_shows_progress_logs(qapp, isolated_config, tmp_path):
+    from qt_gui.export_tab import ExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie1.mp4").write_text("video1", encoding="utf-8")
+    (source / "movie2.mp4").write_text("video2", encoding="utf-8")
+    (source / "poster.jpg").write_text("image", encoding="utf-8")
+
+    tab = ExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.spin_interval.setValue(0)
+
+    tab.create_symlink()
+
+    assert wait_until(qapp, tab.btn_create_link.isEnabled)
+    log_text = tab.log_text.toPlainText()
+    assert "创建软链接已在后台启动" in log_text
+    assert "准备创建软链接" in log_text
+    assert "扫描源文件夹" in log_text
+    assert "扫描 3 个文件，匹配 2 个软链接候选" in log_text
+    assert "待创建软链接候选: 2 个" in log_text
+    assert "创建进度: 2/2" in log_text
 
 
 def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, monkeypatch):

@@ -34,6 +34,8 @@ class SymlinkCreator:
         cloud_type=None,
         cloud_root_path=None,
         cloud_url=None,
+        progress_interval=100,
+        progress_seconds=2.0,
         logger=None
     ):
         """
@@ -41,6 +43,7 @@ class SymlinkCreator:
         支持两种参数风格：
         1. 测试风格: link_folders, target_folder, thread_count, only_tvshow_nfo
         2. GUI风格: source_folders, allowed_extensions, num_threads
+        progress_interval/progress_seconds 控制扫描和创建阶段的进度日志频率。
         """
         # 兼容两种参数风格
         self.link_folders = link_folders or source_folders or []
@@ -62,6 +65,8 @@ class SymlinkCreator:
         self.cloud_type = cloud_type
         self.cloud_root_path = cloud_root_path
         self.cloud_url = cloud_url
+        self.progress_interval = progress_interval
+        self.progress_seconds = progress_seconds
         
         self.logger = logger or logging.getLogger(__name__)
         
@@ -88,6 +93,25 @@ class SymlinkCreator:
             raise ValueError(f"无效的 symlink_mode: {symlink_mode}，必须是 'symlink' 或 'strm'")
         
         self.symlink_name = symlink_name_dict.get(self.symlink_mode, '链接')
+
+    def _should_log_progress(self, count: int, last_progress_time: float) -> bool:
+        if count <= 0:
+            return False
+
+        try:
+            progress_interval = int(self.progress_interval or 0)
+        except (TypeError, ValueError):
+            progress_interval = 0
+
+        if progress_interval > 0 and count % progress_interval == 0:
+            return True
+
+        try:
+            progress_seconds = float(self.progress_seconds or 0)
+        except (TypeError, ValueError):
+            progress_seconds = 0
+
+        return progress_seconds > 0 and time.monotonic() - last_progress_time >= progress_seconds
 
     def _normalize_extensions(self, extensions):
         if isinstance(extensions, str):
@@ -124,6 +148,7 @@ class SymlinkCreator:
         """
         result = []
         scanned_count = 0
+        last_progress_time = time.monotonic()
         if not os.path.exists(folder_path):
             self._last_scan_total_files = scanned_count
             return result
@@ -136,16 +161,23 @@ class SymlinkCreator:
                     continue
                 scanned_count += 1
                 ext = os.path.splitext(filename)[1].lower()
-                if self.allowed_extensions and ext not in self.allowed_extensions:
-                    continue
-                rel_path = os.path.relpath(file_path, folder_path)
-                result.append({
-                    'name': filename,
-                    'path': file_path,
-                    'rel_path': rel_path,
-                    'stem': os.path.splitext(filename)[0],
-                    'ext': ext
-                })
+
+                if not self.allowed_extensions or ext in self.allowed_extensions:
+                    rel_path = os.path.relpath(file_path, folder_path)
+                    result.append({
+                        'name': filename,
+                        'path': file_path,
+                        'rel_path': rel_path,
+                        'stem': os.path.splitext(filename)[0],
+                        'ext': ext
+                    })
+
+                if self._should_log_progress(scanned_count, last_progress_time):
+                    self.logger.info(
+                        f"扫描进度: 已扫描 {scanned_count} 个文件，"
+                        f"匹配 {len(result)} 个{self.symlink_name}候选"
+                    )
+                    last_progress_time = time.monotonic()
         self._last_scan_total_files = scanned_count
         return result
 
@@ -155,7 +187,15 @@ class SymlinkCreator:
         :param files: 源文件列表
         :param target_folder: 目标文件夹
         """
-        for file_info in files:
+        total = len(files)
+        if total == 0:
+            self.logger.info(f"没有匹配的{self.symlink_name}候选，跳过创建")
+            return
+
+        self.logger.info(f"待创建{self.symlink_name}候选: {total} 个")
+        last_progress_time = time.monotonic()
+
+        for index, file_info in enumerate(files, start=1):
             if self.stop_flag.is_set():
                 self.logger.info("创建操作已停止")
                 return
@@ -177,6 +217,15 @@ class SymlinkCreator:
                 self._create_symlink(source_file, target_file)
             elif self.symlink_mode == 'strm':
                 self._create_strm(source_file, target_file)
+
+            if index == total or self._should_log_progress(index, last_progress_time):
+                self.logger.info(
+                    f"创建进度: {index}/{total}，"
+                    f"新建 {self.created_links}，"
+                    f"已存在 {self.existing_links}，"
+                    f"失败 {self.error_count}"
+                )
+                last_progress_time = time.monotonic()
 
     def _create_symlink(self, src: str, dst: str) -> None:
         """创建符号链接"""
@@ -271,6 +320,11 @@ class SymlinkCreator:
         
         total_created = 0
         total_existing = 0
+
+        send_message(
+            f"准备创建{self.symlink_name}: 源目录 {len(self.link_folders)} 个，"
+            f"目标目录 {self.target_folder}，后缀 {', '.join(self.allowed_extensions)}"
+        )
         
         for source_folder in self.link_folders:
             if self.stop_flag.is_set():

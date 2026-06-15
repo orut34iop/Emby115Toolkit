@@ -55,9 +55,9 @@ class DropLineEdit(QLineEdit):
                 files.append(path)
 
         if files:
-            self.files_dropped.emit(files)
             # 设置第一个文件为文本
             self.setText(files[0])
+            self.files_dropped.emit(files)
 
 
 class DropListWidget(QListWidget):
@@ -103,10 +103,10 @@ class DropListWidget(QListWidget):
                 files.append(path)
 
         if files:
-            self.files_dropped.emit(files)
             for f in files:
                 item = QListWidgetItem(f)
                 self.addItem(item)
+            self.files_dropped.emit(files)
 
 
 class ExportTab(QWidget):
@@ -119,6 +119,7 @@ class ExportTab(QWidget):
         self.log_dir = log_dir
         self.config = Config()
         self._active_task = None
+        self._loading_config = False
         self.init_ui()
         self.load_config()
         self.task_finished.connect(self._on_task_finished)
@@ -158,6 +159,7 @@ class ExportTab(QWidget):
         target_layout.addWidget(QLabel("目标文件夹："))
         self.target_edit = DropLineEdit()
         self.target_edit.files_dropped.connect(self.on_target_dropped)
+        self.target_edit.textChanged.connect(self.save_config)
         target_layout.addWidget(self.target_edit)
 
         self.btn_browse_target = QPushButton("浏览")
@@ -325,42 +327,49 @@ class ExportTab(QWidget):
 
     def load_config(self):
         """从配置文件加载设置"""
-        # 加载链接文件夹
-        link_folders = self.config.get('export_symlink', 'link_folders', [])
-        self.link_list.clear()
-        for folder in link_folders:
-            if folder:
-                self.link_list.addItem(QListWidgetItem(folder))
+        self._loading_config = True
+        try:
+            # 加载链接文件夹
+            link_folders = self.config.get('export_symlink', 'link_folders', [])
+            self.link_list.clear()
+            for folder in link_folders:
+                if folder:
+                    self.link_list.addItem(QListWidgetItem(folder))
 
-        # 加载目标文件夹
-        target = self.config.get('export_symlink', 'target_folder', '')
-        self.target_edit.setText(target)
+            # 加载目标文件夹
+            target = self.config.get('export_symlink', 'target_folder', '')
+            self.target_edit.setText(target)
 
-        # 加载其他设置
-        self.spin_threads.setValue(self.config.get('export_symlink', 'thread_count', 4))
-        self.spin_interval.setValue(self.config.get('export_symlink', 'op_interval_sec', 4))
-        self.chk_protect.setChecked(self.config.get('export_symlink', 'enable_115_protect', False))
-        self.chk_replace.setChecked(self.config.get('export_symlink', 'enable_replace_path', False))
-        self.chk_tvshow.setChecked(self.config.get('export_symlink', 'only_tvshow_nfo', True))
-        self.chk_overwrite_meta.setChecked(self.config.get('export_symlink', 'overwrite_metadata', False))
+            # 加载其他设置
+            self.spin_threads.setValue(self.config.get('export_symlink', 'thread_count', 4))
+            self.spin_interval.setValue(self.config.get('export_symlink', 'op_interval_sec', 4))
+            self.chk_protect.setChecked(self.config.get('export_symlink', 'enable_115_protect', False))
+            self.chk_replace.setChecked(self.config.get('export_symlink', 'enable_replace_path', False))
+            self.chk_tvshow.setChecked(self.config.get('export_symlink', 'only_tvshow_nfo', True))
+            self.chk_overwrite_meta.setChecked(self.config.get('export_symlink', 'overwrite_metadata', False))
 
-        # 路径替换
-        self.original_edit.setText(self.config.get('export_symlink', 'original_path', ''))
-        self.replace_edit.setText(self.config.get('export_symlink', 'replace_path', ''))
+            # 路径替换
+            self.original_edit.setText(self.config.get('export_symlink', 'original_path', ''))
+            self.replace_edit.setText(self.config.get('export_symlink', 'replace_path', ''))
 
-        # 后缀
-        link_suffixes = self.config.get('export_symlink', 'link_suffixes', [])
-        if link_suffixes:
-            self.edit_link_suffix.setText(';'.join(link_suffixes))
+            # 后缀
+            link_suffixes = self.config.get('export_symlink', 'link_suffixes', [])
+            if link_suffixes:
+                self.edit_link_suffix.setText(';'.join(link_suffixes))
 
-        meta_suffixes = self.config.get('export_symlink', 'meta_suffixes', [])
-        if meta_suffixes:
-            self.edit_meta_suffix.setText(';'.join(meta_suffixes))
+            meta_suffixes = self.config.get('export_symlink', 'meta_suffixes', [])
+            if meta_suffixes:
+                self.edit_meta_suffix.setText(';'.join(meta_suffixes))
+        finally:
+            self._loading_config = False
 
         self.logger.info("配置加载完成")
 
     def save_config(self):
         """保存设置到配置文件"""
+        if self._loading_config:
+            return
+
         # 获取链接文件夹列表
         link_folders = []
         for i in range(self.link_list.count()):
@@ -536,7 +545,7 @@ class ExportTab(QWidget):
             only_tvshow_nfo=config["only_tvshow_nfo"],
             logger=self.logger
         )
-        creator.run(lambda message: self.logger.info(message))
+        creator.run()
 
     def _run_metadata_copy(self, config):
         self.logger.info("开始下载元数据...")

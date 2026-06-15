@@ -6,6 +6,7 @@ import os
 import tempfile
 import shutil
 import threading
+import logging
 
 
 class TestSymlinkCreatorInit:
@@ -491,6 +492,35 @@ class TestSymlinkCreatorCallback:
         
         # 验证被停止
         assert any('停止' in msg or '已停止' in msg for msg in messages)
+
+    def test_run_logs_scan_and_create_progress(self, temp_dir, create_test_file_structure, caplog):
+        """测试运行时输出扫描和创建进度，便于 GUI 判断后台仍在工作"""
+        from autosync.SymlinkCreator import SymlinkCreator
+
+        structure = {
+            'source/movie1.mp4': 'video1',
+            'source/movie2.mp4': 'video2',
+            'source/poster.jpg': 'image',
+        }
+        create_test_file_structure(structure)
+
+        source_folder = os.path.join(temp_dir, 'source')
+        target_folder = os.path.join(temp_dir, 'target')
+        os.makedirs(target_folder, exist_ok=True)
+
+        creator = SymlinkCreator(
+            link_folders=[source_folder],
+            target_folder=target_folder,
+            symlink_mode='symlink',
+            progress_interval=1,
+        )
+
+        with caplog.at_level(logging.INFO):
+            creator.run()
+
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "扫描进度:" in messages
+        assert "创建进度:" in messages
 
 
 class TestSymlinkCreatorCounters:
