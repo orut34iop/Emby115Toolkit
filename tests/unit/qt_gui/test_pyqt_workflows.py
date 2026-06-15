@@ -90,7 +90,7 @@ def test_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, t
     assert wait_until(qapp, tab.btn_create_link.isEnabled)
 
     tab.download_metadata()
-    copied_metadata = target / "source" / "movie.nfo"
+    copied_metadata = target / "movie.nfo"
     assert wait_until(qapp, copied_metadata.exists)
 
 
@@ -262,7 +262,7 @@ def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp
     tab.sync_all()
 
     assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
-    assert wait_until(qapp, lambda: (target / "source" / "movie.nfo").exists())
+    assert wait_until(qapp, lambda: (target / "movie.nfo").exists())
     assert wait_until(qapp, tab.btn_sync_all.isEnabled)
 
 
@@ -271,7 +271,7 @@ def test_export_metadata_overwrite_checkbox_controls_existing_files(qapp, isolat
 
     source = tmp_path / "source"
     target = tmp_path / "target"
-    existing_target = target / "source" / "movie.nfo"
+    existing_target = target / "movie.nfo"
     source.mkdir()
     existing_target.parent.mkdir(parents=True)
     (source / "movie.nfo").write_text("new content", encoding="utf-8")

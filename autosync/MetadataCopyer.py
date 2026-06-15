@@ -70,7 +70,8 @@ class MetadataCopyer:
                 break
 
             source_file, source_folder, root_directory = item
-            relative_path = os.path.relpath(source_file, os.path.dirname(root_directory))
+            # 与 SymlinkCreator 保持一致：目标路径相对源目录本身计算。
+            relative_path = os.path.relpath(source_file, root_directory)
             target_file = os.path.join(self.target_folder, relative_path)
             
             # 确保目标文件夹存在，如果不存在则创建

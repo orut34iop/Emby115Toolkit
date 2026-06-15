@@ -251,10 +251,10 @@ class TestMetadataCopyerRun:
         # 验证回调被调用
         assert len(messages) > 0
 
-        # 验证文件被复制（保留了源文件夹的相对路径结构）
-        assert os.path.exists(os.path.join(target_folder, 'source', 'Movie1.nfo'))
-        assert os.path.exists(os.path.join(target_folder, 'source', 'Movie1.jpg'))
-        assert os.path.exists(os.path.join(target_folder, 'source', 'Movie2.nfo'))
+        # 验证文件被复制（与软链接创建保持一致，不额外包含源文件夹名）
+        assert os.path.exists(os.path.join(target_folder, 'Movie1.nfo'))
+        assert os.path.exists(os.path.join(target_folder, 'Movie1.jpg'))
+        assert os.path.exists(os.path.join(target_folder, 'Movie2.nfo'))
 
     def test_run_counters(self, temp_dir, create_test_file_structure):
         """测试计数器"""
