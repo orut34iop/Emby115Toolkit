@@ -19,9 +19,21 @@ from pathlib import Path
 # 定义视频文件扩展名
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm', '.m4v', '.m2ts', '.webm', '.3gp', '.vob', '.divx', '.f4v', '.ogv', '.mxf', '.asf', '.mts'}
 class EmbyOperator:
-    def __init__(self, server_url=None, api_key=None, user_name=None, emby_url=None, emby_api=None, emby_username=None, delete_nfo=False, delete_nfo_folder=False, logger=None):
+    def __init__(
+        self,
+        server_url=None,
+        api_key=None,
+        user_name=None,
+        emby_url=None,
+        emby_api=None,
+        emby_username=None,
+        delete_nfo=False,
+        delete_nfo_folder=False,
+        logger=None,
+        server_type='emby'
+    ):
         # 兼容两种参数风格
-        self.server_url = emby_url or server_url
+        self.server_url = (emby_url or server_url or "").rstrip("/")
         self.api_key = emby_api or api_key
         self.user_name = emby_username or user_name
         # 为测试兼容性添加别名
@@ -32,6 +44,16 @@ class EmbyOperator:
         self.delete_nfo = delete_nfo
         self.delete_nfo_folder = delete_nfo_folder
         self.logger = logger or logging.getLogger(__name__)
+        self.server_type = self._normalize_server_type(server_type)
+        self.detected_server_type = None
+        self.api_prefix = self._configured_api_prefix()
+
+    def _normalize_server_type(self, server_type):
+        value = str(server_type or 'emby').strip().lower()
+        return 'jellyfin' if value == 'jellyfin' else 'emby'
+
+    def _configured_api_prefix(self):
+        return '' if self.server_type == 'jellyfin' else '/emby'
 
     def _start_background_task(self, target, task_name):
         def safe_target():
@@ -43,6 +65,128 @@ class EmbyOperator:
         thread = threading.Thread(target=safe_target, daemon=True)
         thread.start()
         return thread
+
+    def _auth_headers(self):
+        return {
+            'X-Emby-Token': self.api_key or '',
+            'X-MediaBrowser-Token': self.api_key or '',
+            'Content-Type': 'application/json'
+        }
+
+    def _api_url(self, path, prefix=None):
+        if not path.startswith('/'):
+            path = f'/{path}'
+        if prefix is None:
+            prefix = self.api_prefix or ''
+        return f'{self.server_url}{prefix}{path}'
+
+    def _server_label(self):
+        return 'Jellyfin' if self.server_type == 'jellyfin' else 'Emby'
+
+    def detect_server_type(self, force=False):
+        """检测当前服务器是 Emby 还是 Jellyfin，仅用于校验用户选择。"""
+        if self.detected_server_type and not force:
+            return self.detected_server_type
+        if force:
+            self.detected_server_type = None
+
+        info_paths = [
+            ('', '/System/Info/Public'),
+            ('/emby', '/System/Info/Public'),
+        ]
+        for prefix, path in info_paths:
+            url = self._api_url(path, prefix)
+            try:
+                response = requests.get(url, timeout=10)
+            except requests.exceptions.RequestException as err:
+                self.logger.warning(f"服务器识别请求失败: {url} - {err}")
+                continue
+
+            if response.status_code != 200:
+                continue
+
+            try:
+                info = response.json()
+            except ValueError:
+                self.logger.warning(f"服务器识别响应不是 JSON: {url}")
+                continue
+
+            product_text = " ".join(
+                str(info.get(key, ''))
+                for key in ('ProductName', 'ServerName', 'OperatingSystemDisplayName', 'Version')
+            ).lower()
+
+            if 'jellyfin' in product_text:
+                self.detected_server_type = 'jellyfin'
+                self.logger.info(f"已检测到服务器类型: Jellyfin")
+                return self.detected_server_type
+
+            if 'emby' in product_text:
+                self.detected_server_type = 'emby'
+                self.logger.info(f"已检测到服务器类型: Emby")
+                return self.detected_server_type
+
+        self.logger.error("无法检测服务器类型，请检查服务器地址和 API Key")
+        return None
+
+    def validate_server_type(self):
+        detected_type = self.detect_server_type(force=True)
+        expected_label = self._server_label()
+
+        if not detected_type:
+            raise RuntimeError("无法检测服务器类型，请检查服务器地址或 API Key")
+
+        detected_label = 'Jellyfin' if detected_type == 'jellyfin' else 'Emby'
+        if detected_type != self.server_type:
+            raise RuntimeError(
+                f"服务器类型选择不一致：当前选择 {expected_label}，实际检测到 {detected_label}，请修改单选框后重试。"
+            )
+
+        self.logger.info(f"服务器类型校验通过: {expected_label}")
+        return True
+
+    def _request(self, method, path, *, params=None, data=None, json_body=None):
+        headers = self._auth_headers()
+        url = self._api_url(path)
+        return requests.request(
+            method,
+            url,
+            headers=headers,
+            params=params,
+            data=data,
+            json=json_body,
+            timeout=30
+        )
+
+    def _get_items(self, include_item_types, fields):
+        params = {
+            "api_key": self.api_key,
+            "IncludeItemTypes": include_item_types,
+            "Recursive": True,
+            "Fields": fields,
+            "Limit": "1000000",
+        }
+        try:
+            response = self._request('get', '/Items', params=params)
+            response.raise_for_status()
+            return response.json().get("Items", [])
+        except requests.exceptions.HTTPError as http_err:
+            self.logger.error(f"HTTP error occurred: {http_err}")
+        except requests.exceptions.RequestException as err:
+            self.logger.error(f"Other error occurred: {err}")
+        except ValueError:
+            self.logger.error("Error parsing JSON response")
+        return []
+
+    def _post_item_update(self, item_id, item):
+        params = {"api_key": self.api_key}
+        response = self._request(
+            'post',
+            f"/Items/{urllib.parse.quote(str(item_id), safe='')}",
+            params=params,
+            data=json.dumps(item)
+        )
+        return response
 
     def check_duplicate(self, target_folder, callback):
         def run_check():
@@ -112,47 +256,11 @@ class EmbyOperator:
 
     # 获取所有影剧的信息
     def get_all_media(self):
-        url = f"{self.server_url}/emby/Items"
-        params = {
-            "api_key": self.api_key,
-            "IncludeItemTypes": "Movie,Series",
-            "Recursive": True,
-            "Fields": "ProviderIds,Path",
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()  # 检查请求是否成功
-            return response.json()["Items"]
-        except requests.exceptions.HTTPError as http_err:
-            self.logger.error(f"HTTP error occurred: {http_err}")  # 输出HTTP错误
-        except requests.exceptions.RequestException as err:
-            self.logger.error(f"Other error occurred: {err}")  # 输出其他错误
-        except ValueError:
-            self.logger.error("Error parsing JSON response")
-            self.logger.error("Response content:", response.content)  # 输出响应内容以便调试
-        return []
+        return self._get_items("Movie,Series", "ProviderIds,Path")
 
     # 获取所有影剧的信息
     def get_movie_media(self):
-        url = f"{self.server_url}/emby/Items"
-        params = {
-            "api_key": self.api_key,
-            "IncludeItemTypes": "Movie",
-            "Recursive": True,
-            "Fields": "ProviderIds,Path",
-        }
-        try:
-            response = requests.get(url, params=params)
-            response.raise_for_status()  # 检查请求是否成功
-            return response.json()["Items"]
-        except requests.exceptions.HTTPError as http_err:
-            self.logger.error(f"HTTP error occurred: {http_err}")  # 输出HTTP错误
-        except requests.exceptions.RequestException as err:
-            self.logger.error(f"Other error occurred: {err}")  # 输出其他错误
-        except ValueError:
-            self.logger.error("Error parsing JSON response")
-            self.logger.error("Response content:", response.content)  # 输出响应内容以便调试
-        return []
+        return self._get_items("Movie", "ProviderIds,Path")
 
     # 查询TMDb ID
     def query_movies_by_tmdbid(self, movies, tmdb_value):
@@ -218,13 +326,16 @@ class EmbyOperator:
         return grouped_movies
 
     def emby_get_user_id(self):
-       # 构造请求URL
-        url = f'{self.server_url}/Users/Public?api_key={self.api_key}'
-
-        # 发送GET请求
-        response = requests.get(url)
-
-        # 检查请求是否成功
+        params = {"api_key": self.api_key}
+        if self.server_type == 'emby':
+            response = requests.get(
+                f'{self.server_url}/Users/Public',
+                headers=self._auth_headers(),
+                params=params,
+                timeout=30
+            )
+        else:
+            response = self._request('get', '/Users/Public', params=params)
         if response.status_code == 200:
             users = response.json()
             for user in users:
@@ -238,6 +349,17 @@ class EmbyOperator:
 
     # 合并同一个TMDb ID下的不同版本
     def merge_movie_versions(self, grouped_movies):
+        if self.server_type == 'jellyfin':
+            return self.jellyfin_merge_movie_versions(grouped_movies)
+        return self.emby_merge_movie_versions(grouped_movies)
+
+    def emby_merge_movie_versions(self, grouped_movies):
+        return self._merge_movie_versions(grouped_movies, ids_key="Ids", server_label="Emby")
+
+    def jellyfin_merge_movie_versions(self, grouped_movies):
+        return self._merge_movie_versions(grouped_movies, ids_key="ids", server_label="Jellyfin")
+
+    def _merge_movie_versions(self, grouped_movies, ids_key, server_label):
         merged_movies = []
         for tmdb_id, movies in grouped_movies.items():
             if len(movies) > 1:
@@ -246,24 +368,37 @@ class EmbyOperator:
                 self.logger.info(f"已发现相同版本的影片::: {name}")
 
                 item_ids = ",".join(movie["Id"] for movie in movies)
-                merge_url = f"{self.server_url}/emby/Videos/MergeVersions"
                 payload = {
-                    "Ids": item_ids,
-                    "X-Emby-Token": self.api_key,
+                    ids_key: item_ids,
+                    "api_key": self.api_key,
                 }
-                response = requests.post(merge_url, params=payload)
+                response = self._request('post', '/Videos/MergeVersions', params=payload)
                 if response.status_code == 204:
-                    self.logger.info(f"合并版本成功:::         {name}")
+                    self.logger.info(f"{server_label} 合并版本成功:::         {name}")
                 else:
-                    self.logger.error(f"合并版本失败:::         {name}")
+                    self.logger.error(f"{server_label} 合并版本失败:::         {name}")
+                    self.logger.error(response.text)
                 merged_movies.append(movies[0])  # 暂时保留第一部影片为合并结果
         return merged_movies
 
     def merge_versions(self, callback):
+        self.validate_server_type()
+        if self.server_type == 'jellyfin':
+            return self.jellyfin_merge_versions(callback)
+        return self.emby_merge_versions(callback)
+
+    def emby_merge_versions(self, callback):
+        return self._merge_versions(callback, "Emby")
+
+    def jellyfin_merge_versions(self, callback):
+        return self._merge_versions(callback, "Jellyfin")
+
+    def _merge_versions(self, callback, server_label):
         def run_merge_versions_check():
+            self.logger.info(f"开始使用 {server_label} 流程合并版本")
             all_movies = self.get_movie_media() #只需要合并电影，TV Emby会自动合并
             if not all_movies:
-                self.logger.info("Emby库里没有影片")
+                self.logger.info(f"{server_label} 库里没有影片")
                 return
             self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影片")
             grouped_movies = self.group_movies_by_tmdbid(all_movies)
@@ -278,6 +413,11 @@ class EmbyOperator:
         
         return self._start_background_task(run_merge_versions_check, "合并版本")
 
+    def get_item_info(self, movie_id):
+        if self.server_type == 'jellyfin':
+            return self.jellyfin_get_item_info(movie_id)
+        return self.emby_get_item_info(movie_id)
+
     def emby_get_item_info(self, movie_id):
         headers = {
             'X-Emby-Token': self.api_key,
@@ -289,7 +429,7 @@ class EmbyOperator:
             self.logger.error("Failed to retrieve user ID.")
             return None
 
-        detail_item_endpoint = f'{self.server_url}/users/{self.user_id}/items/{movie_id}'
+        detail_item_endpoint = self._api_url(f"/Users/{self.user_id}/Items/{urllib.parse.quote(str(movie_id), safe='')}", '')
         detail_item_response = requests.get(detail_item_endpoint, headers=headers)
 
         if detail_item_response.status_code == 200:
@@ -298,6 +438,26 @@ class EmbyOperator:
             self.logger.error(f"Failed to retrieve complete movie information, status code: {detail_item_response.status_code}")
             self.logger.error(f"Response content: {detail_item_response.text}")
             return None
+
+    def jellyfin_get_item_info(self, movie_id):
+        params = {}
+        if self.user_name:
+            self.user_id = self.user_id or self.emby_get_user_id()
+            if self.user_id:
+                params['userId'] = self.user_id
+
+        response = self._request(
+            'get',
+            f"/Items/{urllib.parse.quote(str(movie_id), safe='')}",
+            params=params
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        self.logger.error(f"Failed to retrieve complete item information, status code: {response.status_code}")
+        self.logger.error(f"Response content: {response.text}")
+        return None
 
     def emby_tv_translate_genres_and_update_whole_item(self):
         total_count = 0
@@ -342,11 +502,6 @@ class EmbyOperator:
             'War & Politics': '战争与政治'
         }
 
-        headers = {
-            'X-Emby-Token': self.api_key,
-            'Content-Type': 'application/json'
-        }
-        items_endpoint = f'{self.server_url}/Items'
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': 'Series',
@@ -354,7 +509,7 @@ class EmbyOperator:
             'Limit': '1000000'
         }
 
-        response = requests.get(items_endpoint, headers=headers, params=params)
+        response = self._request('get', '/Items', params=params)
 
         if response.status_code == 200:
             tvs = response.json().get('Items', [])
@@ -410,8 +565,7 @@ class EmbyOperator:
                     tv['Genres'] = translated_genres
                     tv['GenreItems'] = genreitems
 
-                    update_endpoint = f'{self.server_url}/emby/Items/{tv_id}?/api_key={self.api_key}'
-                    update_response = requests.post(update_endpoint, headers=headers, data=json.dumps(tv))
+                    update_response = self._post_item_update(tv_id, tv)
 
                     if update_response.status_code in [200, 204]:
                         update_count += 1
@@ -2061,11 +2215,6 @@ class EmbyOperator:
             
         }
 
-        headers = {
-            'X-Emby-Token': self.api_key,
-            'Content-Type': 'application/json'
-        }
-        items_endpoint = f'{self.server_url}/Items'
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': 'Movie',
@@ -2073,7 +2222,7 @@ class EmbyOperator:
             'Limit': '1000000'
         }
 
-        response = requests.get(items_endpoint, headers=headers, params=params)
+        response = self._request('get', '/Items', params=params)
 
         if response.status_code == 200:
             movies = response.json().get('Items', [])
@@ -2128,8 +2277,7 @@ class EmbyOperator:
                     movie['Genres'] = translated_genres
                     movie['GenreItems'] = genreitems
 
-                    update_endpoint = f'{self.server_url}/emby/Items/{movie_id}?/api_key={self.api_key}'
-                    update_response = requests.post(update_endpoint, headers=headers, data=json.dumps(movie))
+                    update_response = self._post_item_update(movie_id, movie)
 
                     if update_response.status_code in [200, 204]:
                         update_count += 1
@@ -2152,15 +2300,6 @@ class EmbyOperator:
 
     # 列出库中所有的影片流派
     def emby_get_all_movie_genres(self):
-        # Set API request headers
-        headers = {
-            'X-Emby-Token': self.api_key,
-            'Content-Type': 'application/json'
-        }
-
-        # Get the API endpoint for all movies
-        items_endpoint = f'{self.server_url}/Items'
-
         # Set query parameters
         params = {
             'Recursive': 'true',
@@ -2170,7 +2309,7 @@ class EmbyOperator:
         }
 
         # Send request to get the list of movies
-        response = requests.get(items_endpoint, headers=headers, params=params)
+        response = self._request('get', '/Items', params=params)
 
         # Check if the request was successful
         if response.status_code == 200:
@@ -2196,15 +2335,6 @@ class EmbyOperator:
 
     # 列出库中所有的电视剧集流派
     def emby_get_all_tv_genres(self):
-        # Set API request headers
-        headers = {
-            'X-Emby-Token': self.api_key,
-            'Content-Type': 'application/json'
-        }
-
-        # Get the API endpoint for all movies
-        items_endpoint = f'{self.server_url}/Items'
-
         # Set query parameters
         params = {
             'Recursive': 'true',
@@ -2214,7 +2344,7 @@ class EmbyOperator:
         }
 
         # Send request to get the list of movies
-        response = requests.get(items_endpoint, headers=headers, params=params)
+        response = self._request('get', '/Items', params=params)
 
         # Check if the request was successful
         if response.status_code == 200:
@@ -2242,7 +2372,10 @@ class EmbyOperator:
             self.logger.error(response.text)
 
     def update_genress(self, callback=None):
+        self.validate_server_type()
+
         def run_update_genress_check():
+            self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info(f"开始更新影片流派信息...")
             updated_movies = self.emby_movie_translate_genres_and_update_whole_item()
             self.logger.info(f"完成更新影片流派信息")

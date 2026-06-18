@@ -74,12 +74,14 @@ class Config:
             },
             'merge_version': {
                 'emby_url': '',
-                'emby_api': ''
+                'emby_api': '',
+                'server_type': 'emby'
             },
             'update_genres': {
                 'emby_url': '',
                 'emby_api': '',
-                'emby_username': ''
+                'emby_username': '',
+                'server_type': 'emby'
             },
             'mirror_115_tree': {
                 'tree_file': '',

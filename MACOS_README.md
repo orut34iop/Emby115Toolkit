@@ -64,7 +64,6 @@ Emby115Toolkit/
 │   ├── main_window.py
 │   ├── export_tab.py    # 导出软链接（支持拖拽）
 │   ├── folder_tab.py    # 文件夹操作（支持拖拽）
-│   ├── duplicate_tab.py # Emby查重（支持拖拽）
 │   ├── merge_tab.py     # 文件合并（支持拖拽）
 │   ├── mirror_tab.py    # 目录树镜像（支持拖拽）
 │   └── ...

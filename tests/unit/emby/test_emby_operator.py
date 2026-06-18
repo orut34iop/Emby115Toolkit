@@ -58,6 +58,144 @@ class TestEmbyOperatorInit:
         assert operator.emby_api == 'test-api-key'
         assert operator.emby_username == 'testuser'
 
+    def test_init_with_server_type(self):
+        """测试服务器类型配置"""
+        from emby.EmbyOperator import EmbyOperator
+
+        emby_operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key'
+        )
+        jellyfin_operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='jellyfin'
+        )
+
+        assert emby_operator.server_type == 'emby'
+        assert emby_operator.api_prefix == '/emby'
+        assert jellyfin_operator.server_type == 'jellyfin'
+        assert jellyfin_operator.api_prefix == ''
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, payload=None, text=''):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+        self.text = text
+        self.content = text.encode('utf-8')
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.exceptions.HTTPError(f"status code: {self.status_code}")
+
+
+class TestEmbyOperatorServerType:
+    """测试 Emby/Jellyfin 服务器类型选择和校验"""
+
+    def test_validate_server_type_stops_on_mismatch(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        def fake_get(url, timeout=10):
+            if url.endswith('/System/Info/Public'):
+                return FakeResponse(payload={'ProductName': 'Jellyfin Server'})
+            return FakeResponse(status_code=404)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.get', fake_get)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )
+
+        with pytest.raises(RuntimeError, match='服务器类型选择不一致'):
+            operator.validate_server_type()
+
+    def test_jellyfin_merge_versions_uses_jellyfin_path_and_ids_param(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='jellyfin'
+        )
+
+        operator.merge_movie_versions({
+            '12345': [
+                {'Id': '1', 'Name': 'Movie', 'ProviderIds': {'Tmdb': '12345'}},
+                {'Id': '2', 'Name': 'Movie 4K', 'ProviderIds': {'Tmdb': '12345'}},
+            ]
+        })
+
+        assert requests_made[0][0] == 'post'
+        assert requests_made[0][1] == 'http://localhost:8096/Videos/MergeVersions'
+        assert requests_made[0][2]['params']['ids'] == '1,2'
+        assert 'Ids' not in requests_made[0][2]['params']
+
+    def test_emby_merge_versions_uses_emby_path_and_ids_param(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )
+
+        operator.merge_movie_versions({
+            '12345': [
+                {'Id': '1', 'Name': 'Movie', 'ProviderIds': {'Tmdb': '12345'}},
+                {'Id': '2', 'Name': 'Movie 4K', 'ProviderIds': {'Tmdb': '12345'}},
+            ]
+        })
+
+        assert requests_made[0][0] == 'post'
+        assert requests_made[0][1] == 'http://localhost:8096/emby/Videos/MergeVersions'
+        assert requests_made[0][2]['params']['Ids'] == '1,2'
+        assert 'ids' not in requests_made[0][2]['params']
+
+    def test_item_update_path_follows_selected_server_type(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+
+        EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )._post_item_update('item1', {'Name': 'Movie'})
+        EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='jellyfin'
+        )._post_item_update('item2', {'Name': 'Movie'})
+
+        assert requests_made[0][1] == 'http://localhost:8096/emby/Items/item1'
+        assert requests_made[1][1] == 'http://localhost:8096/Items/item2'
+
 
 class TestEmbyOperatorExtractTmdbid:
     """测试 extract_tmdbid_from_nfo 方法"""

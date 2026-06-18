@@ -54,14 +54,13 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
 
     window = MainWindow()
 
-    assert window.tabs.count() == 7
+    assert window.tabs.count() == 6
     assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == [
         "导出软链接",
         "文件夹操作",
-        "Emby影剧查重",
         "文件合并",
-        "Emby合并版本",
-        "Emby更新流派",
+        "合并版本",
+        "更新流派",
         "115目录树镜像",
     ]
 
@@ -353,53 +352,39 @@ def test_merge_and_mirror_tabs_run_backends(qapp, isolated_config, tmp_path):
 
 def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkeypatch):
     from emby.EmbyOperator import EmbyOperator
-    from qt_gui.duplicate_tab import DuplicateTab
     from qt_gui.genres_tab import GenresTab
     from qt_gui.version_tab import VersionTab
 
     calls = []
 
-    def fake_check_duplicate(self, folder, callback):
-        calls.append(("check_duplicate", folder, self.server_url, self.api_key))
-        callback("duplicate done")
-
     def fake_merge_versions(self, callback):
-        calls.append(("merge_versions", self.server_url, self.api_key))
+        calls.append(("merge_versions", self.server_url, self.api_key, self.server_type))
         callback("merge done")
 
     def fake_update_genress(self, callback=None):
-        calls.append(("update_genress", self.server_url, self.api_key, self.user_name))
+        calls.append(("update_genress", self.server_url, self.api_key, self.user_name, self.server_type))
         if callback:
             callback("genres done")
 
-    monkeypatch.setattr(EmbyOperator, "check_duplicate", fake_check_duplicate)
     monkeypatch.setattr(EmbyOperator, "merge_versions", fake_merge_versions)
     monkeypatch.setattr(EmbyOperator, "update_genress", fake_update_genress)
 
-    media_folder = tmp_path / "media"
-    media_folder.mkdir()
-
-    duplicate_tab = DuplicateTab(str(tmp_path / "logs"))
-    duplicate_tab.target_edit.setText(str(media_folder))
-    duplicate_tab.edit_url.setText("http://emby.local")
-    duplicate_tab.edit_api.setText("api")
-    duplicate_tab.check_duplicate()
-
     version_tab = VersionTab(str(tmp_path / "logs"))
-    version_tab.edit_url.setText("http://emby.local")
+    version_tab.edit_url.setText("http://jellyfin.local")
     version_tab.edit_api.setText("api")
+    version_tab.radio_jellyfin.setChecked(True)
     version_tab.merge_versions()
 
     genres_tab = GenresTab(str(tmp_path / "logs"))
     genres_tab.edit_url.setText("http://emby.local")
     genres_tab.edit_api.setText("api")
     genres_tab.edit_user.setText("user")
+    genres_tab.radio_emby.setChecked(True)
     genres_tab.update_genres()
 
     assert calls == [
-        ("check_duplicate", str(media_folder), "http://emby.local", "api"),
-        ("merge_versions", "http://emby.local", "api"),
-        ("update_genress", "http://emby.local", "api", "user"),
+        ("merge_versions", "http://jellyfin.local", "api", "jellyfin"),
+        ("update_genress", "http://emby.local", "api", "user", "emby"),
     ]
 
 
