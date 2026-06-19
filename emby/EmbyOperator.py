@@ -4,7 +4,6 @@ import threading
 import time
 import queue
 import requests
-import json
 import re
 from datetime import datetime
 import xml.etree.ElementTree as ET
@@ -18,6 +17,14 @@ from pathlib import Path
 
 # 定义视频文件扩展名
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.iso', '.ts', '.rmvb', '.rm', '.m4v', '.m2ts', '.webm', '.3gp', '.vob', '.divx', '.f4v', '.ogv', '.mxf', '.asf', '.mts'}
+
+
+class RequestFailureResponse:
+    def __init__(self, error):
+        self.status_code = 0
+        self.text = f"请求异常: {error}"
+
+
 class EmbyOperator:
     def __init__(
         self,
@@ -145,7 +152,7 @@ class EmbyOperator:
         self.logger.info(f"服务器类型校验通过: {expected_label}")
         return True
 
-    def _request(self, method, path, *, params=None, data=None, json_body=None):
+    def _request(self, method, path, *, params=None, data=None, json_body=None, timeout=30):
         headers = self._auth_headers()
         url = self._api_url(path)
         return requests.request(
@@ -155,8 +162,48 @@ class EmbyOperator:
             params=params,
             data=data,
             json=json_body,
-            timeout=30
+            timeout=timeout
         )
+
+    def _request_with_retries(
+        self,
+        method,
+        path,
+        *,
+        params=None,
+        data=None,
+        json_body=None,
+        timeout=30,
+        retries=0,
+        retry_delay=1,
+        retry_status_codes=None,
+        retry_label=None
+    ):
+        retry_status_codes = retry_status_codes or set()
+        for attempt in range(retries + 1):
+            try:
+                response = self._request(
+                    method,
+                    path,
+                    params=params,
+                    data=data,
+                    json_body=json_body,
+                    timeout=timeout
+                )
+                if response.status_code not in retry_status_codes or attempt >= retries:
+                    return response
+                self.logger.warning(
+                    f"{retry_label or path} 请求返回 {response.status_code}，"
+                    f"{retry_delay} 秒后重试 {attempt + 1}/{retries}"
+                )
+            except requests.exceptions.RequestException as err:
+                if attempt >= retries:
+                    raise
+                self.logger.warning(
+                    f"{retry_label or path} 请求异常，"
+                    f"{retry_delay} 秒后重试 {attempt + 1}/{retries}: {err}"
+                )
+            time.sleep(retry_delay)
 
     def _get_items(self, include_item_types, fields):
         params = {
@@ -178,15 +225,31 @@ class EmbyOperator:
             self.logger.error("Error parsing JSON response")
         return []
 
+    def _prepare_item_update_payload(self, item):
+        payload = dict(item)
+        if self.server_type == 'jellyfin':
+            # Jellyfin validates GenreItems as GUID pairs; Genres is enough for metadata update.
+            payload.pop('GenreItems', None)
+        return payload
+
     def _post_item_update(self, item_id, item):
         params = {"api_key": self.api_key}
-        response = self._request(
-            'post',
-            f"/Items/{urllib.parse.quote(str(item_id), safe='')}",
-            params=params,
-            data=json.dumps(item)
-        )
-        return response
+        payload = self._prepare_item_update_payload(item)
+        path = f"/Items/{urllib.parse.quote(str(item_id), safe='')}"
+        try:
+            return self._request_with_retries(
+                'post',
+                path,
+                params=params,
+                json_body=payload,
+                timeout=(10, 120),
+                retries=2,
+                retry_delay=2,
+                retry_status_codes={408, 429, 500, 502, 503, 504},
+                retry_label=f"更新条目 {item.get('Name', item_id)}({item_id})"
+            )
+        except requests.exceptions.RequestException as err:
+            return RequestFailureResponse(err)
 
     def check_duplicate(self, target_folder, callback):
         def run_check():
@@ -445,14 +508,24 @@ class EmbyOperator:
             self.logger.error("Failed to retrieve user ID.")
             return None
 
-        response = self._request(
-            'get',
-            (
-                f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/"
-                f"Items/{urllib.parse.quote(str(movie_id), safe='')}"
-            ),
-            params={"api_key": self.api_key}
+        path = (
+            f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/"
+            f"Items/{urllib.parse.quote(str(movie_id), safe='')}"
         )
+        try:
+            response = self._request_with_retries(
+                'get',
+                path,
+                params={"api_key": self.api_key},
+                timeout=(10, 60),
+                retries=1,
+                retry_delay=2,
+                retry_status_codes={408, 429, 500, 502, 503, 504},
+                retry_label=f"读取条目详情 {movie_id}"
+            )
+        except requests.exceptions.RequestException as err:
+            self.logger.error(f"Failed to retrieve complete item information: {err}")
+            return None
 
         if response.status_code == 200:
             return response.json()
@@ -574,7 +647,10 @@ class EmbyOperator:
                         updated_series.append(tv)
                         self.logger.info(f"剧集: {tv['Name']} 流派信息已更新。(Total updates: {update_count})")
                     else:
-                        self.logger.error(f"更新失败，状态码: {update_response.status_code}(Total updates: {update_count})")
+                        self.logger.error(
+                            f"剧集 '{tv.get('Name', tv_id)}'({tv_id}) 更新失败，"
+                            f"状态码: {update_response.status_code}(Total updates: {update_count})"
+                        )
                         self.logger.error(update_response.text)
                 else:
                     self.logger.info(f"剧集 '{tv['Name']}' 的流派信息没有改变.")
@@ -2286,7 +2362,10 @@ class EmbyOperator:
                         updated_movies.append(movie)
                         self.logger.info(f"影片: {movie['Name']} 流派信息已更新。(Total updates: {update_count})")
                     else:
-                        self.logger.error(f"更新失败，状态码: {update_response.status_code}(Total updates: {update_count})")
+                        self.logger.error(
+                            f"影片 '{movie.get('Name', movie_id)}'({movie_id}) 更新失败，"
+                            f"状态码: {update_response.status_code}(Total updates: {update_count})"
+                        )
                         self.logger.error(update_response.text)
                 else:
                     self.logger.info(f"影片 '{movie['Name']}' 的流派信息没有改变.")

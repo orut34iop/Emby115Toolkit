@@ -3,6 +3,7 @@ emby.EmbyOperator 模块单元测试
 """
 import pytest
 import os
+import requests
 import tempfile
 import shutil
 import threading
@@ -196,6 +197,106 @@ class TestEmbyOperatorServerType:
         assert requests_made[0][1] == 'http://localhost:8096/emby/Items/item1'
         assert requests_made[1][1] == 'http://localhost:8096/Items/item2'
 
+    def test_emby_item_update_keeps_genre_items(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+
+        EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )._post_item_update('item1', {
+            'Name': 'Movie',
+            'Genres': ['动作'],
+            'GenreItems': [{'Name': '动作', 'Id': ''}],
+        })
+
+        assert requests_made[0][2]['json']['GenreItems'] == [{'Name': '动作', 'Id': ''}]
+        assert requests_made[0][2]['data'] is None
+
+    def test_jellyfin_item_update_omits_genre_items(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+
+        item = {
+            'Name': 'Movie',
+            'Genres': ['动作', '戏剧'],
+            'GenreItems': [
+                {'Name': '动作', 'Id': 'genre-action'},
+                {'Name': '戏剧', 'Id': ''},
+            ],
+        }
+        EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='jellyfin'
+        )._post_item_update('item2', item)
+
+        assert requests_made[0][2]['json'] == {
+            'Name': 'Movie',
+            'Genres': ['动作', '戏剧'],
+        }
+        assert item['GenreItems'][1]['Id'] == ''
+        assert requests_made[0][2]['data'] is None
+
+    def test_item_update_retries_timeout(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            if len(requests_made) == 1:
+                raise requests.exceptions.ReadTimeout('slow update')
+            return FakeResponse(status_code=204)
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        monkeypatch.setattr('emby.EmbyOperator.time.sleep', lambda seconds: None)
+
+        response = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key'
+        )._post_item_update('item1', {'Name': 'Movie'})
+
+        assert response.status_code == 204
+        assert len(requests_made) == 2
+        assert requests_made[0][2]['timeout'] == (10, 120)
+
+    def test_item_update_timeout_returns_failure_response(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            raise requests.exceptions.ReadTimeout('slow update')
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        monkeypatch.setattr('emby.EmbyOperator.time.sleep', lambda seconds: None)
+
+        response = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key'
+        )._post_item_update('item1', {'Name': 'Movie'})
+
+        assert response.status_code == 0
+        assert 'slow update' in response.text
+        assert len(requests_made) == 3
+
     def test_jellyfin_user_lookup_uses_users_endpoint(self, monkeypatch):
         from emby.EmbyOperator import EmbyOperator
 
@@ -241,6 +342,28 @@ class TestEmbyOperatorServerType:
         assert operator.jellyfin_get_item_info('movie1')['Name'] == 'Movie'
         assert requests_made[0][0] == 'get'
         assert requests_made[0][1] == 'http://localhost:8096/Users/user1/Items/movie1'
+
+    def test_jellyfin_item_detail_timeout_returns_none(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            raise requests.exceptions.ReadTimeout('slow detail')
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        monkeypatch.setattr('emby.EmbyOperator.time.sleep', lambda seconds: None)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            emby_username='wiz',
+            server_type='jellyfin'
+        )
+        operator.user_id = 'user1'
+
+        assert operator.jellyfin_get_item_info('movie1') is None
+        assert len(requests_made) == 2
 
     def test_jellyfin_genre_update_uses_jellyfin_item_detail(self, monkeypatch):
         from emby.EmbyOperator import EmbyOperator
