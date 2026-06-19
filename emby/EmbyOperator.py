@@ -335,7 +335,7 @@ class EmbyOperator:
                 timeout=30
             )
         else:
-            response = self._request('get', '/Users/Public', params=params)
+            response = self._request('get', '/Users', params=params)
         if response.status_code == 200:
             users = response.json()
             for user in users:
@@ -440,16 +440,18 @@ class EmbyOperator:
             return None
 
     def jellyfin_get_item_info(self, movie_id):
-        params = {}
-        if self.user_name:
-            self.user_id = self.user_id or self.emby_get_user_id()
-            if self.user_id:
-                params['userId'] = self.user_id
+        self.user_id = self.user_id or self.emby_get_user_id()
+        if not self.user_id:
+            self.logger.error("Failed to retrieve user ID.")
+            return None
 
         response = self._request(
             'get',
-            f"/Items/{urllib.parse.quote(str(movie_id), safe='')}",
-            params=params
+            (
+                f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/"
+                f"Items/{urllib.parse.quote(str(movie_id), safe='')}"
+            ),
+            params={"api_key": self.api_key}
         )
 
         if response.status_code == 200:
@@ -539,7 +541,7 @@ class EmbyOperator:
                 if original_genres == translated_genres:
                     continue
 
-                tv = self.emby_get_item_info(tv_id)
+                tv = self.get_item_info(tv_id)
                 if not tv:
                     self.logger.error(f"剧集ID '{tv_id}' 的信息读取失败.(Total updates: {update_count})")
                     continue
@@ -2250,7 +2252,7 @@ class EmbyOperator:
                 if original_genres == translated_genres:
                     continue
 
-                movie = self.emby_get_item_info(movie_id)
+                movie = self.get_item_info(movie_id)
                 if not movie:
                     self.logger.info(f"影片ID '{movie_id}' 的信息读取失败.(Total updates: {update_count})")
                     continue

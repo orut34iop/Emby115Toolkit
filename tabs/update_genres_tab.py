@@ -122,8 +122,8 @@ class UpdateGenresTab(BaseTab):
         user_name = self.emby_username_entry.get().strip()
         server_type = self.server_type_var.get()
         
-        if not server_url or not api_key or (server_type == 'emby' and not user_name):
-            self.logger.warning("服务器地址或API密钥为空；Emby 还需要填写用户名")
+        if not server_url or not api_key or not user_name:
+            self.logger.warning("服务器地址、用户名或API密钥为空")
             return
         
         self.logger.info(f"开始更新流派: 服务器类型={server_type}, URL={server_url}, 用户名={user_name}")

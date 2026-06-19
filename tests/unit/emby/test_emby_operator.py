@@ -196,6 +196,101 @@ class TestEmbyOperatorServerType:
         assert requests_made[0][1] == 'http://localhost:8096/emby/Items/item1'
         assert requests_made[1][1] == 'http://localhost:8096/Items/item2'
 
+    def test_jellyfin_user_lookup_uses_users_endpoint(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(payload=[
+                {'Id': 'user1', 'Name': 'other'},
+                {'Id': 'user2', 'Name': 'wiz'},
+            ])
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            emby_username='wiz',
+            server_type='jellyfin'
+        )
+
+        assert operator.emby_get_user_id() == 'user2'
+        assert requests_made[0][0] == 'get'
+        assert requests_made[0][1] == 'http://localhost:8096/Users'
+
+    def test_jellyfin_item_detail_uses_user_item_endpoint(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(payload={'Id': 'movie1', 'Name': 'Movie'})
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            emby_username='wiz',
+            server_type='jellyfin'
+        )
+        operator.user_id = 'user1'
+
+        assert operator.jellyfin_get_item_info('movie1')['Name'] == 'Movie'
+        assert requests_made[0][0] == 'get'
+        assert requests_made[0][1] == 'http://localhost:8096/Users/user1/Items/movie1'
+
+    def test_jellyfin_genre_update_uses_jellyfin_item_detail(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            emby_username='wiz',
+            server_type='jellyfin'
+        )
+
+        def fake_request(method, url, **kwargs):
+            assert method == 'get'
+            assert url == 'http://localhost:8096/Items'
+            return FakeResponse(payload={
+                'Items': [
+                    {
+                        'Id': 'movie1',
+                        'Name': 'Movie',
+                        'Genres': ['Action'],
+                        'GenreItems': [{'Name': 'Action', 'Id': 'genre-action'}],
+                    }
+                ]
+            })
+
+        def fail_emby_detail(item_id):
+            pytest.fail('Jellyfin 更新流派不应该调用 Emby 用户详情接口')
+
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+        monkeypatch.setattr(operator, 'emby_get_item_info', fail_emby_detail)
+        monkeypatch.setattr(operator, 'jellyfin_get_item_info', lambda item_id: {
+            'Id': item_id,
+            'Name': 'Movie',
+            'Genres': ['Action'],
+            'GenreItems': [{'Name': 'Action', 'Id': 'genre-action'}],
+        })
+
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204)
+        )
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert len(updated_movies) == 1
+        assert updates[0][0] == 'movie1'
+        assert updates[0][1]['Genres'] == ['动作']
+
 
 class TestEmbyOperatorExtractTmdbid:
     """测试 extract_tmdbid_from_nfo 方法"""

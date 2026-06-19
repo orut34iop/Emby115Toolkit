@@ -126,8 +126,8 @@ class GenresTab(QWidget):
         user_name = self.edit_user.text().strip()
         server_type = self.selected_server_type()
 
-        if not server_url or not api_key or (server_type == 'emby' and not user_name):
-            QMessageBox.warning(self, "警告", "请先填写服务器地址、API Key；Emby 还需要填写用户名")
+        if not server_url or not api_key or not user_name:
+            QMessageBox.warning(self, "警告", "请先填写服务器地址、API Key 和用户名")
             return
 
         self.logger.info(f"开始更新流派，服务器类型: {server_type}")
