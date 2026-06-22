@@ -2,13 +2,14 @@
 
 # Emby115Toolkit
 
-针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows/Linux中运行.
+针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在 Windows / macOS / Linux 中运行。
+V2 WebUI / CLI 已支持 Windows、macOS 与 Linux；旧版 tkinter GUI 主要为 Windows 设计，macOS 用户可使用 V2 WebUI 或遗留的 `qt_main.py`。
 
 ## 我的环境
 
-- Windows系统 (Linux可用，Mac系统未测试)
+- Windows / Linux / macOS 系统
 - Python 3.x
-- Windows主机：挂载CloudDrive2, 并运行Emby Server
+- Windows 主机：挂载 CloudDrive2 并运行 Emby Server（macOS / Linux 请使用本地目录或兼容挂载方案）
 - 播放端推荐：Apple TV + Infuse播放器
 
 ## 主要功能
@@ -89,11 +90,11 @@
 
 下载代码到本地，然后 cd Emby115Toolkit 目录
 
-V2 WebUI（Windows）：
+V2 WebUI（Windows / macOS / Linux）：
 
 1. 安装依赖：`pip install -r requirements.txt`
 
-2. 一键启动后端并打开网页：双击 `start_webui.bat`
+2. 一键启动后端并打开网页：Windows 双击 `start_webui.bat`，macOS / Linux 执行 `./start_webui.sh`
 
 3. 或手动启动：`python main.py --serve-web`
 

@@ -1,7 +1,14 @@
-import tkinter as tk
-from tkinter import ttk, filedialog
-from tkinterdnd2 import DND_FILES
 import os
+
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog
+    from tkinterdnd2 import DND_FILES
+except (ModuleNotFoundError, ImportError):
+    tk = None
+    ttk = None
+    filedialog = None
+    DND_FILES = None
 
 
 class HistoryEntry:

@@ -1,4 +1,5 @@
 import os
+import sys
 
 import pytest
 
@@ -504,6 +505,7 @@ def test_cloud_library_clouddrive2_strict_fails_when_upload_task_failed(
     assert not (target / "Movie (2026)" / "movie.mkv").exists()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="WinError 50 retry behavior is Windows-specific")
 def test_cloud_library_directory_creation_retries_virtual_drive_winerror_50(mock_logger, monkeypatch):
     service = CloudScrapedLibraryService()
     attempts = {}

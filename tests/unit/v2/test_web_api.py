@@ -437,6 +437,7 @@ def test_symlink_capability_reports_developer_mode_requirement(monkeypatch):
 
 def test_non_dry_run_symlink_requires_developer_mode_when_symlink_unavailable(tmp_path, monkeypatch):
     monkeypatch.setattr(windows_admin, "can_create_symlink", lambda: False)
+    monkeypatch.setattr(windows_admin, "is_windows", lambda: True)
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()
@@ -460,6 +461,7 @@ def test_non_dry_run_symlink_requires_developer_mode_when_symlink_unavailable(tm
 
 def test_background_non_dry_run_symlink_requires_developer_mode_when_symlink_unavailable(tmp_path, monkeypatch):
     monkeypatch.setattr(windows_admin, "can_create_symlink", lambda: False)
+    monkeypatch.setattr(windows_admin, "is_windows", lambda: True)
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.mkdir()

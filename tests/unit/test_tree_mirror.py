@@ -2,6 +2,7 @@
 autosync/TreeMirror.py 单元测试
 """
 import os
+import sys
 import tempfile
 import logging
 
@@ -43,6 +44,7 @@ class TestReadFileWithEncodings:
         lines = mirror.read_file_with_encodings(str(f))
         assert lines == ["中文\n", "测试\n"]
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="mbcs encoding is Windows-only")
     def test_cp1252_always_succeeds(self, tmp_path):
         """
         验证 cp1252（单字节编码）可以解码任何字节序列。

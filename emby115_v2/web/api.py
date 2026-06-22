@@ -107,8 +107,8 @@ def create_app(access_token: str = "", host: str = "127.0.0.1", port: int = 8765
         return JSONResponse(
             status_code=403,
             content={
-                "detail": "当前 Windows 用户无法创建符号链接。请到系统设置中打开开发者模式后重试。",
-                "requires_developer_mode": True,
+                "detail": windows_admin.symlink_failure_message(),
+                "requires_developer_mode": windows_admin.is_windows() and not windows_admin.can_create_symlink(),
             },
         )
 

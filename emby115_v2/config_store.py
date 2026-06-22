@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,20 +26,41 @@ def default_config_path() -> Path:
     return Path(__file__).resolve().parents[1] / CONFIG_FILENAME
 
 
+def _default_working_dir() -> Path:
+    if platform.system() == "Windows":
+        return Path("C:\\working-emby")
+    return Path.home() / "Emby115Toolkit" / "working-emby"
+
+
+def _default_origin_dir() -> Path:
+    if platform.system() == "Windows":
+        return Path("D:\\115open\\tmp\\origin")
+    return Path.home() / "Emby115Toolkit" / "origin"
+
+
+def _default_cloud_target_dir() -> Path:
+    if platform.system() == "Windows":
+        return Path("D:\\115open\\tmp\\organized")
+    return Path.home() / "Emby115Toolkit" / "organized"
+
+
 def default_metadata_config() -> dict[str, Any]:
+    working = _default_working_dir()
+    origin = _default_origin_dir()
+    cloud = _default_cloud_target_dir()
     return {
         "path_pairs": [
             {
                 "enabled": True,
                 "name": "movies",
-                "source": "D:\\115open\\tmp\\origin\\movies",
-                "target": "C:\\working-emby\\movies",
+                "source": str(origin / "movies"),
+                "target": str(working / "movies"),
             },
             {
                 "enabled": True,
                 "name": "tvshows",
-                "source": "D:\\115open\\tmp\\origin\\tvshows",
-                "target": "C:\\working-emby\\tvshows",
+                "source": str(origin / "tvshows"),
+                "target": str(working / "tvshows"),
             },
         ],
         "symlink": {
@@ -86,7 +108,7 @@ def default_metadata_config() -> dict[str, Any]:
         },
         "metadata_output": {
             "media_type": "movies",
-            "library_path": "C:\\working-emby\\movies",
+            "library_path": str(working / "movies"),
             "write_nfo": True,
             "download_images": True,
             "download_episode_thumbs": True,
@@ -95,8 +117,12 @@ def default_metadata_config() -> dict[str, Any]:
             "auto_rename": True,
         },
         "metadata_libraries": [
-            {"enabled": True, "media_type": "movies", "library_path": "C:\\working-emby\\movies"},
-            {"enabled": True, "media_type": "tvshows", "library_path": "C:\\working-emby\\tvshows"},
+            {"enabled": True, "media_type": "movies", "library_path": str(working / "movies")},
+            {"enabled": True, "media_type": "tvshows", "library_path": str(working / "tvshows")},
+        ],
+        "cloud_libraries": [
+            {"enabled": True, "media_type": "movies", "source": str(working / "movies"), "target": str(cloud / "movies")},
+            {"enabled": True, "media_type": "tvshows", "source": str(working / "tvshows"), "target": str(cloud / "tvshows")},
         ],
         "cloud_library_output": {
             "wait_minutes": 60,

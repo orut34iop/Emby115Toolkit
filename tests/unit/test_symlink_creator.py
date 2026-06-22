@@ -2,6 +2,7 @@
 autosync/SymlinkCreator.py 单元测试
 """
 import os
+import sys
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -66,6 +67,7 @@ class TestCreateSymlink:
                 called_src = mock_symlink.call_args[0][0]
                 assert "D:\\real" in called_src
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows path replacement normalization")
     def test_path_replacement_normalizes_paths(self, temp_dir, mock_logger):
         creator = SymlinkCreator(
             source_folders=[temp_dir],

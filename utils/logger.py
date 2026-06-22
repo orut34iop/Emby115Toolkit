@@ -1,10 +1,14 @@
 import logging
-import tkinter as tk
 from logging.handlers import RotatingFileHandler
 import os
 import queue
 import threading
 from datetime import datetime
+
+try:
+    import tkinter as tk
+except ModuleNotFoundError:
+    tk = None
 
 class TextHandler(logging.Handler):
     """将日志输出到tkinter的Text控件"""
@@ -49,13 +53,13 @@ class TextHandler(logging.Handler):
             if messages:
                 def update_gui():
                     for msg, levelname in messages:
-                        self.text_widget.insert(tk.END, msg + '\n', levelname)
-                    self.text_widget.see(tk.END)
-                    self.text_widget.update_idletasks()  # 强制刷新GUI
-                
+                        self.text_widget.insert(tk.END if tk else "end", msg + '\n', levelname)
+                        self.text_widget.see(tk.END if tk else "end")
+                        self.text_widget.update_idletasks()  # 强制刷新GUI
+
                 # 立即安排GUI更新
                 self.text_widget.after_idle(update_gui)
-                
+
                 # 标记所有已处理的任务为完成
                 for _ in messages:
                     self.queue.task_done()
