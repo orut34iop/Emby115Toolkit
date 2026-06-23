@@ -3,7 +3,7 @@
 # Emby115Toolkit
 
 针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在 Windows / macOS / Linux 中运行。
-V2 WebUI / CLI 已支持 Windows、macOS 与 Linux；旧版 tkinter GUI 主要为 Windows 设计，macOS 用户可使用 V2 WebUI 或遗留的 `qt_main.py`。
+V2 WebUI / CLI 已支持 Windows、macOS 与 Linux；旧版 tkinter GUI 主要为 Windows 设计，macOS 用户可使用 V2 WebUI 或遗留的 `emby115_v1/qt_main.py`。
 
 ## 我的环境
 

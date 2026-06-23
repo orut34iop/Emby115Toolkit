@@ -1,0 +1,145 @@
+import os
+import tkinter as tk
+from tkinter import ttk, filedialog
+from tkinterdnd2 import DND_FILES
+from .base_tab import BaseTab
+from emby115_v1.utils.logger import setup_logger
+from emby115_v1.utils.config import Config
+from emby115_v1.emby.EmbyOperator import EmbyOperator
+
+class UpdateGenresTab(BaseTab):
+    def __init__(self, frame, log_dir):
+        super().__init__(frame, log_dir)
+        self.config = Config()
+        self.init_ui()
+        self.load_config()
+        self.logger.info("更新流派标签页初始化完成")
+        
+    def load_config(self):
+        """从配置文件加载设置"""
+        config = self.config.get('update_genres')
+        if config:   
+            # 加载服务器类型
+            self.server_type_var.set(config.get('server_type', 'emby'))
+
+            # 加载服务器 URL
+            if 'emby_url' in config:
+                self.emby_url_entry.delete(0, tk.END)
+                self.emby_url_entry.insert(0, config['emby_url'])
+                self.logger.info(f"加载服务器 URL: {config['emby_url']}")
+            
+            # 加载 API
+            if 'emby_api' in config:
+                self.emby_api_entry.delete(0, tk.END)
+                self.emby_api_entry.insert(0, config['emby_api'])
+                self.logger.info(f"加载 API: {config['emby_api']}")
+
+            # 加载用户名
+            if 'emby_username' in config:
+                self.emby_username_entry.delete(0, tk.END)
+                self.emby_username_entry.insert(0, config['emby_username'])
+                self.logger.info(f"加载用户名: {config['emby_username']}")
+
+
+    def save_config(self):
+        """保存当前设置到配置文件"""
+        # 更新配置
+        self.config.set('update_genres', 'emby_url', self.emby_url_entry.get().strip())
+        self.config.set('update_genres', 'emby_api', self.emby_api_entry.get().strip())
+        self.config.set('update_genres', 'emby_username', self.emby_username_entry.get().strip())
+        self.config.set('update_genres', 'server_type', self.server_type_var.get())
+        # 保存到文件
+        self.config.save()
+        self.logger.info("配置已保存")
+        
+    def init_ui(self):
+        # 使用说明
+        desc_label = ttk.Label(self.frame, text="使用说明: 把媒体库中的影剧英文流派名称转成中文")
+        desc_label.pack(fill='x', padx=5, pady=5)
+
+        # 服务器类型
+        server_type_frame = ttk.LabelFrame(self.frame, text="服务器类型", padding=(5, 5, 5, 5))
+        server_type_frame.pack(fill='x', padx=5, pady=5)
+
+        self.server_type_var = tk.StringVar(value='emby')
+        ttk.Radiobutton(
+            server_type_frame,
+            text="Emby",
+            variable=self.server_type_var,
+            value="emby",
+            command=self.save_config
+        ).pack(side='left', padx=5)
+        ttk.Radiobutton(
+            server_type_frame,
+            text="Jellyfin",
+            variable=self.server_type_var,
+            value="jellyfin",
+            command=self.save_config
+        ).pack(side='left', padx=5)
+        
+        # URL 输入框
+        emby_url_frame = ttk.LabelFrame(self.frame, text="服务器地址", padding=(5, 5, 5, 5))
+        emby_url_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.emby_url_entry = ttk.Entry(emby_url_frame)
+        self.emby_url_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_url_entry.bind('<FocusOut>', lambda e: self.save_config())
+        
+        # API 输入框
+        emby_api_frame = ttk.LabelFrame(self.frame, text="API Key", padding=(5, 5, 5, 5))
+        emby_api_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.emby_api_entry = ttk.Entry(emby_api_frame)
+        self.emby_api_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_api_entry.bind('<FocusOut>', lambda e: self.save_config())
+
+        # User Name 输入框
+        emby_username_frame = ttk.LabelFrame(self.frame, text="用户名", padding=(5, 5, 5, 5))
+        emby_username_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.emby_username_entry = ttk.Entry(emby_username_frame)
+        self.emby_username_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.emby_username_entry.bind('<FocusOut>', lambda e: self.save_config())
+        
+        # 操作按钮组
+        btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
+        btn_frame.pack(fill='x', padx=5, pady=5)
+        
+        update_genres_btn = ttk.Button(btn_frame, text="更新所有流派为中文", command=self.update_genres)
+        update_genres_btn.pack(side='left', padx=5)
+        
+        # 日志区域
+        self.log_frame, self.log_text = self.create_log_frame(self.frame)
+        self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # 设置日志系统
+        log_file = os.path.join(self.log_dir, 'update_genres.log')
+        self.logger = setup_logger('update_genres', self.log_text, log_file)
+
+    def update_genres(self):
+        server_url = self.emby_url_entry.get().strip()
+        api_key = self.emby_api_entry.get().strip()
+        user_name = self.emby_username_entry.get().strip()
+        server_type = self.server_type_var.get()
+        
+        if not server_url or not api_key or not user_name:
+            self.logger.warning("服务器地址、用户名或API密钥为空")
+            return
+        
+        self.logger.info(f"开始更新流派: 服务器类型={server_type}, URL={server_url}, 用户名={user_name}")
+            
+        embyOperator = EmbyOperator(
+            server_url=server_url,
+            api_key=api_key,
+            user_name=user_name,
+            server_type=server_type,
+            logger=self.logger  # 传递logger
+        )
+        
+        def on_check_complete(message):
+            self.logger.info("更新流派结束")
+        
+        try:
+            embyOperator.update_genress(on_check_complete)
+        except RuntimeError as e:
+            self.logger.error(str(e))

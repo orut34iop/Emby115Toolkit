@@ -1,0 +1,156 @@
+import tkinter as tk
+from tkinter import ttk, filedialog
+from tkinterdnd2 import DND_FILES
+import os
+from .base_tab import BaseTab
+from emby115_v1.utils.logger import setup_logger
+from emby115_v1.utils.config import Config
+from emby115_v1.utils.history_entry import HistoryEntry
+from emby115_v1.autosync.SymlinkDeleter import SymlinkDeleter
+from emby115_v1.emby.EmbyOperator import EmbyOperator
+
+class ManipulateFolderTab(BaseTab):
+    def __init__(self, frame, log_dir):
+        super().__init__(frame, log_dir)
+        self.config = Config()
+        self.init_ui()
+        self.load_config()
+        
+    def load_config(self):
+        """从配置文件加载设置"""
+        config = self.config.get('manipulate_folder')
+        if config:
+            # 加载目标文件夹
+            if 'target_folder' in config:
+                target_folder = config['target_folder']
+                target_folder = os.path.normpath(target_folder)
+                self.target_entry.delete(0, tk.END)
+                self.target_entry.insert(0, target_folder)
+                self.logger.info(f"加载目标文件夹: {target_folder}")
+    
+    def save_config(self):
+        """保存当前设置到配置文件"""
+        # 更新配置
+        target_folder = self.target_entry.get().strip()
+        target_folder = os.path.normpath(target_folder) # 规范化路径
+        self.config.set('manipulate_folder', 'target_folder', target_folder)
+        
+        # 保存到文件
+        self.config.save()
+        self.logger.info("配置已保存")
+
+    def validate_target_folder(self, path):
+        """验证目标文件夹路径"""
+        path = path.strip()
+        if not path:
+            return True
+        if not os.path.exists(path):
+            self.logger.warning("无效的路径")
+            return False
+        if not os.path.isdir(path):
+            self.logger.warning("所选路径不是目录")
+            return False
+        return True
+        
+    def init_ui(self):
+        # 使用说明
+        desc_label = ttk.Label(self.frame, text="使用说明: 选择或拖拽文件夹到输入框")
+        desc_label.pack(fill='x', padx=5, pady=5)
+        
+        # 目标文件夹选择（带历史记录）
+        self.target_entry = HistoryEntry(
+            self.frame, 
+            self.config, 
+            'manipulate_folder', 
+            'target_folder',
+            label_text="目标文件夹"
+        )
+        self.target_entry.pack(fill='x', padx=5, pady=5)
+        self.target_entry.on_change = lambda path: self.save_config()
+        
+        # 操作按钮组
+        btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
+        btn_frame.pack(fill='x', padx=5, pady=5)
+        
+        delete_symlink_btn = ttk.Button(btn_frame, text="删除软链接", command=self.delete_symlink)
+        delete_symlink_btn.pack(side='left', padx=5)
+        
+        delete_videos_btn = ttk.Button(btn_frame, text="删除所有视频文件", command=self.delete_all_videos)
+        delete_videos_btn.pack(side='left', padx=5)
+        
+        check_metadata_btn = ttk.Button(btn_frame, text="检查刮削数据完整性", command=self.check_metadata_integrity)
+        check_metadata_btn.pack(side='left', padx=5)
+        
+        # 日志区域
+        self.log_frame, self.log_text = self.create_log_frame(self.frame)
+        self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        # 设置日志系统
+        log_file = os.path.join(self.log_dir, 'manipulate_folder.log')
+        self.logger = setup_logger('manipulate_folder', self.log_text, log_file)
+        self.logger.info("文件夹操作标签页初始化完成")
+        
+    def on_target_drop(self, event):
+        """处理目标文件夹拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
+
+    def validate_and_save_target(self):
+        """验证并保存目标文件夹路径（HistoryEntry自动保存）"""
+        pass
+
+    def delete_symlink(self):
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
+
+        # 获取路径
+        if not target_folder:
+            self.logger.info("提示", "目标文件夹路径为空")
+            return
+
+        self.logger.info(f"开始删除软链接: {target_folder}")
+
+        deleter = SymlinkDeleter(
+            target_folder=target_folder,
+            logger=self.logger  # 传递logger
+        )
+
+        # 运行软链接删除
+        time_taken, message = deleter.run()
+        
+        # 显示总结信息
+        summary = (
+            f"删除软链接完成\n"
+            f"总耗时: {time_taken:.2f} 秒\n"
+        )
+        self.logger.info(summary)
+
+    def delete_all_videos(self):
+        """删除所有视频文件"""
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
+        
+        if not target_folder:
+            self.logger.info("提示: 目标文件夹路径为空")
+            return
+            
+        self.logger.info(f"开始删除视频文件: {target_folder}")
+
+        embyOperator = EmbyOperator(
+            logger=self.logger  # 传递logger
+        )
+        embyOperator.clear_files_by_type(target_folder, 'VIDEO')
+
+
+    def check_metadata_integrity(self):
+        """检查刮削数据完整性"""
+        target_folder = self.config.get('manipulate_folder', 'target_folder')
+        
+        if not target_folder:
+            self.logger.info("提示: 目标文件夹路径为空")
+            return
+            
+        self.logger.info(f"开始检查刮削数据完整性: {target_folder}")
+
+        embyOperator = EmbyOperator(
+            logger=self.logger  # 传递logger
+        )
+        embyOperator.check_metadata_integrity(target_folder)
+

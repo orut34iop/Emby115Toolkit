@@ -36,7 +36,7 @@ from tkinter import ttk
 from tkinterdnd2 import TkinterDnD
 import os
 import platform  # 添加在文件开头的import部分
-from tabs import (
+from emby115_v1.tabs import (
     ExportSymlinkTab,
     ManipulateFolderTab,
     MergeFilesTab,
@@ -44,8 +44,8 @@ from tabs import (
     UpdateGenresTab,
     Mirror115TreeTab  # 添加新的导入
 )
-from utils.logger import setup_logger  # 导入日志设置函数
-from utils.config import Config  # 导入配置管理类
+from emby115_v1.utils.logger import setup_logger  # 导入日志设置函数
+from emby115_v1.utils.config import Config  # 导入配置管理类
 
 class EmbyToolkit:
     def __init__(self, root):

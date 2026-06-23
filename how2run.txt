@@ -16,7 +16,7 @@ start_webui.bat
 uv run python main.py --serve-web
 
 ## 5. 或运行 PyQt5 版本（macOS）
-uv run python qt_main.py
+uv run python emby115_v1/qt_main.py
 
 # ---
 # 旧方式（pip 全局安装）

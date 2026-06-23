@@ -44,7 +44,7 @@ Version 1.x legacy desktop entry points still exist:
 - **Windows (tkinter legacy):** `python main.py`
   - Uses `tkinterdnd2` for drag-and-drop.
   - Creating symlinks requires Administrator privileges on Windows.
-- **macOS (PyQt5 legacy/incomplete):** `python qt_main.py`
+- **macOS (PyQt5 legacy/incomplete):** `python emby115_v1/qt_main.py`
   - Uses native PyQt5 drag-and-drop.
   - No Administrator privileges needed for symlinks.
 
@@ -132,14 +132,14 @@ Current V2 action names:
 
 Version 1.x maintains two GUI layers:
 
-- `tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
-- `qt_gui/` — PyQt5 tab implementations used by `qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
+- `emby115_v1/tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
+- `emby115_v1/qt_gui/` — PyQt5 tab implementations used by `emby115_v1/qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
 
-Do not add V2 features to `tabs/` or `qt_gui/`. They are legacy references only unless the user explicitly asks to fix 1.x behavior.
+Do not add V2 features to `emby115_v1/tabs/` or `emby115_v1/qt_gui/`. They are legacy references only unless the user explicitly asks to fix 1.x behavior.
 
-### Legacy Backend Modules (`autosync/`)
+### Legacy Backend Modules (`emby115_v1/autosync/`)
 
-Version 1.x business logic lives in `autosync/` and is shared by legacy GUIs:
+Version 1.x business logic lives in `emby115_v1/autosync/` and is shared by legacy GUIs:
 
 - `SymlinkCreator.py` — Multi-threaded symlink/strm creation with optional path replacement.
 - `MetadataCopyer.py` — Copies metadata files (nfo, posters, subtitles) alongside symlinks.
@@ -149,11 +149,11 @@ Version 1.x business logic lives in `autosync/` and is shared by legacy GUIs:
 
 Some older documentation may mention modules such as `SymlinkChecker.py`, `SymlinkDirChecker.py`, `AutoUploader.py`, or `MedadataChecker.py`; these files are not present in the current workspace.
 
-### Emby Integration (`emby/`)
+### Emby Integration (`emby115_v1/emby/`)
 
 - `EmbyOperator.py` — Single module wrapping Emby Server API calls. Handles duplicate checking (by TMDB ID), version merging, and genre translation (English → Chinese).
 
-### Shared Utilities (`utils/`)
+### Shared Utilities (`emby115_v1/utils/`)
 
 - `config.py` — Singleton `Config` class managing `config.yaml`. Uses a recursive merge strategy so new default keys are automatically added to existing user configs. Resolves `config_dir` to the EXE directory when `sys.frozen` is True, otherwise the project root.
 - `logger.py` — Thread-safe `setup_logger()` that outputs to both a tkinter `Text` widget (via a queued batch handler) and rotating log files.
