@@ -48,3 +48,12 @@ Thumbs.db
 
 config.yaml
 emby115_v2.config.json
+
+# Claw Code local artifacts
+.claw.json
+.clawd-todos.json
+.claw/settings.local.json
+.claw/sessions/
+.clawhip/
+.sandbox-home/
+.sandbox-tmp/

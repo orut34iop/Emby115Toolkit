@@ -107,7 +107,6 @@ class MainWindow(QMainWindow):
         """初始化标签页"""
         from .export_tab import ExportTab
         from .folder_tab import FolderTab
-        from .duplicate_tab import DuplicateTab
         from .merge_tab import MergeTab
         from .version_tab import VersionTab
         from .genres_tab import GenresTab
@@ -121,21 +120,17 @@ class MainWindow(QMainWindow):
         self.folder_tab = FolderTab(self.log_dir)
         self.tabs.addTab(self.folder_tab, "文件夹操作")
 
-        # Emby影剧查重
-        self.duplicate_tab = DuplicateTab(self.log_dir)
-        self.tabs.addTab(self.duplicate_tab, "Emby影剧查重")
-
         # 文件合并
         self.merge_tab = MergeTab(self.log_dir)
         self.tabs.addTab(self.merge_tab, "文件合并")
 
-        # Emby合并版本
+        # 合并版本
         self.version_tab = VersionTab(self.log_dir)
-        self.tabs.addTab(self.version_tab, "Emby合并版本")
+        self.tabs.addTab(self.version_tab, "合并版本")
 
-        # Emby更新流派
+        # 更新流派
         self.genres_tab = GenresTab(self.log_dir)
-        self.tabs.addTab(self.genres_tab, "Emby更新流派")
+        self.tabs.addTab(self.genres_tab, "更新流派")
 
         # 115目录树镜像
         self.mirror_tab = MirrorTab(self.log_dir)
@@ -148,6 +143,22 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """关闭事件"""
+        if (
+            hasattr(self, "export_tab")
+            and hasattr(self.export_tab, "is_task_running")
+            and self.export_tab.is_task_running()
+        ):
+            reply = QMessageBox.question(
+                self,
+                "任务正在运行",
+                "导出/全同步任务正在运行，关闭会中断任务，是否继续？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+
         # 保存配置
         self.config.save()
         event.accept()

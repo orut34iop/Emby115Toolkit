@@ -5,19 +5,21 @@
 
 import os
 import sys
+import threading
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QTextEdit, QSpinBox,
     QCheckBox, QGroupBox, QFileDialog, QMessageBox,
     QListWidget, QListWidgetItem
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
 from autosync.SymlinkCreator import SymlinkCreator
 from autosync.MetadataCopyer import MetadataCopyer
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class DropLineEdit(QLineEdit):
@@ -53,9 +55,9 @@ class DropLineEdit(QLineEdit):
                 files.append(path)
 
         if files:
-            self.files_dropped.emit(files)
             # 设置第一个文件为文本
             self.setText(files[0])
+            self.files_dropped.emit(files)
 
 
 class DropListWidget(QListWidget):
@@ -101,21 +103,26 @@ class DropListWidget(QListWidget):
                 files.append(path)
 
         if files:
-            self.files_dropped.emit(files)
             for f in files:
                 item = QListWidgetItem(f)
                 self.addItem(item)
+            self.files_dropped.emit(files)
 
 
 class ExportTab(QWidget):
     """导出软链接标签页"""
 
+    task_finished = pyqtSignal(str)
+
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._active_task = None
+        self._loading_config = False
         self.init_ui()
         self.load_config()
+        self.task_finished.connect(self._on_task_finished)
 
     def init_ui(self):
         """初始化界面"""
@@ -152,6 +159,7 @@ class ExportTab(QWidget):
         target_layout.addWidget(QLabel("目标文件夹："))
         self.target_edit = DropLineEdit()
         self.target_edit.files_dropped.connect(self.on_target_dropped)
+        self.target_edit.textChanged.connect(self.save_config)
         target_layout.addWidget(self.target_edit)
 
         self.btn_browse_target = QPushButton("浏览")
@@ -260,6 +268,11 @@ class ExportTab(QWidget):
         btn_layout.addWidget(self.btn_download_meta)
 
         btn_layout.addStretch()
+
+        self.chk_overwrite_meta = QCheckBox("覆盖nfo和图片文件")
+        self.chk_overwrite_meta.stateChanged.connect(self.save_config)
+        btn_layout.addWidget(self.chk_overwrite_meta)
+
         layout.addLayout(btn_layout)
 
         # === 日志区域 ===
@@ -278,31 +291,8 @@ class ExportTab(QWidget):
 
     def create_logger(self):
         """创建日志处理器"""
-        import logging
-        from logging import Handler
-
-        class QTextEditHandler(Handler):
-            def __init__(self, widget):
-                super().__init__()
-                self.widget = widget
-
-            def emit(self, record):
-                msg = self.format(record)
-                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
-                self.widget.append(msg)
-
-        # 设置日志
-        import logging
-        logger = logging.getLogger('export_symlink')
-        logger.setLevel(logging.INFO)
-
-        handler = QTextEditHandler(self.log_text)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
-                                     datefmt='%Y-%m-%d %H:%M:%S')
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-        return logger
+        log_file = os.path.join(self.log_dir, 'export_symlink.log')
+        return setup_qt_logger('export_symlink', self.log_text, log_file)
 
     def on_link_folders_dropped(self, files):
         """链接文件夹被拖拽"""
@@ -337,41 +327,49 @@ class ExportTab(QWidget):
 
     def load_config(self):
         """从配置文件加载设置"""
-        # 加载链接文件夹
-        link_folders = self.config.get('export_symlink', 'link_folders', [])
-        self.link_list.clear()
-        for folder in link_folders:
-            if folder:
-                self.link_list.addItem(QListWidgetItem(folder))
+        self._loading_config = True
+        try:
+            # 加载链接文件夹
+            link_folders = self.config.get('export_symlink', 'link_folders', [])
+            self.link_list.clear()
+            for folder in link_folders:
+                if folder:
+                    self.link_list.addItem(QListWidgetItem(folder))
 
-        # 加载目标文件夹
-        target = self.config.get('export_symlink', 'target_folder', '')
-        self.target_edit.setText(target)
+            # 加载目标文件夹
+            target = self.config.get('export_symlink', 'target_folder', '')
+            self.target_edit.setText(target)
 
-        # 加载其他设置
-        self.spin_threads.setValue(self.config.get('export_symlink', 'thread_count', 4))
-        self.spin_interval.setValue(self.config.get('export_symlink', 'op_interval_sec', 4))
-        self.chk_protect.setChecked(self.config.get('export_symlink', 'enable_115_protect', False))
-        self.chk_replace.setChecked(self.config.get('export_symlink', 'enable_replace_path', False))
-        self.chk_tvshow.setChecked(self.config.get('export_symlink', 'only_tvshow_nfo', True))
+            # 加载其他设置
+            self.spin_threads.setValue(self.config.get('export_symlink', 'thread_count', 4))
+            self.spin_interval.setValue(self.config.get('export_symlink', 'op_interval_sec', 4))
+            self.chk_protect.setChecked(self.config.get('export_symlink', 'enable_115_protect', False))
+            self.chk_replace.setChecked(self.config.get('export_symlink', 'enable_replace_path', False))
+            self.chk_tvshow.setChecked(self.config.get('export_symlink', 'only_tvshow_nfo', True))
+            self.chk_overwrite_meta.setChecked(self.config.get('export_symlink', 'overwrite_metadata', False))
 
-        # 路径替换
-        self.original_edit.setText(self.config.get('export_symlink', 'original_path', ''))
-        self.replace_edit.setText(self.config.get('export_symlink', 'replace_path', ''))
+            # 路径替换
+            self.original_edit.setText(self.config.get('export_symlink', 'original_path', ''))
+            self.replace_edit.setText(self.config.get('export_symlink', 'replace_path', ''))
 
-        # 后缀
-        link_suffixes = self.config.get('export_symlink', 'link_suffixes', [])
-        if link_suffixes:
-            self.edit_link_suffix.setText(';'.join(link_suffixes))
+            # 后缀
+            link_suffixes = self.config.get('export_symlink', 'link_suffixes', [])
+            if link_suffixes:
+                self.edit_link_suffix.setText(';'.join(link_suffixes))
 
-        meta_suffixes = self.config.get('export_symlink', 'meta_suffixes', [])
-        if meta_suffixes:
-            self.edit_meta_suffix.setText(';'.join(meta_suffixes))
+            meta_suffixes = self.config.get('export_symlink', 'meta_suffixes', [])
+            if meta_suffixes:
+                self.edit_meta_suffix.setText(';'.join(meta_suffixes))
+        finally:
+            self._loading_config = False
 
         self.logger.info("配置加载完成")
 
     def save_config(self):
         """保存设置到配置文件"""
+        if self._loading_config:
+            return
+
         # 获取链接文件夹列表
         link_folders = []
         for i in range(self.link_list.count()):
@@ -386,6 +384,7 @@ class ExportTab(QWidget):
         self.config.set('export_symlink', 'enable_115_protect', self.chk_protect.isChecked())
         self.config.set('export_symlink', 'enable_replace_path', self.chk_replace.isChecked())
         self.config.set('export_symlink', 'only_tvshow_nfo', self.chk_tvshow.isChecked())
+        self.config.set('export_symlink', 'overwrite_metadata', self.chk_overwrite_meta.isChecked())
         self.config.set('export_symlink', 'original_path', self.original_edit.text())
         self.config.set('export_symlink', 'replace_path', self.replace_edit.text())
 
@@ -400,12 +399,55 @@ class ExportTab(QWidget):
 
     def sync_all(self):
         """一键全同步"""
-        self.logger.info("=== 开始全同步操作 ===")
-        self.create_symlink()
+        return run_with_error_dialog(self, self.logger, "全同步", self._sync_all)
 
-    def create_symlink(self):
-        """创建软链接"""
-        # 获取配置
+    def _sync_all(self):
+        """一键全同步"""
+        config = self._collect_export_config("all")
+        if not config:
+            return
+
+        def task():
+            self.logger.info("=== 开始全同步操作 ===")
+            errors = []
+
+            def run_child(child_name, child_task):
+                try:
+                    self.logger.info(f"=== {child_name}任务启动 ===")
+                    child_task(config)
+                    self.logger.info(f"=== {child_name}任务完成 ===")
+                except Exception as e:
+                    errors.append((child_name, e))
+                    self.logger.exception(f"{child_name}执行异常: {e}")
+
+            child_threads = [
+                threading.Thread(
+                    target=run_child,
+                    args=("创建软链接", self._run_symlink_create),
+                    daemon=True,
+                ),
+                threading.Thread(
+                    target=run_child,
+                    args=("下载元数据", self._run_metadata_copy),
+                    daemon=True,
+                ),
+            ]
+
+            for child_thread in child_threads:
+                child_thread.start()
+
+            for child_thread in child_threads:
+                child_thread.join()
+
+            if errors:
+                failed_tasks = "、".join(name for name, _ in errors)
+                raise RuntimeError(f"全同步子任务失败: {failed_tasks}")
+
+            self.logger.info("=== 全同步操作完成 ===")
+
+        self._start_background_task("全同步", task)
+
+    def _collect_export_config(self, mode):
         source_folders = []
         for i in range(self.link_list.count()):
             item = self.link_list.item(i)
@@ -416,38 +458,130 @@ class ExportTab(QWidget):
 
         if not source_folders:
             QMessageBox.warning(self, "警告", "请先添加源文件夹")
-            return
+            return None
 
         if not target_folder:
             QMessageBox.warning(self, "警告", "请先设置目标文件夹")
-            return
+            return None
 
-        # 创建软链接
-        soft_link_extensions = tuple(
+        link_extensions = tuple(
             s.strip() for s in self.edit_link_suffix.text().split(';') if s.strip()
         )
+        meta_extensions = tuple(
+            s.strip() for s in self.edit_meta_suffix.text().split(';') if s.strip()
+        )
 
+        if mode in ("link", "all") and not link_extensions:
+            QMessageBox.warning(self, "警告", "请先设置软链接后缀")
+            return None
+
+        if mode in ("metadata", "all") and not meta_extensions:
+            QMessageBox.warning(self, "警告", "请先设置元数据后缀")
+            return None
+
+        return {
+            "source_folders": source_folders,
+            "target_folder": target_folder,
+            "link_extensions": link_extensions,
+            "meta_extensions": meta_extensions,
+            "thread_count": self.spin_threads.value(),
+            "enable_115_protect": self.chk_protect.isChecked(),
+            "op_interval_sec": self.spin_interval.value(),
+            "enable_replace_path": self.chk_replace.isChecked(),
+            "original_path": self.original_edit.text(),
+            "replace_path": self.replace_edit.text(),
+            "only_tvshow_nfo": self.chk_tvshow.isChecked(),
+            "overwrite_metadata": self.chk_overwrite_meta.isChecked(),
+        }
+
+    def _set_buttons_enabled(self, enabled):
+        self.btn_sync_all.setEnabled(enabled)
+        self.btn_create_link.setEnabled(enabled)
+        self.btn_download_meta.setEnabled(enabled)
+        self.chk_overwrite_meta.setEnabled(enabled)
+        self.btn_add_link.setEnabled(enabled)
+        self.btn_clear_link.setEnabled(enabled)
+        self.btn_browse_target.setEnabled(enabled)
+
+    def _start_background_task(self, task_name, task):
+        if self._active_task and self._active_task.is_alive():
+            self.logger.warning("已有任务正在运行，请等待完成后再试")
+            return
+
+        self._set_buttons_enabled(False)
+        self.logger.info(f"{task_name}已在后台启动，界面可继续响应")
+
+        def run_task():
+            try:
+                task()
+            except Exception as e:
+                self.logger.exception(f"{task_name}执行异常: {e}")
+            finally:
+                self.task_finished.emit(task_name)
+
+        self._active_task = threading.Thread(target=run_task, daemon=True)
+        self._active_task.start()
+
+    def is_task_running(self):
+        return bool(self._active_task and self._active_task.is_alive())
+
+    def _on_task_finished(self, task_name):
+        self._set_buttons_enabled(True)
+        self.logger.info(f"{task_name}后台任务结束")
+
+    def _run_symlink_create(self, config):
         self.logger.info("开始创建软链接...")
 
         creator = SymlinkCreator(
-            source_folders=source_folders,
-            target_folder=target_folder,
-            allowed_extensions=soft_link_extensions,
-            num_threads=self.spin_threads.value(),
-            enable_115_protect=self.chk_protect.isChecked(),
-            op_interval_sec=self.spin_interval.value(),
-            enable_replace_path=self.chk_replace.isChecked(),
-            original_path=self.original_edit.text(),
-            replace_path=self.replace_edit.text(),
+            source_folders=config["source_folders"],
+            target_folder=config["target_folder"],
+            allowed_extensions=config["link_extensions"],
+            num_threads=config["thread_count"],
+            enable_115_protect=config["enable_115_protect"],
+            op_interval_sec=config["op_interval_sec"],
+            enable_replace_path=config["enable_replace_path"],
+            original_path=config["original_path"],
+            replace_path=config["replace_path"],
+            only_tvshow_nfo=config["only_tvshow_nfo"],
             logger=self.logger
         )
+        creator.run()
 
-        def on_complete(message):
-            self.logger.info(message)
+    def _run_metadata_copy(self, config):
+        self.logger.info("开始下载元数据...")
+        copyer = MetadataCopyer(
+            source_folders=config["source_folders"],
+            target_folder=config["target_folder"],
+            allowed_extensions=config["meta_extensions"],
+            num_threads=config["thread_count"],
+            only_tvshow_nfo=config["only_tvshow_nfo"],
+            overwrite_existing=config["overwrite_metadata"],
+            logger=self.logger
+        )
+        thread = copyer.run(lambda message: self.logger.info(message))
+        if thread:
+            thread.join()
 
-        creator.run(on_complete)
+    def create_symlink(self):
+        """创建软链接"""
+        return run_with_error_dialog(self, self.logger, "创建软链接", self._create_symlink)
+
+    def _create_symlink(self):
+        """创建软链接"""
+        config = self._collect_export_config("link")
+        if not config:
+            return
+
+        self._start_background_task("创建软链接", lambda: self._run_symlink_create(config))
 
     def download_metadata(self):
         """下载元数据"""
-        self.logger.info("开始下载元数据...")
-        # 实现下载元数据逻辑
+        return run_with_error_dialog(self, self.logger, "下载元数据", self._download_metadata)
+
+    def _download_metadata(self):
+        """下载元数据"""
+        config = self._collect_export_config("metadata")
+        if not config:
+            return
+
+        self._start_background_task("下载元数据", lambda: self._run_metadata_copy(config))

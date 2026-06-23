@@ -13,6 +13,8 @@ from PyQt5.QtCore import Qt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import Config
+from autosync.TreeMirror import TreeMirror
+from qt_gui.qt_utils import run_with_error_dialog, setup_qt_logger
 
 
 class DropLineEdit(QLineEdit):
@@ -103,6 +105,29 @@ class MirrorTab(QWidget):
 
         layout.addStretch()
 
+        self.logger = setup_qt_logger(
+            'mirror_115_tree',
+            self.log_text,
+            os.path.join(self.log_dir, 'mirror_115_tree.log')
+        )
+        self.load_config()
+        self.tree_edit.textChanged.connect(self.save_config)
+        self.export_edit.textChanged.connect(self.save_config)
+        self.chk_fix_garbled.stateChanged.connect(self.save_config)
+
+    def load_config(self):
+        self.tree_edit.setText(self.config.get('mirror_115_tree', 'tree_file', ''))
+        self.export_edit.setText(self.config.get('mirror_115_tree', 'export_folder', ''))
+        self.chk_fix_garbled.setChecked(
+            self.config.get('mirror_115_tree', 'fix_garbled_text', False)
+        )
+
+    def save_config(self):
+        self.config.set('mirror_115_tree', 'tree_file', self.tree_edit.text().strip())
+        self.config.set('mirror_115_tree', 'export_folder', self.export_edit.text().strip())
+        self.config.set('mirror_115_tree', 'fix_garbled_text', self.chk_fix_garbled.isChecked())
+        self.config.save()
+
     def browse_tree_file(self):
         file, _ = QFileDialog.getOpenFileName(self, "选择树文件", "", "文本文件 (*.txt);;所有文件 (*)")
         if file:
@@ -114,6 +139,9 @@ class MirrorTab(QWidget):
             self.export_edit.setText(folder)
 
     def start_mirror(self):
+        return run_with_error_dialog(self, self.logger, "115目录树镜像", self._start_mirror)
+
+    def _start_mirror(self):
         tree_file = self.tree_edit.text()
         export_folder = self.export_edit.text()
 
@@ -125,7 +153,18 @@ class MirrorTab(QWidget):
             QMessageBox.warning(self, "警告", "请先选择导出文件夹")
             return
 
-        self.log_text.append(f"开始镜像...")
-        self.log_text.append(f"树文件: {tree_file}")
-        self.log_text.append(f"导出到: {export_folder}")
-        # 实际镜像逻辑在这里实现
+        if not os.path.isdir(export_folder):
+            QMessageBox.warning(self, "警告", "请选择有效的导出文件夹")
+            return
+
+        self.logger.info(f"开始镜像...")
+        self.logger.info(f"树文件: {tree_file}")
+        self.logger.info(f"导出到: {export_folder}")
+
+        mirror = TreeMirror(
+            tree_file=tree_file,
+            export_folder=export_folder,
+            fix_garbled=self.chk_fix_garbled.isChecked(),
+            logger=self.logger
+        )
+        mirror.run(lambda message: self.logger.info(message))

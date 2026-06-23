@@ -39,7 +39,6 @@ import platform  # 添加在文件开头的import部分
 from tabs import (
     ExportSymlinkTab,
     ManipulateFolderTab,
-    CheckDuplicateTab,
     MergeFilesTab,
     MergeVersionTab,
     UpdateGenresTab,
@@ -69,10 +68,9 @@ class EmbyToolkit:
         self.tabs = {
             "导出软链接": ttk.Frame(self.notebook),
             "文件夹操作": ttk.Frame(self.notebook),
-            "emby影剧查重": ttk.Frame(self.notebook),
             "文件合并": ttk.Frame(self.notebook),
-            "emby合并版本": ttk.Frame(self.notebook),
-            "emby更新流派": ttk.Frame(self.notebook),
+            "合并版本": ttk.Frame(self.notebook),
+            "更新流派": ttk.Frame(self.notebook),
             "115目录树镜像": ttk.Frame(self.notebook)  # 添加新的tab页
         }
         
@@ -101,10 +99,9 @@ class EmbyToolkit:
         # 为每个标签页创建对应的类实例
         ExportSymlinkTab(self.tabs["导出软链接"], self.log_dir)
         ManipulateFolderTab(self.tabs["文件夹操作"], self.log_dir)
-        CheckDuplicateTab(self.tabs["emby影剧查重"], self.log_dir)
         MergeFilesTab(self.tabs["文件合并"], self.log_dir)
-        MergeVersionTab(self.tabs["emby合并版本"], self.log_dir)
-        UpdateGenresTab(self.tabs["emby更新流派"], self.log_dir)
+        MergeVersionTab(self.tabs["合并版本"], self.log_dir)
+        UpdateGenresTab(self.tabs["更新流派"], self.log_dir)
         Mirror115TreeTab(self.tabs["115目录树镜像"], self.log_dir)  # 添加新的tab页初始化
         self.logger.info("所有选项卡初始化完成")
 

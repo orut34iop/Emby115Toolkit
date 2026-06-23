@@ -1,4 +1,5 @@
 import os
+import os
 import time
 import threading
 import logging
@@ -9,19 +10,27 @@ from utils.logger import setup_logger
 from utils.listdir import list_files
 
 class TreeMirror:
-    def __init__(self, tree_file: str, export_folder: str,fix_garbled = False, logger=None):
+    def __init__(self, tree_file: str, export_folder: str, fix_garbled=False, fix_garbled_text=False, logger=None):
+        """
+        初始化 TreeMirror
+        :param tree_file: 目录树文件路径
+        :param export_folder: 导出文件夹路径
+        :param fix_garbled: 修复乱码（兼容旧参数名）
+        :param fix_garbled_text: 修复乱码（测试使用的参数名）
+        :param logger: 日志记录器
+        """
         self.tree_file = tree_file
         self.export_folder = export_folder
-        self.fix_garbled = fix_garbled
-        self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
+        self.fix_garbled = fix_garbled or fix_garbled_text
+        self.fix_garbled_text = self.fix_garbled  # 兼容测试使用的属性名
+        self.logger = logger or logging.getLogger(__name__)
+        
+        # 停止标志
+        self.stop_flag = threading.Event()
 
-    def replace_special_chars(self,path: str) -> str:
+    def replace_special_chars(self, path: str) -> str:
         """
         替换路径中的特殊字符
-        Args:
-            path: 原始路径
-        Returns:
-            处理后的路径
         """
         if '*' in path:
             new_path = path.replace('*', 's')
@@ -29,15 +38,9 @@ class TreeMirror:
             return new_path
         return path
 
-    def read_file_with_encodings(self,file_path: str) -> List[str]:
+    def read_file_with_encodings(self, file_path: str) -> List[str]:
         """
         尝试使用不同的编码读取文件
-        Args:
-            file_path: 文件路径
-        Returns:
-            文件内容行列表
-        Raises:
-            UnicodeDecodeError: 当所有编码都无法正确读取文件时
         """
         encodings = ['utf-8', 'gbk', 'cp1252', 'mbcs', 'gb2312', 'utf-16']
         
@@ -51,290 +54,206 @@ class TreeMirror:
         self.logger.error(f"无法使用以下编码读取文件: {encodings}")
         raise UnicodeDecodeError("read_file_with_encodings", file_path, 0, 0, "无法使用以下编码读取文件")
 
-    def parse_lines_to_tuples(self,file_path: str) -> List[Tuple[int, str]]:
+    def parse_tree(self) -> list:
         """
-        解析文件内容为层级和名称的元组列表
-        Args:
-            file_path: 要解析的文件路径
-        Returns:
-            包含(层级,名称)元组的列表
+        解析目录树文件，返回结构列表
+        :return: 包含 name, is_dir, depth 的字典列表
         """
-        tuples_list = []
-        try:
-            lines = self.read_file_with_encodings(file_path)
-        except UnicodeDecodeError as e:
-            self.logger.error(f"Error reading file: {e}")
-            return []
+        result = []
         
+        if not os.path.exists(self.tree_file):
+            return result
+        
+        try:
+            lines = self.read_file_with_encodings(self.tree_file)
+        except UnicodeDecodeError:
+            return result
+        
+        # 先收集所有原始条目
+        raw_items = []
         for line in lines:
-            line = line.strip()
+            line = line.rstrip('\n').rstrip('\r')
+            if not line.strip():
+                continue
+            
+            # 解析层级
+            depth = 0
+            name = line.strip()
+            
             if line.startswith('|——'):
-                level = 1
-                name = line[3:].strip()  # 修复拼写错误
+                depth = 1
+                name = line[3:].strip()
             elif line.startswith('| |-'):
-                level = 2
+                depth = 2
                 name = line[4:].strip()
             elif line.startswith('| | |-'):
-                level = 3
+                depth = 3
                 name = line[6:].strip()
             elif line.startswith('| | | |-'):
-                level = 4
+                depth = 4
                 name = line[8:].strip()
             elif line.startswith('| | | | |-'):
-                level = 5
+                depth = 5
                 name = line[10:].strip()
             elif line.startswith('| | | | | |-'):
-                level = 6
+                depth = 6
                 name = line[12:].strip()
             elif line.startswith('| | | | | | |-'):
-                level = 7
+                depth = 7
                 name = line[14:].strip()
             elif line.startswith('| | | | | | | |-'):
-                level = 8
+                depth = 8
                 name = line[16:].strip()
             elif line.startswith('| | | | | | | | |-'):
-                level = 9
+                depth = 9
                 name = line[18:].strip()
             elif line.startswith('| | | | | | | | | |-'):
-                level = 10
+                depth = 10
                 name = line[20:].strip()
             else:
+                depth = 0
+                name = line.strip()
+            
+            if not name:
                 continue
-            tuples_list.append((level, name))
+            
+            # 修复乱码
+            if self.fix_garbled and '*' in name:
+                name = name.replace('*', 's')
+            
+            raw_items.append({'name': name, 'depth': depth})
         
-        return tuples_list
+        # 二次遍历：如果某个条目后面有更深层的条目，则它是目录
+        for i, item in enumerate(raw_items):
+            name = item['name']
+            depth = item['depth']
+            
+            # 检查是否有子项
+            has_children = False
+            if i < len(raw_items) - 1:
+                next_depth = raw_items[i + 1]['depth']
+                if next_depth > depth:
+                    has_children = True
+            
+            # 如果有子项，一定是目录；否则根据扩展名判断
+            is_dir = has_children or not re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name)
+            
+            result.append({
+                'name': name,
+                'is_dir': is_dir,
+                'depth': depth
+            })
+        
+        return result
+
+    def create_structure(self, tree_data: list, callback=None) -> None:
+        """
+        根据解析的树数据创建目录结构
+        :param tree_data: parse_tree 返回的数据
+        :param callback: 回调函数
+        """
+        def send_message(msg):
+            self.logger.info(msg)
+            if callback:
+                callback(msg)
+        
+        if not tree_data:
+            send_message("树数据为空")
+            return
+        
+        os.makedirs(self.export_folder, exist_ok=True)
+        
+        # 使用栈来跟踪当前路径
+        path_stack = [self.export_folder]
+        
+        # 如果第一个条目是根目录（depth=0），跳过它，其子项直接放在 export_folder 下
+        start_index = 0
+        if tree_data and tree_data[0]['depth'] == 0:
+            start_index = 1
+        
+        for i, item in enumerate(tree_data):
+            if i < start_index:
+                continue
+                
+            if self.stop_flag.is_set():
+                send_message("操作已停止")
+                return
+            
+            name = item['name']
+            depth = item['depth']
+            is_dir = item['is_dir']
+            
+            # 清理名称
+            name = re.sub(r'[\\/*?:"<>|]', "_", name)
+            name = name.strip('.')
+            if '..' in name:
+                name = name.replace('..', '_')
+            
+            # 调整路径栈到正确的深度
+            # 如果跳过了根目录，depth 需要相应调整
+            adjusted_depth = depth - start_index
+            while len(path_stack) > adjusted_depth + 1:
+                path_stack.pop()
+            
+            # 构建完整路径
+            current_path = os.path.join(path_stack[-1], name)
+            
+            if is_dir:
+                os.makedirs(current_path, exist_ok=True)
+                send_message(f"创建目录: {current_path}")
+                # 确保栈中有当前目录
+                if len(path_stack) <= adjusted_depth + 1:
+                    path_stack.append(current_path)
+                else:
+                    path_stack[adjusted_depth + 1] = current_path
+            else:
+                # 创建空文件（如果不存在）
+                if not os.path.exists(current_path):
+                    with open(current_path, 'a'):
+                        pass
+                    send_message(f"创建文件: {current_path}")
+                else:
+                    send_message(f"文件已存在，跳过: {current_path}")
+
+    def run(self, callback=None):
+        """
+        运行完整的镜像创建流程
+        :param callback: 回调函数
+        """
+        def send_message(msg):
+            self.logger.info(msg)
+            if callback:
+                callback(msg)
+        
+        if self.stop_flag.is_set():
+            send_message("操作已停止")
+            return
+        
+        send_message(f"开始解析目录树文件: {self.tree_file}")
+        tree_data = self.parse_tree()
+        send_message(f"解析完成，共 {len(tree_data)} 个项目")
+        
+        if self.stop_flag.is_set():
+            send_message("操作已停止")
+            return
+        
+        send_message(f"开始创建目录结构到: {self.export_folder}")
+        self.create_structure(tree_data, callback)
+        send_message("目录树镜像创建完成")
+
+    # ========== 兼容旧版接口 ==========
+    
+    def parse_lines_to_tuples(self, file_path: str) -> List[Tuple[int, str]]:
+        """兼容旧接口"""
+        result = []
+        data = self.parse_tree()
+        for item in data:
+            result.append((item['depth'], item['name']))
+        return result
 
     def create_empty_files_from_list(self, file_path: str, tmp_dir: str, fix_garbled) -> None:
-        """
-        根据目录树文件创建空文件结构
-        Args:
-            file_path: 目录树文件路径
-            tmp_dir: 输出目录路径
-        """
-        os.makedirs(tmp_dir, exist_ok=True)
-        
-        file_items = self.parse_lines_to_tuples(file_path)
-        current_dir = tmp_dir
-        pre_level = 1  # init
-        pre_item_type = ''  # init
-        ignore_level = 0  # init
-        for outer_index, item in enumerate(file_items):
-            next_item_level = 0
-            next_item_name = None
-            level, name = item
-            # 清理路径，防止路径遍历攻击
-            name = re.sub(r'[\\/*?:"<>|]', "_", name)
-            name = name.strip('.')  # 移除开头的点（防止相对路径攻击）
-            # 防止路径包含..导致遍历
-            if '..' in name:
-                self.logger.warning(f'检测到路径遍历尝试，替换: {name}')
-                name = name.replace('..', '_')
-            if outer_index < len(file_items) - 1:
-                next_item = file_items[outer_index + 1]
-                next_item_level, next_item_name = next_item
-
-            empty_file_path = ''  # RESET
-
-            try:
-                # 如果前面有异常错误的文件夹,跳过出错的目录下所有的子目录和文件
-                if ignore_level > 0 and level > ignore_level: 
-                    self.logger.info(f'ignore : {name}')
-                    continue
-                else:
-                    ignore_level = 0
-
-                if level == 1:
-                    current_dir = os.path.join(tmp_dir, name)
-                    if self.fix_garbled:
-                        current_dir = self.replace_special_chars(current_dir)
-                    pre_level = level
-                    pre_item_type = 'dir'
-                    os.makedirs(current_dir, exist_ok=True)
-                else:
-                    item_type = 'UNKNOWN'
-
-                    # 下面这两者种情况都说明"演唱会.mp4"是文件夹
-                    # | |-演唱会.mp4
-                    # | | |-陈百强83演唱会.avi
-
-                    # | |-演唱会.mp4
-                    # | | |-演唱会
-                    if re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name):
-                        if next_item_name and next_item_level > level:
-                            self.logger.error(f'注意:识别为文件夹 {name}')
-                            item_type = 'DIR'
-
-                        '''
-                        ########对于 pre_item_type == 'dir' 的情况
-                        子一级  level == pre_level + 1
-                        | | | |-folder1
-                        | | | | |-folder2
-
-                        同级    level == pre_level
-                        | | | |-folder1
-                        | | | |-folder2
-
-                        上多级  level < pre_level
-                        | | | |-folder1
-                        | | |-folder2
-
-                        ########对于 pre_item_type == 'file' 的情况
-                        子一级  level == pre_level + 1
-                        | | | |-file
-                        | | | | |-folder
-                        这种情况不可能出现, 错误退出
-
-                        同级    level == pre_level
-                        | | | |-file
-                        | | | |-folder
-
-                        上多级  level < pre_level
-                        | | | |-file
-                        | | |-folder
-                        '''
-
-
-                    if not re.match(r'.*\.[a-zA-Z0-9]{2,4}$', name) or item_type == 'DIR':  # 名称尾部不是'.xxx',表示2或者3或者4个数字或大小写字母,判定为目录
-                        if pre_item_type == 'dir':  # 上一个是文件,回到上级目录
-                            if level == pre_level + 1:  # 子目录
-                                current_dir = os.path.join(current_dir, name)
-                            elif level == pre_level:  # 同级目录
-                                current_dir = os.path.dirname(current_dir)
-                                current_dir = os.path.join(current_dir, name) 
-                            elif level < pre_level:  # 上级目录
-                                for _ in range(pre_level - level):
-                                    current_dir = os.path.dirname(current_dir)
-                                current_dir = os.path.join(os.path.dirname(current_dir), name)
-                            else:  # 致命错误
-                                self.logger.error(f'level error! pls check: {name}')
-                                return
-                        elif pre_item_type == 'file':  # 上一个操作的文件
-                            if level == pre_level + 1:  # 子目录
-                                self.logger.info(f'level error! pls check: {name}')
-                                return
-                            elif level == pre_level:  # 同级
-                                current_dir = os.path.join(current_dir, name) 
-                            elif level < pre_level:  # 上级目录
-                                for _ in range(pre_level - level):
-                                    current_dir = os.path.dirname(current_dir)
-                                current_dir = os.path.join(current_dir, name)
-                            else:  # 致命错误
-                                self.logger.error(f'level error! pls check: {name}')
-                                return
-                        elif pre_item_type == '':  # 初始状态
-                            pass
-                        else:  # 致命错误
-                            self.logger.error(f'level error! pls check: {name}')
-                            return
-
-                        try:
-                            if self.fix_garbled:
-                                current_dir = self.replace_special_chars(current_dir)
-                            os.makedirs(current_dir, exist_ok=True)
-                            pre_level = level
-                            pre_item_type = 'dir'
-                            self.logger.info(f'{pre_level} -- {level} dir  :  {current_dir}')
-                        except Exception as e:
-                            self.logger.error(f"Error creating directory: {e}")
-                            ignore_level = level
-                            return
-                        
-                    else:  # 文件
-                        '''
-                        ########对于 pre_item_type == 'dir' 的情况
-                        子一级  level == pre_level + 1
-                        | | | |-folder1
-                        | | | | |-file
-
-                        同级    level == pre_level
-                        | | | |-folder1
-                        | | | |-file
-
-                        上多级  level < pre_level
-                        | | | |-folder1
-                        | | |-file
-
-                        ########对于 pre_item_type == 'file' 的情况
-                        子一级  level == pre_level + 1
-                        | | | |-file1
-                        | | | | |-file2
-                        这种情况不可能出现, 错误退出
-
-                        同级    level == pre_level
-                        | | | |-file1
-                        | | | |-file2
-
-                        上多级  level < pre_level
-                        | | | |-file1
-                        | | |-file2
-                        '''       
-                        if pre_item_type == 'dir':  # 上一个是目录             
-                            if level == pre_level + 1:  # 目录中的文件
-                                empty_file_path = os.path.join(current_dir, name)
-                            elif level == pre_level:  # 同级目录的文件
-                                current_dir = os.path.dirname(current_dir)
-                                empty_file_path = os.path.join(current_dir, name)
-                            elif level < pre_level:  # 上级目录(可能多级)的文件 !!!!!!!!!!!需要测试检查 !!!!!!!!!!!
-                                for _ in range(pre_level - level):
-                                    current_dir = os.path.dirname(current_dir)
-                                empty_file_path = os.path.join(current_dir, name)           
-                            else:  # 致命错误
-                                self.logger.error(f'level error! pls check: {name}')
-                                return
-                        elif pre_item_type == 'file':  # 上一个操作的文件      
-                            if level == pre_level + 1:  # 不可能出现的情况
-                                self.logger.error(f'level error! pls check: {name}')
-                                return
-                            elif level == pre_level:  # 同级目录的文件
-                                empty_file_path = os.path.join(current_dir, name)
-                            elif level < pre_level:  # 上级目录(可能多级)的文件 !!!!!!!!!!!需要测试检查 !!!!!!!!!!!
-                                for _ in range(pre_level - level):
-                                    current_dir = os.path.dirname(current_dir)
-                                empty_file_path = os.path.join(current_dir, name)                         
-                            else:  # 致命错误
-                                self.logger.error(f'level error! pls check: {name}')
-                                return
-                        elif pre_item_type == '':
-                            pass
-                        else:  # 致命错误
-                            self.logger.error(f'level error! pls check: {name}')
-                            return
-
-                        try:
-                            if self.fix_garbled:
-                                empty_file_path = self.replace_special_chars(empty_file_path)
-                            with open(empty_file_path, 'a'):
-                                pass
-                            pre_level = level
-                            pre_item_type = 'file'
-                            self.logger.info(f'{pre_level} -- {level} file :  {empty_file_path}')
-                            continue
-                        except Exception as e:
-                            self.logger.error(f"Error creating file: {e}")
-                            ignore_level = level
-                            return
-            except Exception as e:
-                self.logger.error(f"Error processing {name}: {e}")
-                current_dir = os.path.dirname(current_dir)  # 回到上一级目录
-                self.logger.error(f'Error , set current_dir: {current_dir}')
-                ignore_level = level
-                return  # 异常直接退出
-    
-    def run(self):
-        """
-        运行同步处理
-        """
-        def run_in_thread():
-            self.logger.info("开始生成文件镜像...")
-            match_count = 0
-            move_count = 0
-            start_time = time.time()
-            self.create_empty_files_from_list(self.tree_file, self.export_folder, self.fix_garbled)
-            end_time = time.time()
-            total_time = end_time - start_time
-            message = f"生成文件镜像完成{self.export_folder}:总耗时 {total_time:.2f} 秒"
-            self.logger.info(message)
-            return
-
-        thread = threading.Thread(target=run_in_thread)
-        thread.start()
+        """兼容旧接口"""
+        self.export_folder = tmp_dir
+        self.fix_garbled = fix_garbled
+        tree_data = self.parse_tree()
+        self.create_structure(tree_data)

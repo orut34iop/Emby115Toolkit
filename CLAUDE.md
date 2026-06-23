@@ -84,3 +84,35 @@ Runtime configuration is stored in YAML at the project root (or next to the EXE 
 ### Rust Component
 
 A minimal `Cargo.toml` and `src/main.rs` exist but are effectively unused scaffolding (prints "Hello, world!"). The active codebase is entirely Python.
+
+## Stack
+
+- **Language**: Python 3.x
+- **GUI**: Dual frontend — tkinter (`main.py`) and PyQt5 (`qt_main.py`)
+- **Testing**: pytest
+- **Config**: YAML via `utils/config.py` singleton
+
+## Commands
+
+### Run
+- `python main.py` — Launch tkinter version (default, Windows/Linux)
+- `python qt_main.py` — Launch PyQt5 version (preferred for macOS native drag-and-drop)
+
+### Test
+- `pytest` — Run all tests
+- `pytest -m unit` — Run unit tests only
+- `pytest -m integration` — Run integration tests
+- `pytest -m "not slow"` — Exclude slow tests
+- `pytest tests/unit/autosync/test_symlink_creator.py` — Run single test file
+
+### Dependencies
+- `pip install -r requirements.txt`
+
+## Verification
+- Run `pytest` before shipping changes.
+- If changing GUI code, verify both `main.py` and `qt_main.py` when applicable.
+
+## Working agreement
+- Prefer small, reviewable changes.
+- Keep shared defaults in `.claw.json`; reserve `.claw/settings.local.json` for machine-local overrides.
+- Do not overwrite existing `CLAUDE.md` content automatically; update it intentionally when repo workflows change.

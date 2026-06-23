@@ -43,27 +43,45 @@ class Config:
                                 '.wmv', '.m2ts', '.mpg', '.flv', '.rm', '.m4v'],
                 'meta_suffixes': ['.nfo', '.jpg', '.png', '.ass', '.srt'],
                 'thread_count': 4,
+                'op_interval_sec': 4,
+                'enable_115_protect': False,
                 'link_folders': [],
                 'target_folder': '',
                 'enable_replace_path': False,
                 'original_path': '',
-                'replace_path': ''
+                'replace_path': '',
+                'only_tvshow_nfo': True,
+                'overwrite_metadata': False
             },
             'delete_symlink': {
                 'target_folder': ''
             },
+            'manipulate_folder': {
+                'target_folder': ''
+            },
+            'check_duplicate': {
+                'target_folder': '',
+                'emby_url': '',
+                'emby_api': '',
+                'delete_nfo': False,
+                'delete_nfo_folder': False
+            },
             'merge_file': {
                 'scrap_folder': '',
                 'target_folder': '',
+                'enable_115_protect': False,
+                'op_interval_sec': 4
             },
             'merge_version': {
                 'emby_url': '',
-                'emby_api': ''
+                'emby_api': '',
+                'server_type': 'emby'
             },
             'update_genres': {
                 'emby_url': '',
                 'emby_api': '',
-                'emby_username': ''
+                'emby_username': '',
+                'server_type': 'emby'
             },
             'mirror_115_tree': {
                 'tree_file': '',
