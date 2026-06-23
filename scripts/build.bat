@@ -5,7 +5,8 @@ rmdir /s /q build
 rmdir /s /q dist
 
 echo Building application...
-pyinstaller --clean build.spec
+cd /d %~dp0..
+pyinstaller --clean scripts\build.spec
 
 echo Build complete!
 pause

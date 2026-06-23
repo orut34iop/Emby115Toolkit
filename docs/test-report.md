@@ -134,4 +134,4 @@ freezegun>=1.5.0
 
 ---
 
-*本报告由 pytest 自动生成，保存于项目根目录 `test-report.md`。*
+*本报告由 pytest 自动生成，保存于 `docs/test-report.md`。*

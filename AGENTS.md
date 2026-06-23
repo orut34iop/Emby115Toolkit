@@ -21,8 +21,8 @@ Version 2.0 is Windows-first and also runs on macOS and Linux. It has two offici
   - Supports local Windows Terminal, PowerShell/CMD, Windows OpenSSH remote sessions, and non-interactive scheduled execution on Windows. On macOS and Linux, the same CLI commands run from any terminal or SSH session.
   - CLI must not depend on GUI imports, pop dialogs, or wait for stdin in non-interactive mode.
 - **WebUI backend:** `python main.py --serve-web`
-  - Windows one-click local startup is available through `start_webui.bat`. It launches `python main.py --serve-web`, waits for `/health`, and opens `http://127.0.0.1:8765/`. The batch file delegates to `scripts/start_webui.ps1`, which also supports optional `-Port`, `-BindAddress`, `-NoOpen`, and `-Restart` switches.
-  - macOS / Linux one-click local startup is available through `start_webui.sh`. It launches `python main.py --serve-web`, waits for `/health`, and opens `http://127.0.0.1:8765/`; pass `--no-open` to skip opening the browser.
+  - Windows one-click local startup is available through `scripts/start_webui.bat`. It launches `python main.py --serve-web`, waits for `/health`, and opens `http://127.0.0.1:8765/`. The batch file delegates to `scripts/start_webui.ps1`, which also supports optional `-Port`, `-BindAddress`, `-NoOpen`, and `-Restart` switches.
+  - macOS / Linux one-click local startup is available through `scripts/start_webui.sh`. It launches `python main.py --serve-web`, waits for `/health`, and opens `http://127.0.0.1:8765/`; pass `--no-open` to skip opening the browser.
   - The WebUI `软链接导出` card shows a fixed checked list for `movies` and `tvshows`; checked rows with non-empty source and target are submitted in one `build_symlink_workspace` request.
   - The WebUI has a one-click full-flow button that front-end orchestrates as `build_symlink_workspace`, then one `scrape_metadata` run per checked symlink target, then `build_cloud_scraped_library` using the symlink targets as cloud-import sources and the cloud card targets as final D-drive destinations. Full flow participation is determined by the checked and valid `软链接导出` rows: downstream metadata/cloud enable checkboxes are standalone-card preferences and must not remove a media type from full-flow execution. Full flow uses upstream outputs as downstream inputs: metadata card library paths and cloud card source paths are only used for standalone card execution and are overridden by the symlink target paths during full-flow execution. While full flow is active, those overridden downstream inputs must be visually locked/disabled and display the effective symlink target path, and the downstream metadata/cloud enable checkboxes must also be locked to the effective full-flow participation state; cloud rows still require a non-empty cloud target path. All locked controls restore their original standalone values after the flow ends. While the full flow is active, the button becomes `取消执行`; cancellation is cooperative and must request cancellation for the currently running backend run and stop launching later steps. Full flow must automatically enter the cloud-import stage without an extra confirmation prompt. Standalone non-dry-run cloud import that moves real videos still asks for explicit confirmation because the C-drive symlink workspace will become stale. Do not add a separate CLI/full-flow backend action unless the product contract changes.
   - WebUI task execution uses `/v1/runs`, `/v1/runs/{run_id}`, `/v1/runs/{run_id}/cancel`, and `/v1/runs/{run_id}/events` for background runs plus SSE log/status streaming. `/v1/run` remains the synchronous compatibility API.
@@ -61,10 +61,10 @@ pip install PyQt5
 ## Building the Executable
 
 ```bash
-build.bat
+scripts/build.bat
 ```
 
-This runs `pyinstaller --clean build.spec` to produce `dist/Emby115Toolkit.exe`. The spec bundles `tkinterdnd2/tkdnd` data files and hidden imports required by the tkinter version.
+This runs `pyinstaller --clean scripts/build.spec` to produce `dist/Emby115Toolkit.exe`. The spec bundles `tkinterdnd2/tkdnd` data files and hidden imports required by the tkinter version.
 
 ## Project Architecture
 

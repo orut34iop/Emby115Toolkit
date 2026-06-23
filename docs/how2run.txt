@@ -10,7 +10,7 @@ uv pip install -r requirements.txt
 uv run python main.py
 
 ## 4. 运行 V2 WebUI（Windows）
-start_webui.bat
+scripts/start_webui.bat
 
 或手动启动后端：
 uv run python main.py --serve-web

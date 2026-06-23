@@ -4,7 +4,7 @@ This document records the current V2 development baseline. Keep it updated whene
 
 ## Latest Checkpoint
 
-- 2026-06-23: Added macOS / Linux support for V2 CLI and WebUI. Default config paths are now platform-aware (`~/Emby115Toolkit/...` on macOS/Linux, keeping Windows `C:\`/`D:\` defaults). Added `emby115_v2/windows_admin.symlink_failure_message()` for platform-specific permission guidance, added `start_webui.sh` for macOS/Linux one-click startup, and made legacy `utils/logger.py` / `utils/history_entry.py` importable when tkinter is not available. Full test suite status: `python -m pytest -q` -> 200 passed, 3 skipped (Windows-specific legacy tests).
+- 2026-06-23: Added macOS / Linux support for V2 CLI and WebUI. Default config paths are now platform-aware (`~/Emby115Toolkit/...` on macOS/Linux, keeping Windows `C:\`/`D:\` defaults). Added `emby115_v2/windows_admin.symlink_failure_message()` for platform-specific permission guidance, added `scripts/start_webui.sh` for macOS/Linux one-click startup, and made legacy `utils/logger.py` / `utils/history_entry.py` importable when tkinter is not available. Full test suite status: `python -m pytest -q` -> 200 passed, 3 skipped (Windows-specific legacy tests).
 - 2026-06-05: `v2.0-checkpoint-20260605-tv-artwork` records the current baseline after TV metadata artwork expansion and cloud-sync metadata completeness safeguards. This checkpoint includes TV show-level `poster/fanart/clearlogo/logo/thumb/banner`, best-effort `clearart`, season poster/thumb artwork, TMDB ID tag direct matching, no-year TV retry, full-flow path locking, cloud sync skips for unscripted TV folders, and the existing report filtering toolbar. Full test suite status at checkpoint creation: `python -m pytest -q` -> 195 passed.
 - 2026-06-04: `v2.0-checkpoint-20260604-reviewed-movie-metadata` records the current baseline after the full workflow/cloud-import milestone and the latest manual-review movie metadata corrections. This checkpoint includes mixed-folder per-video scraping, CJK/bracket search cleanup, rule-based aliases, known TMDB-ID direct matches, the local title override for `96超级床上接班人`, and the WebUI full-flow/cloud-import behavior already documented below. Full test suite status at checkpoint creation: `python -m pytest -q` -> 182 passed.
 
@@ -186,10 +186,10 @@ python main.py --serve-web
 Windows one-click startup:
 
 ```bat
-start_webui.bat
+scripts/start_webui.bat
 ```
 
-`start_webui.bat` starts the local WebUI backend, waits for `/health`, then opens `http://127.0.0.1:8765/`. The underlying `scripts/start_webui.ps1` supports `-Port`, `-BindAddress`, `-NoOpen`, and `-Restart` for local troubleshooting.
+`scripts/start_webui.bat` starts the local WebUI backend, waits for `/health`, then opens `http://127.0.0.1:8765/`. The underlying `scripts/start_webui.ps1` supports `-Port`, `-BindAddress`, `-NoOpen`, and `-Restart` for local troubleshooting.
 
 Start LAN WebUI with token:
 

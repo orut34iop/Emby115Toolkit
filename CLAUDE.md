@@ -30,10 +30,10 @@ pip install PyQt5
 ## Building the Executable
 
 ```bash
-build.bat
+scripts/build.bat
 ```
 
-This runs `pyinstaller --clean build.spec` to produce `dist/Emby115Toolkit.exe`. The spec bundles `tkinterdnd2/tkdnd` data files and hidden imports required by the tkinter version.
+This runs `pyinstaller --clean scripts/build.spec` to produce `dist/Emby115Toolkit.exe`. The spec bundles `tkinterdnd2/tkdnd` data files and hidden imports required by the tkinter version.
 
 ## Project Architecture
 
