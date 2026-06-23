@@ -4,8 +4,8 @@
 import sys
 from pathlib import Path
 
-# 确保项目根目录在 sys.path 的最前面
-project_root = str(Path(__file__).parent.parent)
+# 确保当前目录独立成仓库后仍可按 emby115_v2 包名导入
+project_root = str(Path(__file__).resolve().parents[2])
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 else:

@@ -5,6 +5,9 @@ import site
 from pathlib import Path
 
 block_cipher = None
+SPEC_DIR = Path(__file__).resolve().parent
+VERSION_ROOT = SPEC_DIR.parent
+PACKAGE_PARENT = VERSION_ROOT.parent
 
 # 查找 tkdnd 库文件位置
 def find_tkdnd():
@@ -27,8 +30,8 @@ if not tkdnd_path:
 print(f"Found tkdnd at: {tkdnd_path}")
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [str(VERSION_ROOT / 'main.py')],
+    pathex=[str(PACKAGE_PARENT)],
     binaries=[],
     datas=[
         (tkdnd_path, os.path.join('tkinterdnd2', 'tkdnd')),

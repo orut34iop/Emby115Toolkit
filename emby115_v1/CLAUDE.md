@@ -13,11 +13,11 @@ Two entry points exist; choose based on the target platform:
 - **Windows (tkinter):** `python main.py`
   - Uses `tkinterdnd2` for drag-and-drop.
   - Creating symlinks requires Administrator privileges on Windows.
-- **macOS (PyQt5):** `python emby115_v1/qt_main.py`
+- **macOS (PyQt5):** `python qt_main.py`
   - Uses native PyQt5 drag-and-drop.
   - No Administrator privileges needed for symlinks.
 
-Both entry points share the same `config.yaml` and backend logic in `emby115_v1/autosync/` and `emby115_v1/emby/`.
+Both entry points share the same `config.yaml` and backend logic in `autosync/` and `emby/`.
 
 ## Installing Dependencies
 
@@ -41,14 +41,14 @@ This runs `pyinstaller --clean scripts/build.spec` to produce `dist/Emby115Toolk
 
 The project maintains **two completely separate GUI layers** that do not import from each other:
 
-- `emby115_v1/tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
-- `emby115_v1/qt_gui/` — PyQt5 tab implementations used by `emby115_v1/qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
+- `tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
+- `qt_gui/` — PyQt5 tab implementations used by `qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
 
-When adding a new feature or fixing a UI bug, **check both `emby115_v1/tabs/` and `emby115_v1/qt_gui/`** for the corresponding implementation. They are kept in sync manually.
+When adding a new feature or fixing a UI bug, **check both `tabs/` and `qt_gui/`** for the corresponding implementation. They are kept in sync manually.
 
-### Backend Modules (`emby115_v1/autosync/`)
+### Backend Modules (`autosync/`)
 
-Core business logic lives in `emby115_v1/autosync/` and is shared by both GUIs:
+Core business logic lives in `autosync/` and is shared by both GUIs:
 
 - `SymlinkCreator.py` — Multi-threaded symlink/strm creation with optional path replacement.
 - `MetadataCopyer.py` — Copies metadata files (nfo, posters, subtitles) alongside symlinks.
@@ -58,20 +58,20 @@ Core business logic lives in `emby115_v1/autosync/` and is shared by both GUIs:
 - `AutoUploader.py` — Automation orchestrator.
 - `MedadataChecker.py` — Integrity checker for scraped metadata.
 
-### Emby Integration (`emby115_v1/emby/`)
+### Emby Integration (`emby/`)
 
 - `EmbyOperator.py` — Single module wrapping Emby Server API calls. Handles duplicate checking (by TMDB ID), version merging, and genre translation (English → Chinese).
 
-### Shared Utilities (`emby115_v1/utils/`)
+### Shared Utilities (`utils/`)
 
-- `config.py` — Singleton `Config` class managing `config.yaml`. Uses a recursive merge strategy so new default keys are automatically added to existing user configs. Resolves `config_dir` to the EXE directory when `sys.frozen` is True, otherwise the project root.
+- `config.py` — Singleton `Config` class managing `config.yaml`. Uses a recursive merge strategy so new default keys are automatically added to existing user configs. Resolves `config_dir` to the EXE directory when `sys.frozen` is True, otherwise this V1 directory.
 - `logger.py` — Thread-safe `setup_logger()` that outputs to both a tkinter `Text` widget (via a queued batch handler) and rotating log files.
 - `history_entry.py` — Helper for history-aware input widgets.
 - `listdir.py` — Cross-platform file listing helper.
 
 ### Configuration (`config.yaml`)
 
-Runtime configuration is stored in YAML at the project root (or next to the EXE when packaged). Sections correspond to tabs/features:
+Runtime configuration is stored in YAML in this V1 directory (or next to the EXE when packaged). Sections correspond to tabs/features:
 
 - `export_symlink` — source folders, target folder, suffixes, thread count, path replacement settings.
 - `merge_file` — scrap folder and target folder.
@@ -88,29 +88,29 @@ A minimal `Cargo.toml` and `src/main.rs` exist but are effectively unused scaffo
 ## Stack
 
 - **Language**: Python 3.x
-- **GUI**: Dual frontend — tkinter (`main.py`) and PyQt5 (`emby115_v1/qt_main.py`)
+- **GUI**: Dual frontend — tkinter (`main.py`) and PyQt5 (`qt_main.py`)
 - **Testing**: pytest
-- **Config**: YAML via `emby115_v1/utils/config.py` singleton
+- **Config**: YAML via `utils/config.py` singleton
 
 ## Commands
 
 ### Run
 - `python main.py` — Launch tkinter version (default, Windows/Linux)
-- `python emby115_v1/qt_main.py` — Launch PyQt5 version (preferred for macOS native drag-and-drop)
+- `python qt_main.py` — Launch PyQt5 version (preferred for macOS native drag-and-drop)
 
 ### Test
 - `pytest` — Run all tests
 - `pytest -m unit` — Run unit tests only
 - `pytest -m integration` — Run integration tests
 - `pytest -m "not slow"` — Exclude slow tests
-- `pytest emby115_v1/tests/unit/autosync/test_symlink_creator.py` — Run single test file
+- `pytest tests/unit/autosync/test_symlink_creator.py` — Run single test file
 
 ### Dependencies
 - `pip install -r requirements.txt`
 
 ## Verification
 - Run `pytest` before shipping changes.
-- If changing GUI code, verify both `main.py` and `emby115_v1/qt_main.py` when applicable.
+- If changing GUI code, verify both `main.py` and `qt_main.py` when applicable.
 
 ## Working agreement
 - Prefer small, reviewable changes.

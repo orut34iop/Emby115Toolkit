@@ -97,15 +97,14 @@ class TestExtractTmdbidFromNfo:
 
     def test_missing_tmdbid_returns_none(self, tmp_path):
         """
-        已知 bug：当 XML 中没有 tmdbid 元素时，extract_tmdbid_from_nfo
-        没有显式 return，导致函数隐式返回 None（而非 (None, False)）。
+        XML 中没有 tmdbid 元素时，返回显式的空结果和非破损标记。
         """
         op = EmbyOperator()
         nfo = tmp_path / "movie.nfo"
         nfo.write_text("<movie><title>Test</title></movie>", encoding="utf-8")
-        result = op.extract_tmdbid_from_nfo(str(nfo))
-        # 当前行为：隐式返回 None（不是 (None, False)）
+        result, is_damaged = op.extract_tmdbid_from_nfo(str(nfo))
         assert result is None
+        assert is_damaged is False
 
     def test_damaged_xml_uses_force_extract(self, tmp_path):
         op = EmbyOperator()
@@ -252,8 +251,7 @@ class TestKnownBugs:
 
     def test_url_typo_in_source(self):
         """
-        Bug: EmbyOperator.py 中存在 ?/api_key= 的 URL 拼写错误。
-        这个测试记录该 bug 的存在。
+        Regression: EmbyOperator.py 不应再出现 ?/api_key= 的 URL 拼写错误。
         """
         file_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "emby", "EmbyOperator.py"
@@ -262,13 +260,11 @@ class TestKnownBugs:
         with open(file_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        assert "?/api_key=" in source, "未发现 URL 拼写错误（可能已修复）"
+        assert "?/api_key=" not in source
 
     def test_check_video_files_uses_bare_filename(self):
         """
-        Bug: check_video_files 中使用 os.path.isfile(video_file)，
-        但 video_file 只是文件名而非完整路径。
-        这个测试通过检查源码来记录该 bug。
+        Regression: check_video_files 应使用完整路径检查视频文件。
         """
         file_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "emby", "EmbyOperator.py"
@@ -277,5 +273,5 @@ class TestKnownBugs:
         with open(file_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        # 查找 check_video_files 方法中是否存在 isfile(video_file) 而非 isfile(video_full_path)
-        assert "os.path.isfile(video_file)" in source, "未发现裸文件名 bug（可能已修复）"
+        assert "os.path.isfile(video_file)" not in source
+        assert "os.path.isfile(video_full_path)" in source

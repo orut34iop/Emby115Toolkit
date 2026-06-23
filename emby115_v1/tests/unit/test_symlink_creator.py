@@ -40,7 +40,7 @@ class TestCreateSymlink:
         with open(src, "w") as f:
             f.write("test")
 
-        with patch("os.path.exists", return_value=True):
+        with patch("os.path.lexists", return_value=True):
             creator.create_symlink(src, dst, "Thread-1")
 
             assert creator.existing_links == 1
@@ -188,7 +188,7 @@ class TestCreateStrmFile:
             content = f.read()
         assert content.startswith("http://alist.local:5244/d/")
 
-    def test_invalid_cloud_type_logs_error(self, temp_dir, mock_logger):
+    def test_unknown_cloud_type_writes_plain_strm(self, temp_dir, mock_logger):
         creator = SymlinkCreator(
             source_folders=[temp_dir],
             target_folder=temp_dir,
@@ -210,4 +210,7 @@ class TestCreateStrmFile:
             thread_name="T1",
         )
 
-        assert any("错误" in r.getMessage() for r in mock_logger.handlers[0].records)
+        strm_path = os.path.join(temp_dir, "movie.strm")
+        assert os.path.exists(strm_path)
+        with open(strm_path, "r") as f:
+            assert f.read() == src

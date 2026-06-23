@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Emby115Toolkit is a Windows-first utility for the 115 cloud disk + CloudDrive2 + Emby media server workflow. Version 1.x is a Python desktop GUI utility. Version 2.0 is being developed as a WebUI + CLI automation system with a shared core service layer, Context Object contracts, reports, LLM-assisted library normalization, and TMDB metadata acquisition.
+Emby115Toolkit V2 is a Windows-first WebUI + CLI automation system for the 115 cloud disk + CloudDrive2 + Emby media server workflow. It uses a shared core service layer, Context Object contracts, reports, LLM-assisted library normalization, and TMDB metadata acquisition. The V1 desktop GUI lives in a separate `emby115_v1` tree and should not be changed from this V2 repository.
 
 ## Development Discipline
 
@@ -15,7 +15,7 @@ Emby115Toolkit is a Windows-first utility for the 115 cloud disk + CloudDrive2 +
 
 ## Running the Application
 
-Version 2.0 is Windows-first and also runs on macOS and Linux. It has two official facades:
+V2 is Windows-first and also runs on macOS and Linux. Run commands from this `emby115_v2` directory. It has two official facades:
 
 - **CLI:** `python main.py --action build_symlink_workspace ...` (Windows / macOS / Linux)
   - Supports local Windows Terminal, PowerShell/CMD, Windows OpenSSH remote sessions, and non-interactive scheduled execution on Windows. On macOS and Linux, the same CLI commands run from any terminal or SSH session.
@@ -39,32 +39,11 @@ Version 2.0 is Windows-first and also runs on macOS and Linux. It has two offici
   - Non-dry-run symlink creation must check whether the current process can actually create symlinks. On Windows, if it cannot, WebUI must tell the user to enable Windows Developer Mode; WebUI must not start a UAC Administrator restart flow. On macOS and Linux, if symlink creation fails, WebUI must tell the user to check write permissions for the target directory.
   - Non-localhost listening requires `--access-token`.
 
-Version 1.x legacy desktop entry points still exist:
-
-- **Windows (tkinter legacy):** `python main.py`
-  - Uses `tkinterdnd2` for drag-and-drop.
-  - Creating symlinks requires Administrator privileges on Windows.
-- **macOS (PyQt5 legacy/incomplete):** `python emby115_v1/qt_main.py`
-  - Uses native PyQt5 drag-and-drop.
-  - No Administrator privileges needed for symlinks.
-
-V2 explicit CLI/WebUI flags are routed before tkinter imports, so headless CLI usage remains independent of the legacy GUI dependencies.
-
 ## Installing Dependencies
 
 ```bash
 pip install -r requirements.txt
-# For legacy macOS/PyQt5 version also install:
-pip install PyQt5
 ```
-
-## Building the Executable
-
-```bash
-scripts/build.bat
-```
-
-This runs `pyinstaller --clean scripts/build.spec` to produce `dist/Emby115Toolkit.exe`. The spec bundles `tkinterdnd2/tkdnd` data files and hidden imports required by the tkinter version.
 
 ## Project Architecture
 
@@ -72,13 +51,13 @@ This runs `pyinstaller --clean scripts/build.spec` to produce `dist/Emby115Toolk
 
 V2 uses a strict facade architecture:
 
-- `emby115_v2/context.py` — Standard Context Object data contracts. WebUI JSON and CLI args must be deserialized into these objects before entering core services.
-- `emby115_v2/cli.py` — CLI facade.
-- `emby115_v2/web/` — WebUI backend facade.
-- `emby115_v2/workflow/` — Workflow runner and service dispatch.
-- `emby115_v2/services/` — Core services shared by WebUI and CLI.
-- `emby115_v2/reports/` — HTML/JSON report generation.
-- `emby115_v2/config_store.py` — V2-only JSON config store. The default file is `emby115_v2.config.json` in the project root during development or next to the EXE when packaged.
+- `context.py` — Standard Context Object data contracts. WebUI JSON and CLI args must be deserialized into these objects before entering core services.
+- `cli.py` — CLI facade.
+- `web/` — WebUI backend facade.
+- `workflow/` — Workflow runner and service dispatch.
+- `services/` — Core services shared by WebUI and CLI.
+- `reports/` — HTML/JSON report generation.
+- `config_store.py` — V2-only JSON config store. The default file is `emby115_v2.config.json` in this V2 directory during development or next to the EXE when packaged.
 
 Core services must only accept Context Objects and must not care whether the request came from WebUI, CLI, SSH, or a scheduled task.
 
@@ -128,52 +107,6 @@ Current V2 action names:
   - Dry-run only reports the probe plan and does not write files or connect to CloudDrive2.
   - This action is the required validation step before changing production cloud-library runs from fixed waiting to CloudDrive2 task-based waiting.
 
-### Legacy Dual GUI Frontends
+### Configuration
 
-Version 1.x maintains two GUI layers:
-
-- `emby115_v1/tabs/` — tkinter tab implementations used by `main.py`. Each tab inherits from `BaseTab` which provides common widgets (path entries, log frames, drag-and-drop helpers).
-- `emby115_v1/qt_gui/` — PyQt5 tab implementations used by `emby115_v1/qt_main.py`. Each tab is a `QWidget` subclass with native Qt drag-and-drop.
-
-Do not add V2 features to `emby115_v1/tabs/` or `emby115_v1/qt_gui/`. They are legacy references only unless the user explicitly asks to fix 1.x behavior.
-
-### Legacy Backend Modules (`emby115_v1/autosync/`)
-
-Version 1.x business logic lives in `emby115_v1/autosync/` and is shared by legacy GUIs:
-
-- `SymlinkCreator.py` — Multi-threaded symlink/strm creation with optional path replacement.
-- `MetadataCopyer.py` — Copies metadata files (nfo, posters, subtitles) alongside symlinks.
-- `TreeMirror.py` — Parses a 115-exported directory tree text file and recreates an empty file tree locally.
-- `FileMerger.py` — Moves video files into folders that contain matching nfo files.
-- `SymlinkDeleter.py` — Folder cleanup utility.
-
-Some older documentation may mention modules such as `SymlinkChecker.py`, `SymlinkDirChecker.py`, `AutoUploader.py`, or `MedadataChecker.py`; these files are not present in the current workspace.
-
-### Emby Integration (`emby115_v1/emby/`)
-
-- `EmbyOperator.py` — Single module wrapping Emby Server API calls. Handles duplicate checking (by TMDB ID), version merging, and genre translation (English → Chinese).
-
-### Shared Utilities (`emby115_v1/utils/`)
-
-- `config.py` — Singleton `Config` class managing `config.yaml`. Uses a recursive merge strategy so new default keys are automatically added to existing user configs. Resolves `config_dir` to the EXE directory when `sys.frozen` is True, otherwise the project root.
-- `logger.py` — Thread-safe `setup_logger()` that outputs to both a tkinter `Text` widget (via a queued batch handler) and rotating log files.
-- `history_entry.py` — Helper for history-aware input widgets.
-- `listdir.py` — Cross-platform file listing helper.
-
-### Configuration (`config.yaml`)
-
-Runtime configuration is stored in YAML at the project root (or next to the EXE when packaged). Sections correspond to tabs/features:
-
-- `export_symlink` — source folders, target folder, suffixes, thread count, path replacement settings.
-- `merge_file` — scrap folder and target folder.
-- `merge_version`, `update_genres` — Emby URL and API key.
-- `mirror_115_tree` — tree file path and export folder.
-- `last_tab_index` — remembers the active tab across restarts.
-
-**Do not commit `config.yaml`** — it is gitignored because it contains user-specific paths and API keys.
-
-V2 runtime configuration uses `emby115_v2.config.json`, not `config.yaml`. It is also gitignored and may contain TMDB/LLM API keys.
-
-### Rust Component
-
-A minimal `Cargo.toml` and `src/main.rs` exist but are effectively unused scaffolding (prints "Hello, world!"). The active codebase is entirely Python.
+V2 runtime configuration uses `emby115_v2.config.json`. It is gitignored and may contain TMDB/LLM API keys.

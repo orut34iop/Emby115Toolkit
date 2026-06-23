@@ -4,7 +4,8 @@ This document records the current V2 development baseline. Keep it updated whene
 
 ## Latest Checkpoint
 
-- 2026-06-23: Added macOS / Linux support for V2 CLI and WebUI. Default config paths are now platform-aware (`~/Emby115Toolkit/...` on macOS/Linux, keeping Windows `C:\`/`D:\` defaults). Added `emby115_v2/windows_admin.symlink_failure_message()` for platform-specific permission guidance, added `scripts/start_webui.sh` for macOS/Linux one-click startup, and made legacy `utils/logger.py` / `utils/history_entry.py` importable when tkinter is not available. Full test suite status: `python -m pytest -q` -> 200 passed, 3 skipped (Windows-specific legacy tests).
+- 2026-06-23: Split root-level project files into version-owned `emby115_v1/` and `emby115_v2/` trees. V2 now owns its own `main.py`, `requirements.txt`, `pytest.ini`, `scripts/`, `docs/`, and `tests/`, and its default config path is `emby115_v2.config.json` in this V2 directory.
+- 2026-06-23: Added macOS / Linux support for V2 CLI and WebUI. Default working/library paths are platform-aware (`~/Emby115Toolkit/...` on macOS/Linux, keeping Windows `C:\`/`D:\` defaults). Added `windows_admin.symlink_failure_message()` for platform-specific permission guidance and added `scripts/start_webui.sh` for macOS/Linux one-click startup. Full test suite status before the split: `python -m pytest -q` -> 200 passed, 3 skipped (Windows-specific legacy tests).
 - 2026-06-05: `v2.0-checkpoint-20260605-tv-artwork` records the current baseline after TV metadata artwork expansion and cloud-sync metadata completeness safeguards. This checkpoint includes TV show-level `poster/fanart/clearlogo/logo/thumb/banner`, best-effort `clearart`, season poster/thumb artwork, TMDB ID tag direct matching, no-year TV retry, full-flow path locking, cloud sync skips for unscripted TV folders, and the existing report filtering toolbar. Full test suite status at checkpoint creation: `python -m pytest -q` -> 195 passed.
 - 2026-06-04: `v2.0-checkpoint-20260604-reviewed-movie-metadata` records the current baseline after the full workflow/cloud-import milestone and the latest manual-review movie metadata corrections. This checkpoint includes mixed-folder per-video scraping, CJK/bracket search cleanup, rule-based aliases, known TMDB-ID direct matches, the local title override for `96超级床上接班人`, and the WebUI full-flow/cloud-import behavior already documented below. Full test suite status at checkpoint creation: `python -m pytest -q` -> 182 passed.
 
@@ -24,15 +25,15 @@ This document records the current V2 development baseline. Keep it updated whene
 
 ## Current Implemented Foundation
 
-- V2 package: `emby115_v2/`
-- Context contract: `emby115_v2/context.py`
-- CLI facade: `emby115_v2/cli.py`
-- WebUI backend and minimal browser page: `emby115_v2/web/`
-- Workflow runner: `emby115_v2/workflow/runner.py`
-- Report writer: `emby115_v2/reports/writer.py`
-- First core service: `emby115_v2/services/symlink_service.py`
-- Metadata foundation services: `emby115_v2/services/metadata_service.py`
-- V2 local JSON config store: `emby115_v2/config_store.py`
+- V2 package directory: this `emby115_v2/` tree
+- Context contract: `context.py`
+- CLI facade: `cli.py`
+- WebUI backend and minimal browser page: `web/`
+- Workflow runner: `workflow/runner.py`
+- Report writer: `reports/writer.py`
+- First core service: `services/symlink_service.py`
+- Metadata foundation services: `services/metadata_service.py`
+- V2 local JSON config store: `config_store.py`
 
 ## Action Names
 

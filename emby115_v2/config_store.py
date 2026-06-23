@@ -23,7 +23,7 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
 def default_config_path() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / CONFIG_FILENAME
-    return Path(__file__).resolve().parents[1] / CONFIG_FILENAME
+    return Path(__file__).resolve().parent / CONFIG_FILENAME
 
 
 def _default_working_dir() -> Path:

@@ -21,29 +21,22 @@ class TestInit:
 class TestFindMatchingVideo:
     def test_matches_by_nfo_name(self, temp_dir, mock_logger):
         merger = FileMerger(temp_dir, temp_dir, logger=mock_logger)
-        # 模拟已加载的视频文件列表
-        merger.video_files = [
-            os.path.join(temp_dir, "movie.mkv"),
-            os.path.join(temp_dir, "other.mp4"),
-        ]
+        open(os.path.join(temp_dir, "movie.mkv"), "w").close()
+        open(os.path.join(temp_dir, "other.mp4"), "w").close()
         nfo = os.path.join(temp_dir, "movie.nfo")
         result = merger.find_matching_video(nfo)
         assert result == os.path.join(temp_dir, "movie.mkv")
 
     def test_no_match_returns_empty(self, temp_dir, mock_logger):
         merger = FileMerger(temp_dir, temp_dir, logger=mock_logger)
-        merger.video_files = [
-            os.path.join(temp_dir, "other.mp4"),
-        ]
+        open(os.path.join(temp_dir, "other.mp4"), "w").close()
         nfo = os.path.join(temp_dir, "movie.nfo")
         result = merger.find_matching_video(nfo)
         assert result == ""
 
     def test_skips_tvshow_nfo(self, temp_dir, mock_logger):
         merger = FileMerger(temp_dir, temp_dir, logger=mock_logger)
-        merger.video_files = [
-            os.path.join(temp_dir, "tvshow.mkv"),
-        ]
+        open(os.path.join(temp_dir, "tvshow.mkv"), "w").close()
         nfo = os.path.join(temp_dir, "tvshow.nfo")
         # 注意：实际代码在 find_matching_video 中不跳过 tvshow.nfo
         # 跳过逻辑在主循环中，所以这里会返回匹配
@@ -52,10 +45,8 @@ class TestFindMatchingVideo:
 
     def test_video_extension_whitelist(self, temp_dir, mock_logger):
         merger = FileMerger(temp_dir, temp_dir, logger=mock_logger)
-        merger.video_files = [
-            os.path.join(temp_dir, "movie.exe"),  # 不在白名单中
-            os.path.join(temp_dir, "movie.mkv"),  # 在白名单中
-        ]
+        open(os.path.join(temp_dir, "movie.exe"), "w").close()
+        open(os.path.join(temp_dir, "movie.mkv"), "w").close()
         nfo = os.path.join(temp_dir, "movie.nfo")
         result = merger.find_matching_video(nfo)
         assert result == os.path.join(temp_dir, "movie.mkv")

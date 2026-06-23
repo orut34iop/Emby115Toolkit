@@ -1,0 +1,13 @@
+# WebUI / CLI
+fastapi>=0.115.0
+uvicorn>=0.30.0
+
+# Providers and integrations
+requests>=2.32.0
+grpcio>=1.64.0
+protobuf>=5.27.0
+
+# Test dependencies
+pytest>=8.0.0
+pytest-mock>=3.14.0
+httpx>=0.28.0

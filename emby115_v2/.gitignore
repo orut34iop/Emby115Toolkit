@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Runtime artifacts
+logs/
+reports/
+emby115_v2.config.json
+*.log
+
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

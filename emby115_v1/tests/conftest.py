@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-# 确保项目根目录在 sys.path 中
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 确保当前目录独立成仓库后仍可按 emby115_v1 包名导入
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from emby115_v1.utils.config import Config
 

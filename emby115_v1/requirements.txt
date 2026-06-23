@@ -1,4 +1,4 @@
-# GUI依赖
+# GUI 依赖
 ttkthemes>=3.2.2  # 美化GUI主题
 tkinterdnd2>=0.3.0  # 拖放功能支持
 PyQt5>=5.15.0  # macOS PyQt5 界面
@@ -10,10 +10,6 @@ watchdog>=2.1.9   # 文件系统事件监控
 tqdm>=4.65.0      # 进度条
 pyyaml>=6.0       # YAML配置文件解析
 requests>=2.32.0  # HTTP请求
-fastapi>=0.115.0  # V2 WebUI 后端
-uvicorn>=0.30.0   # V2 WebUI 本地服务
-grpcio>=1.64.0    # CloudDrive2 gRPC 上传任务探测
-protobuf>=5.27.0  # CloudDrive2 gRPC 动态消息解析
 
 # 打包依赖
 pyinstaller
@@ -23,4 +19,3 @@ pytest>=8.0.0
 pytest-mock>=3.14.0
 responses>=0.25.0
 freezegun>=1.5.0
-httpx>=0.28.0

@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
       HOST="$2"
       shift 2
       ;;
-    -NoOpen)
+    -NoOpen|--no-open)
       NO_OPEN=true
       shift
       ;;

@@ -245,6 +245,7 @@ class TreeMirror:
     
     def parse_lines_to_tuples(self, file_path: str) -> List[Tuple[int, str]]:
         """兼容旧接口"""
+        self.tree_file = file_path
         result = []
         data = self.parse_tree()
         for item in data:
@@ -253,7 +254,10 @@ class TreeMirror:
 
     def create_empty_files_from_list(self, file_path: str, tmp_dir: str, fix_garbled) -> None:
         """兼容旧接口"""
+        self.tree_file = file_path
         self.export_folder = tmp_dir
         self.fix_garbled = fix_garbled
+        if not hasattr(self, "stop_flag"):
+            self.stop_flag = threading.Event()
         tree_data = self.parse_tree()
         self.create_structure(tree_data)

@@ -104,7 +104,12 @@ class TestSetupLogger:
         assert 'error msg' in content
 
 
-import tkinter as tk
+try:
+    import tkinter as tk
+except ModuleNotFoundError:
+    from types import SimpleNamespace
+
+    tk = SimpleNamespace(END="end")
 
 
 class TestTextHandler:
@@ -262,12 +267,11 @@ class TestTextHandler:
 
     def test_setup_logger_with_text_widget(self, mock_text_widget):
         """测试带 text_widget 的 setup_logger"""
-        import tkinter as tk
-        from emby115_v1.utils.logger import setup_logger
+        import emby115_v1.utils.logger as logger_module
 
         # 需要 tk.END 作为常量
-        with patch('emby115_v1.utils.logger.tk.END', tk.END):
-            logger = setup_logger('test_text_widget', text_widget=mock_text_widget)
+        with patch.object(logger_module, "tk", tk):
+            logger = logger_module.setup_logger('test_text_widget', text_widget=mock_text_widget)
 
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.Handler)

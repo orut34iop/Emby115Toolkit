@@ -1,41 +1,17 @@
+import os
+import platform
 import sys
-
-
-def should_run_v2_cli(argv):
-    """Route explicit V2 CLI/WebUI invocations before GUI imports."""
-    v2_flags = {
-        "--action",
-        "--config",
-        "--env",
-        "--dry-run",
-        "--non-interactive",
-        "--json",
-        "--report-dir",
-        "--log-dir",
-        "--log-level",
-        "--thread-count",
-        "--pair-name",
-        "--source",
-        "--target",
-        "--serve-web",
-        "--host",
-        "--port",
-        "--help",
-        "-h",
-    }
-    return any(arg in v2_flags for arg in argv[1:])
-
-
-if should_run_v2_cli(sys.argv):
-    from emby115_v2.cli import run_cli
-
-    raise SystemExit(run_cli(sys.argv[1:]))
-
+from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
+
 from tkinterdnd2 import TkinterDnD
-import os
-import platform  # 添加在文件开头的import部分
+
+VERSION_ROOT = Path(__file__).resolve().parent
+PACKAGE_PARENT = VERSION_ROOT.parent
+if str(PACKAGE_PARENT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_PARENT))
+
 from emby115_v1.tabs import (
     ExportSymlinkTab,
     ManipulateFolderTab,
@@ -53,7 +29,7 @@ class EmbyToolkit:
         self.root.title("Emby115Toolkit")
         
         # 创建日志目录
-        self.log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+        self.log_dir = os.path.join(VERSION_ROOT, 'logs')
         os.makedirs(self.log_dir, exist_ok=True)
         
         # 设置日志记录器
