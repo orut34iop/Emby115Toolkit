@@ -83,8 +83,6 @@ def test_symlink_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_c
     tab.link_list.addItem(str(source))
     tab.target_edit.setText(str(target))
     tab.chk_tvshow.setChecked(False)
-    tab.spin_interval.setValue(0)
-
     tab.create_symlink()
     assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
     assert wait_until(qapp, tab.btn_create_link.isEnabled)
@@ -102,8 +100,6 @@ def test_symlink_export_tab_load_preserves_saved_config(qapp, isolated_config, t
     saved_config.set('symlink_export', 'link_folders', ['/saved/source'])
     saved_config.set('symlink_export', 'target_folder', '/saved/target')
     saved_config.set('symlink_export', 'thread_count', 9)
-    saved_config.set('symlink_export', 'op_interval_sec', 11)
-    saved_config.set('symlink_export', 'enable_115_protect', True)
     saved_config.set('symlink_export', 'enable_replace_path', True)
     saved_config.set('symlink_export', 'only_tvshow_nfo', False)
     saved_config.set('symlink_export', 'overwrite_metadata', True)
@@ -118,8 +114,6 @@ def test_symlink_export_tab_load_preserves_saved_config(qapp, isolated_config, t
     assert tab.link_list.item(0).text() == '/saved/source'
     assert tab.target_edit.text() == '/saved/target'
     assert tab.spin_threads.value() == 9
-    assert tab.spin_interval.value() == 11
-    assert tab.chk_protect.isChecked()
     assert tab.chk_replace.isChecked()
     assert not tab.chk_tvshow.isChecked()
     assert tab.chk_overwrite_meta.isChecked()
@@ -131,7 +125,6 @@ def test_symlink_export_tab_load_preserves_saved_config(qapp, isolated_config, t
     with open(saved_config.config_file, 'r', encoding='utf-8') as f:
         reloaded = yaml.safe_load(f)
     assert reloaded['symlink_export']['target_folder'] == '/saved/target'
-    assert reloaded['symlink_export']['enable_115_protect'] is True
     assert reloaded['symlink_export']['enable_replace_path'] is True
     assert reloaded['symlink_export']['overwrite_metadata'] is True
 
@@ -159,7 +152,6 @@ def test_symlink_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_c
     first_tab.link_list.addItem('/runtime/source')
     first_tab.target_edit.setText('/runtime/target')
     first_tab.spin_threads.setValue(7)
-    first_tab.chk_protect.setChecked(True)
     first_tab.chk_tvshow.setChecked(False)
     first_tab.edit_link_suffix.setText('.mp4;.mkv')
     first_tab.save_config()
@@ -172,7 +164,6 @@ def test_symlink_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_c
     assert second_tab.link_list.item(0).text() == '/runtime/source'
     assert second_tab.target_edit.text() == '/runtime/target'
     assert second_tab.spin_threads.value() == 7
-    assert second_tab.chk_protect.isChecked()
     assert not second_tab.chk_tvshow.isChecked()
     assert second_tab.edit_link_suffix.text() == '.mp4;.mkv'
 
@@ -192,7 +183,6 @@ def test_export_create_symlink_shows_progress_logs(qapp, isolated_config, tmp_pa
     tab.link_list.clear()
     tab.link_list.addItem(str(source))
     tab.target_edit.setText(str(target))
-    tab.spin_interval.setValue(0)
 
     tab.create_symlink()
 
@@ -222,7 +212,6 @@ def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, mon
     tab.link_list.clear()
     tab.link_list.addItem(str(source))
     tab.target_edit.setText(str(target))
-    tab.spin_interval.setValue(0)
 
     def slow_metadata(config):
         started.set()
@@ -257,7 +246,6 @@ def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp
     tab.link_list.addItem(str(source))
     tab.target_edit.setText(str(target))
     tab.chk_tvshow.setChecked(False)
-    tab.spin_interval.setValue(0)
 
     tab.sync_all()
 

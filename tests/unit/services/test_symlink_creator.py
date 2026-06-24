@@ -55,21 +55,6 @@ class TestSymlinkCreatorInit:
         with pytest.raises(ValueError):
             SymlinkCreator(link_folders=[temp_dir], target_folder=temp_dir, symlink_mode='invalid_mode')
 
-    def test_init_with_115_protect_options(self, temp_dir):
-        """测试 PyQt5 防封配置参数可被后端接收"""
-        from services.symlink_creator import SymlinkCreator
-
-        creator = SymlinkCreator(
-            link_folders=[temp_dir],
-            target_folder=temp_dir,
-            enable_115_protect=True,
-            op_interval_sec=4,
-        )
-
-        assert creator.enable_115_protect is True
-        assert creator.op_interval_sec == 4
-
-
 class TestSymlinkCreatorScan:
     """测试 scan 方法"""
 

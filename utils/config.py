@@ -91,8 +91,6 @@ class Config:
                 ],
                 'meta_suffixes': ['.nfo', '.jpg', '.png', '.ass', '.srt'],
                 'thread_count': 4,
-                'op_interval_sec': 4,
-                'enable_115_protect': False,
                 'link_folders': [],
                 'target_folder': '',
                 'enable_replace_path': False,
@@ -113,8 +111,6 @@ class Config:
             'file_merge': {
                 'metadata_folder': '',
                 'target_folder': '',
-                'enable_115_protect': False,
-                'op_interval_sec': 4,
             },
             'version_merge': {'server_url': '', 'api_key': '', 'server_type': 'emby'},
             'genre_update': {'server_url': '', 'api_key': '', 'username': '', 'server_type': 'emby'},

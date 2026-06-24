@@ -24,8 +24,6 @@ class SymlinkCreator:
         only_tvshow_nfo=True,
         allowed_extensions=None,
         symlink_size=0,
-        enable_115_protect=False,
-        op_interval_sec=0,
         cloud_type=None,
         cloud_root_path=None,
         cloud_url=None,
@@ -47,8 +45,6 @@ class SymlinkCreator:
         self.only_tvshow_nfo = only_tvshow_nfo
         self.allowed_extensions = self._normalize_extensions(allowed_extensions or ('.mp4', '.mkv', '.avi', '.ts'))
         self.symlink_size = symlink_size
-        self.enable_115_protect = enable_115_protect
-        self.op_interval_sec = op_interval_sec
         self.cloud_type = cloud_type
         self.cloud_root_path = cloud_root_path
         self.cloud_url = cloud_url
@@ -111,19 +107,6 @@ class SymlinkCreator:
                 extension = f".{extension}"
             normalized.append(extension)
         return tuple(normalized)
-
-    def _protect_interval(self) -> None:
-        """115 防封模式下，在文件操作之间加入间隔。"""
-        if not self.enable_115_protect:
-            return
-
-        try:
-            interval = float(self.op_interval_sec or 0)
-        except (TypeError, ValueError):
-            interval = 0
-
-        if interval > 0:
-            time.sleep(interval)
 
     def scan(self, folder_path: str) -> list:
         """
@@ -234,7 +217,6 @@ class SymlinkCreator:
                 self.success_count += 1
                 self.processed_files += 1
             self.logger.info(f"创建软链接: {dst} -> {link_src}")
-            self._protect_interval()
         except Exception as e:
             with self._counter_lock:
                 self.error_count += 1
@@ -278,7 +260,6 @@ class SymlinkCreator:
                 self.success_count += 1
                 self.processed_files += 1
             self.logger.info(f"创建 strm 文件: {strm_path}")
-            self._protect_interval()
         except Exception as e:
             with self._counter_lock:
                 self.error_count += 1

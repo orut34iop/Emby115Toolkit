@@ -206,27 +206,6 @@ class SymlinkExportTab(QWidget):
         replace_group.setLayout(replace_layout)
         layout.addWidget(replace_group)
 
-        # === 115防封设置 ===
-        protect_group = QGroupBox("115防封设置")
-        protect_layout = QVBoxLayout()
-
-        self.chk_protect = QCheckBox("开启115防封")
-        self.chk_protect.stateChanged.connect(self.save_config)
-        protect_layout.addWidget(self.chk_protect)
-
-        interval_layout = QHBoxLayout()
-        interval_layout.addWidget(QLabel("文件操作时间间隔(秒)："))
-        self.spin_interval = QSpinBox()
-        self.spin_interval.setRange(0, 60)
-        self.spin_interval.setValue(4)
-        self.spin_interval.valueChanged.connect(self.save_config)
-        interval_layout.addWidget(self.spin_interval)
-        interval_layout.addStretch()
-        protect_layout.addLayout(interval_layout)
-
-        protect_group.setLayout(protect_layout)
-        layout.addWidget(protect_group)
-
         # === 同步设置 ===
         sync_group = QGroupBox("同步设置")
         sync_layout = QVBoxLayout()
@@ -353,8 +332,6 @@ class SymlinkExportTab(QWidget):
 
             # 加载其他设置
             self.spin_threads.setValue(self.config.get('symlink_export', 'thread_count', 4))
-            self.spin_interval.setValue(self.config.get('symlink_export', 'op_interval_sec', 4))
-            self.chk_protect.setChecked(self.config.get('symlink_export', 'enable_115_protect', False))
             self.chk_replace.setChecked(self.config.get('symlink_export', 'enable_replace_path', False))
             self.chk_tvshow.setChecked(self.config.get('symlink_export', 'only_tvshow_nfo', True))
             self.chk_overwrite_meta.setChecked(self.config.get('symlink_export', 'overwrite_metadata', False))
@@ -391,8 +368,6 @@ class SymlinkExportTab(QWidget):
         self.config.set('symlink_export', 'link_folders', link_folders)
         self.config.set('symlink_export', 'target_folder', self.target_edit.text())
         self.config.set('symlink_export', 'thread_count', self.spin_threads.value())
-        self.config.set('symlink_export', 'op_interval_sec', self.spin_interval.value())
-        self.config.set('symlink_export', 'enable_115_protect', self.chk_protect.isChecked())
         self.config.set('symlink_export', 'enable_replace_path', self.chk_replace.isChecked())
         self.config.set('symlink_export', 'only_tvshow_nfo', self.chk_tvshow.isChecked())
         self.config.set('symlink_export', 'overwrite_metadata', self.chk_overwrite_meta.isChecked())
@@ -492,8 +467,6 @@ class SymlinkExportTab(QWidget):
             "link_extensions": link_extensions,
             "meta_extensions": meta_extensions,
             "thread_count": self.spin_threads.value(),
-            "enable_115_protect": self.chk_protect.isChecked(),
-            "op_interval_sec": self.spin_interval.value(),
             "enable_replace_path": self.chk_replace.isChecked(),
             "original_path": self.original_edit.text(),
             "replace_path": self.replace_edit.text(),
@@ -544,8 +517,6 @@ class SymlinkExportTab(QWidget):
             target_folder=config["target_folder"],
             allowed_extensions=config["link_extensions"],
             thread_count=config["thread_count"],
-            enable_115_protect=config["enable_115_protect"],
-            op_interval_sec=config["op_interval_sec"],
             enable_replace_path=config["enable_replace_path"],
             original_path=config["original_path"],
             replace_path=config["replace_path"],
