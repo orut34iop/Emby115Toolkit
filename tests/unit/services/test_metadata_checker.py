@@ -20,7 +20,7 @@ class TestMetadataCheckerInit:
         assert checker.source_folder == temp_dir
         assert checker.target_folder == temp_dir
         assert checker.allowed_extensions == ('.nfo', '.jpg')
-        assert checker.num_threads == 4
+        assert checker.thread_count == 4
         assert checker.total_num == 0
         assert checker.broken_num == 0
 
@@ -160,7 +160,7 @@ class TestMetadataCheckerRun:
             source_folder=os.path.join(temp_dir, 'source'),
             target_folder=os.path.join(temp_dir, 'target'),
             allowed_extensions=('.nfo',),
-            num_threads=1,
+            thread_count=1,
         )
 
         total_time, message = checker.run()
@@ -182,7 +182,7 @@ class TestMetadataCheckerRun:
             source_folder=temp_dir,
             target_folder=temp_dir,
             allowed_extensions=('.nfo',),
-            num_threads=1,
+            thread_count=1,
         )
 
         total_time, message = checker.run()

@@ -4,19 +4,19 @@ import threading
 import time
 import urllib.parse
 
-from utils.shentools import *
+from utils.service_messages import SYMLINK_NAME_BY_MODE, print_message
 
 
 class SymlinkChecker:
-    def __init__(self, cloud_path, source_folder, target_folder, symlink_mode, num_threads=4):
+    def __init__(self, cloud_path, source_folder, target_folder, symlink_mode, thread_count=4):
         self.cloud_path = cloud_path
         self.source_folder = source_folder
         self.target_folder = target_folder
         self.symlink_mode = symlink_mode
-        self.num_threads = num_threads
+        self.thread_count = thread_count
         self.total_num = 0
         self.broken_num = 0
-        self.symlink_name = symlink_name_dict.get(self.symlink_mode)
+        self.symlink_name = SYMLINK_NAME_BY_MODE.get(self.symlink_mode)
         self.link_queue = queue.Queue()
 
     def check_and_remove_dead_symlink(self, link):
@@ -88,7 +88,7 @@ class SymlinkChecker:
         symlink_generator = self.get_symlink_files()
 
         threads = []
-        for i in range(self.num_threads):
+        for i in range(self.thread_count):
             thread_name = f"Thread-{i + 1}"
             thread = threading.Thread(target=self.process_symlinks_in_thread, args=(thread_name,))
             threads.append(thread)
@@ -97,7 +97,7 @@ class SymlinkChecker:
         for symlink in symlink_generator:
             self.link_queue.put(symlink)
 
-        for i in range(self.num_threads):
+        for i in range(self.thread_count):
             self.link_queue.put(None)
 
         for thread in threads:

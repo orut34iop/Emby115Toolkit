@@ -17,7 +17,7 @@ class TestMetadataCopierInit:
         assert copier.source_folders == [temp_dir]
         assert copier.target_folder == temp_dir
         assert copier.metadata_extensions == ('.nfo', '.jpg')
-        assert copier.num_threads == 1
+        assert copier.thread_count == 1
         assert copier.only_tvshow_nfo == False
         assert copier.overwrite_existing == False
 
@@ -29,12 +29,12 @@ class TestMetadataCopierInit:
             source_folders=[temp_dir, '/another/path'],
             target_folder=temp_dir,
             allowed_extensions=('.nfo',),
-            num_threads=4,
+            thread_count=4,
             only_tvshow_nfo=True,
             overwrite_existing=True,
         )
 
-        assert copier.num_threads == 4
+        assert copier.thread_count == 4
         assert copier.only_tvshow_nfo == True
         assert copier.overwrite_existing == True
 
@@ -213,7 +213,7 @@ class TestMetadataCopierRun:
             source_folders=[os.path.join(temp_dir, 'source')],
             target_folder=target_folder,
             allowed_extensions=('.nfo', '.jpg'),
-            num_threads=1,
+            thread_count=1,
         )
 
         messages = []
@@ -253,7 +253,7 @@ class TestMetadataCopierRun:
             source_folders=[os.path.join(temp_dir, 'source')],
             target_folder=target_folder,
             allowed_extensions=('.nfo',),
-            num_threads=1,
+            thread_count=1,
         )
 
         copier.run(lambda msg: None)

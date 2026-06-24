@@ -4,7 +4,7 @@ import threading
 import time
 import urllib.parse
 
-symlink_name_dict = {"symlink": "软链接", "strm": "strm文件"}
+from utils.service_messages import SYMLINK_NAME_BY_MODE
 
 
 class SymlinkCreator:
@@ -77,7 +77,7 @@ class SymlinkCreator:
         if symlink_mode not in ('symlink', 'strm'):
             raise ValueError(f"无效的 symlink_mode: {symlink_mode}，必须是 'symlink' 或 'strm'")
 
-        self.symlink_name = symlink_name_dict.get(self.symlink_mode, '链接')
+        self.symlink_name = SYMLINK_NAME_BY_MODE.get(self.symlink_mode, '链接')
 
     def _should_log_progress(self, count: int, last_progress_time: float) -> bool:
         if count <= 0:

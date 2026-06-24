@@ -6,7 +6,6 @@ import os
 import shutil
 import sys
 import tempfile
-import types
 from pathlib import Path
 
 import pytest
@@ -19,20 +18,6 @@ else:
     # 如果已存在，确保它在最前面
     sys.path.remove(project_root)
     sys.path.insert(0, project_root)
-
-
-# Mock utils.shentools if it doesn't exist (needed by SymlinkChecker, SymlinkDirChecker, etc.)
-try:
-    import utils.shentools
-except ImportError:
-    mock_shentools = types.ModuleType('utils.shentools')
-    mock_shentools.symlink_name_dict = {"symlink": "软链接", "strm": "strm文件"}
-    mock_shentools.print_message = lambda msg: None
-    sys.modules['utils.shentools'] = mock_shentools
-    # Also register under the package path
-    import utils
-
-    utils.shentools = mock_shentools
 
 
 def pytest_runtest_setup(item):

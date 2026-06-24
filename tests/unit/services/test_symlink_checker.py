@@ -20,7 +20,7 @@ class TestSymlinkCheckerInit:
         assert checker.source_folder == temp_dir
         assert checker.target_folder == temp_dir
         assert checker.symlink_mode == 'symlink'
-        assert checker.num_threads == 4
+        assert checker.thread_count == 4
         assert checker.total_num == 0
         assert checker.broken_num == 0
 
@@ -170,7 +170,7 @@ class TestSymlinkCheckerRun:
             os.symlink('/nonexistent/file.mp4', link_path)
 
         checker = SymlinkChecker(
-            cloud_path=temp_dir, source_folder=temp_dir, target_folder=temp_dir, symlink_mode='symlink', num_threads=1
+            cloud_path=temp_dir, source_folder=temp_dir, target_folder=temp_dir, symlink_mode='symlink', thread_count=1
         )
 
         total_time, message = checker.run()
@@ -189,7 +189,7 @@ class TestSymlinkCheckerRun:
         from services.symlink_checker import SymlinkChecker
 
         checker = SymlinkChecker(
-            cloud_path=temp_dir, source_folder=temp_dir, target_folder=temp_dir, symlink_mode='symlink', num_threads=1
+            cloud_path=temp_dir, source_folder=temp_dir, target_folder=temp_dir, symlink_mode='symlink', thread_count=1
         )
 
         total_time, message = checker.run()

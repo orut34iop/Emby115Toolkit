@@ -17,7 +17,7 @@ class TestSymlinkDirCheckerInit:
         assert checker.cloud_path == temp_dir
         assert checker.source_root == temp_dir
         assert checker.target_root == temp_dir
-        assert checker.num_threads == 8
+        assert checker.thread_count == 8
         assert checker.timeout_seconds == 300
         assert checker.error_dirs_num == 0
         assert checker.total_num == 0
@@ -27,10 +27,10 @@ class TestSymlinkDirCheckerInit:
         from services.symlink_dir_checker import SymlinkDirChecker
 
         checker = SymlinkDirChecker(
-            cloud_path=temp_dir, source_root=temp_dir, target_root=temp_dir, num_threads=4, timeout_seconds=60
+            cloud_path=temp_dir, source_root=temp_dir, target_root=temp_dir, thread_count=4, timeout_seconds=60
         )
 
-        assert checker.num_threads == 4
+        assert checker.thread_count == 4
         assert checker.timeout_seconds == 60
 
 
@@ -157,7 +157,7 @@ class TestSymlinkDirCheckerRun:
             cloud_path=temp_dir,
             source_root=os.path.join(temp_dir, 'source'),
             target_root=os.path.join(temp_dir, 'target'),
-            num_threads=1,
+            thread_count=1,
         )
 
         total_time, message = checker.run()
@@ -173,7 +173,7 @@ class TestSymlinkDirCheckerRun:
         """测试没有子目录的情况"""
         from services.symlink_dir_checker import SymlinkDirChecker
 
-        checker = SymlinkDirChecker(cloud_path=temp_dir, source_root=temp_dir, target_root=temp_dir, num_threads=1)
+        checker = SymlinkDirChecker(cloud_path=temp_dir, source_root=temp_dir, target_root=temp_dir, thread_count=1)
 
         total_time, message = checker.run()
 

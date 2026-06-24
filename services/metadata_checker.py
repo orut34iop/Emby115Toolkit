@@ -3,7 +3,7 @@ import queue
 import threading
 import time
 
-from utils.shentools import *
+from utils.service_messages import print_message
 
 
 class MetadataChecker:
@@ -13,13 +13,13 @@ class MetadataChecker:
         source_folder,
         target_folder,
         allowed_extensions,
-        num_threads=4,
+        thread_count=4,
     ):
         self.cloud_path = cloud_path
         self.source_folder = source_folder
         self.target_folder = target_folder
         self.allowed_extensions = allowed_extensions
-        self.num_threads = num_threads
+        self.thread_count = thread_count
         self.total_num = 0
         self.broken_num = 0
         self.metadata_queue = queue.Queue()
@@ -58,7 +58,7 @@ class MetadataChecker:
         metadata_generator = self.get_metadata_files()
 
         threads = []
-        for i in range(self.num_threads):
+        for i in range(self.thread_count):
             thread_name = f"Thread-{i + 1}"
             thread = threading.Thread(target=self.process_metadata_in_thread, args=(thread_name,))
             threads.append(thread)
@@ -67,7 +67,7 @@ class MetadataChecker:
         for metadata in metadata_generator:
             self.metadata_queue.put(metadata)
 
-        for i in range(self.num_threads):
+        for i in range(self.thread_count):
             self.metadata_queue.put(None)
 
         for thread in threads:

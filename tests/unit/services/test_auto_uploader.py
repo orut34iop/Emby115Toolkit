@@ -36,7 +36,7 @@ class TestAutoUploaderReadConfig:
         from services.auto_uploader import AutoUploader
 
         config_path = os.path.join(temp_dir, 'config.yaml')
-        config_data = {'upload_enabled': True, 'upload_scheduled': False, 'num_threads': 4, 'upload_list': []}
+        config_data = {'upload_enabled': True, 'upload_scheduled': False, 'thread_count': 4, 'upload_list': []}
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config_data, f, allow_unicode=True)
 
@@ -45,7 +45,7 @@ class TestAutoUploaderReadConfig:
 
         assert result is not None
         assert result['upload_enabled'] == True
-        assert result['num_threads'] == 4
+        assert result['thread_count'] == 4
 
     def test_read_nonexistent_config(self, temp_dir):
         """测试读取不存在的配置文件"""
@@ -109,6 +109,24 @@ class TestAutoUploaderCalculateTime:
 
         assert result == 86400
 
+    def test_calculate_sync_interval_rejects_non_multiplication_expression(self):
+        """测试非乘法表达式返回默认值"""
+        from services.auto_uploader import AutoUploader
+
+        uploader = AutoUploader()
+        result = uploader.calculate_sync_interval('60+60')
+
+        assert result == 86400
+
+    def test_calculate_sync_interval_rejects_code_expression(self):
+        """测试拒绝代码表达式"""
+        from services.auto_uploader import AutoUploader
+
+        uploader = AutoUploader()
+        result = uploader.calculate_sync_interval("__import__('os').system('echo unsafe')")
+
+        assert result == 86400
+
 
 class TestAutoUploaderParseExtensions:
     """测试 parse_extensions 方法"""
@@ -158,7 +176,7 @@ class TestAutoUploaderRunOnce:
         from services.auto_uploader import AutoUploader
 
         config_path = os.path.join(temp_dir, 'config.yaml')
-        config_data = {'upload_enabled': True, 'upload_list': [], 'num_threads': 4, 'metadata_ext': '.nfo;.jpg'}
+        config_data = {'upload_enabled': True, 'upload_list': [], 'thread_count': 4, 'metadata_ext': '.nfo;.jpg'}
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config_data, f, allow_unicode=True)
 
@@ -176,7 +194,7 @@ class TestAutoUploaderRunOnce:
         config_data = {
             'upload_enabled': True,
             'upload_list': [{'source_dir': '/source', 'target_dir': '/target', 'upload_enabled': False}],
-            'num_threads': 4,
+            'thread_count': 4,
             'metadata_ext': '.nfo;.jpg',
         }
         with open(config_path, 'w', encoding='utf-8') as f:
@@ -201,7 +219,7 @@ class TestAutoUploaderRunOnce:
             'upload_list': [
                 {'source_dir': '/source', 'target_dir': '/target', 'upload_enabled': True, 'metadata_ext': '.nfo;.jpg'}
             ],
-            'num_threads': 4,
+            'thread_count': 4,
             'metadata_ext': '.nfo;.jpg',
         }
         with open(config_path, 'w', encoding='utf-8') as f:
@@ -214,7 +232,12 @@ class TestAutoUploaderRunOnce:
 
         with patch('services.auto_uploader.MetadataCopier', return_value=mock_instance) as MockCopier:
             uploader.run_once()
-            MockCopier.assert_called_once_with('/source', '/target', ('.nfo', '.jpg'), 4)
+            MockCopier.assert_called_once_with(
+                source_folders=['/source'],
+                target_folder='/target',
+                allowed_extensions=('.nfo', '.jpg'),
+                thread_count=4,
+            )
             mock_instance.run.assert_called_once()
 
     def test_run_once_reads_config_metadata_ext(self, temp_dir):
@@ -227,7 +250,7 @@ class TestAutoUploaderRunOnce:
         config_data = {
             'upload_enabled': True,
             'upload_list': [{'source_dir': '/source', 'target_dir': '/target', 'upload_enabled': True}],
-            'num_threads': 2,
+            'thread_count': 2,
             'metadata_ext': '.nfo;.srt',
         }
         with open(config_path, 'w', encoding='utf-8') as f:
@@ -241,7 +264,41 @@ class TestAutoUploaderRunOnce:
         with patch('services.auto_uploader.MetadataCopier', return_value=mock_instance) as MockCopier:
             uploader.run_once()
             # 当 upload_list 项没有 metadata_ext 时使用全局配置
-            MockCopier.assert_called_once_with('/source', '/target', ('.nfo', '.srt'), 2)
+            MockCopier.assert_called_once_with(
+                source_folders=['/source'],
+                target_folder='/target',
+                allowed_extensions=('.nfo', '.srt'),
+                thread_count=2,
+            )
+
+    def test_run_once_reads_legacy_num_threads(self, temp_dir):
+        """测试兼容旧配置中的 num_threads"""
+        from unittest.mock import MagicMock, patch
+
+        from services.auto_uploader import AutoUploader
+
+        config_path = os.path.join(temp_dir, 'config.yaml')
+        config_data = {
+            'upload_enabled': True,
+            'upload_list': [{'source_dir': '/source', 'target_dir': '/target', 'upload_enabled': True}],
+            'num_threads': 3,
+            'metadata_ext': '.nfo',
+        }
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config_data, f, allow_unicode=True)
+
+        uploader = AutoUploader(config_path=config_path)
+        mock_instance = MagicMock()
+        mock_instance.run.return_value = 0.5
+
+        with patch('services.auto_uploader.MetadataCopier', return_value=mock_instance) as MockCopier:
+            uploader.run_once()
+            MockCopier.assert_called_once_with(
+                source_folders=['/source'],
+                target_folder='/target',
+                allowed_extensions=('.nfo',),
+                thread_count=3,
+            )
 
 
 class TestAutoUploaderRun:

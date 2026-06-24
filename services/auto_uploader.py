@@ -2,9 +2,9 @@ import os
 import time
 
 import yaml
-from utils.shentools import *
 
 from services.metadata_copier import MetadataCopier
+from utils.service_messages import print_message
 
 working_directory = os.path.dirname(os.path.abspath(__file__))
 os.chdir(working_directory)
@@ -34,16 +34,16 @@ class AutoUploader:
 
     def calculate_sync_interval(self, input_str):
         try:
-            if '*' in input_str:
-                # 如果输入字符串中包含 '*' 符号,执行乘法运算
-                result = eval(input_str)
-                return result
-            else:
-                # 如果输入字符串中没有 '*' 符号,尝试转换成整数
-                result = int(input_str)
-                return result
-        except Exception as e:
-            # 处理其他异常情况
+            expression = str(input_str).strip()
+            factors = [factor.strip() for factor in expression.split('*')]
+            if not factors or any(not factor.isdigit() for factor in factors):
+                raise ValueError(f"无效的同步间隔表达式: {input_str}")
+
+            result = 1
+            for factor in factors:
+                result *= int(factor)
+            return result
+        except (TypeError, ValueError) as e:
             print_message(f"Error: {e}")
             return 86400
 
@@ -82,7 +82,7 @@ class AutoUploader:
         if not yaml_data:
             return
         upload_list = yaml_data.get('upload_list', [])
-        num_threads = yaml_data.get('num_threads', 8)
+        thread_count = yaml_data.get('thread_count', yaml_data.get('num_threads', 8))
         self.metadata_ext = yaml_data.get('metadata_ext', '.nfo;.jpg;.png;.svg;.ass;.srt;.sup')
         for dir_dict in upload_list:
             source_dir = dir_dict.get('source_dir')
@@ -90,8 +90,19 @@ class AutoUploader:
             upload_enabled = dir_dict.get('upload_enabled', False)
             metadata_ext = self.parse_extensions(dir_dict.get('metadata_ext', self.metadata_ext))
             if upload_enabled:
-                metadata_copier = MetadataCopier(source_dir, target_dir, metadata_ext, num_threads)
-                total_time += metadata_copier.run()
+                metadata_copier = MetadataCopier(
+                    source_folders=[source_dir],
+                    target_folder=target_dir,
+                    allowed_extensions=metadata_ext,
+                    thread_count=thread_count,
+                )
+                copy_start_time = time.time()
+                copy_result = metadata_copier.run(lambda message: print_message(message))
+                if hasattr(copy_result, "join"):
+                    copy_result.join()
+                    total_time += time.time() - copy_start_time
+                elif isinstance(copy_result, (int, float)):
+                    total_time += copy_result
                 print_message(f'上传完成,共耗时{total_time:.2f}秒.')
 
 

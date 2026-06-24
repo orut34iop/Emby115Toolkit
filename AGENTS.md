@@ -50,6 +50,7 @@ Core operations are GUI-agnostic classes:
 - `AutoUploader` — Auto-upload functionality
 
 These classes accept a `logger` parameter and use `threading.Event` (`stop_flag`) for cancellation.
+Use `thread_count` for service thread parameters. `num_threads` is only read as a legacy AutoUploader YAML fallback.
 
 ### Media Server Integration (`media_server/`)
 `MediaServerClient` encapsulates Emby/Jellyfin API calls:
@@ -57,12 +58,14 @@ These classes accept a `logger` parameter and use `threading.Event` (`stop_flag`
 - Merges multi-version movies
 - Updates genre names from English to Chinese
 - Uses explicit constructor names: `(server_url, api_key, username, server_type)`
+- `genre_maps.py` owns TV/movie genre translation dictionaries; keep large mapping edits there instead of inlining them in `client.py`.
 
 ### Utilities (`utils/`)
 - `config.py` — Singleton `Config` class backed by `config.yaml` in project root. Uses recursive merge to ensure default keys exist and migrates legacy config keys to the current schema.
 - `logger.py` — `setup_logger()` returns a logger with optional `tk.Text` widget handler (`TextHandler` uses a queue + `after` polling for thread safety) and `RotatingFileHandler`.
 - `listdir.py` — Cross-platform directory listing helper
 - `history_entry.py` — Input history persistence
+- `service_messages.py` — Explicit service message helpers and symlink/STRM display names. Do not reintroduce `utils.shentools` star imports.
 
 ### Testing (`tests/`)
 - `conftest.py` ensures the project root is first in `sys.path` and provides shared fixtures (`temp_dir`, `sample_nfo_content`, `mock_emby_response`, `create_test_file_structure`, etc.)

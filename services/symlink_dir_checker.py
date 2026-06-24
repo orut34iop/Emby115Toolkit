@@ -4,15 +4,15 @@ import shutil
 import threading
 import time
 
-from utils.shentools import *
+from utils.service_messages import print_message
 
 
 class SymlinkDirChecker:
-    def __init__(self, cloud_path, source_root, target_root, num_threads=8, timeout_seconds=300):
+    def __init__(self, cloud_path, source_root, target_root, thread_count=8, timeout_seconds=300):
         self.cloud_path = cloud_path
         self.source_root = source_root
         self.target_root = target_root
-        self.num_threads = num_threads
+        self.thread_count = thread_count
         self.timeout_seconds = timeout_seconds
         self.error_dirs_num = 0
         self.total_num = 0
@@ -57,7 +57,7 @@ class SymlinkDirChecker:
         # logging.info(f"开始清理无效文件夹...")
         self.threads = []
 
-        for i in range(self.num_threads):
+        for i in range(self.thread_count):
             thread_name = f"Thread-{i + 1}"
             thread = threading.Thread(target=self.remove_error_dir, args=(thread_name,))
             self.threads.append(thread)
@@ -71,7 +71,7 @@ class SymlinkDirChecker:
             for dir_path in self.get_dirs():
                 self.file_queue.put(dir_path)
 
-            for i in range(self.num_threads):
+            for i in range(self.thread_count):
                 self.file_queue.put(None)
 
             for thread in self.threads:

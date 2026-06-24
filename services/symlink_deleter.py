@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-symlink_name_dict = {"symlink": "软链接", "strm": "strm文件"}
+from utils.service_messages import SYMLINK_NAME_BY_MODE
 
 
 class SymlinkDeleter:
@@ -13,7 +13,7 @@ class SymlinkDeleter:
     ):
         self.target_folder = target_folder
         self.logger = logger or logging.getLogger(__name__)  # 使用传递的logger
-        self.symlink_name = symlink_name_dict.get("symlink")
+        self.symlink_name = SYMLINK_NAME_BY_MODE.get("symlink")
 
     def run(self):
         deleted_links = 0

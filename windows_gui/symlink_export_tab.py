@@ -368,7 +368,7 @@ class SymlinkExportTab(BaseTab):
                 source_folders=link_folders,
                 target_folder=target_folder,
                 allowed_extensions=allowed_extensions,
-                num_threads=thread_count,
+                thread_count=thread_count,
                 only_tvshow_nfo=only_tvshow_nfo,
                 logger=self.logger,
             )
@@ -496,7 +496,7 @@ class SymlinkExportTab(BaseTab):
             source_folders=link_folders,
             target_folder=target_folder,
             allowed_extensions=allowed_extensions,
-            num_threads=thread_count,
+            thread_count=thread_count,
             only_tvshow_nfo=self.only_tvshow_nfo_var.get(),
             logger=self.logger,  # 传递logger
         )

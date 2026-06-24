@@ -560,7 +560,7 @@ class SymlinkExportTab(QWidget):
             source_folders=config["link_folders"],
             target_folder=config["target_folder"],
             allowed_extensions=config["meta_extensions"],
-            num_threads=config["thread_count"],
+            thread_count=config["thread_count"],
             only_tvshow_nfo=config["only_tvshow_nfo"],
             overwrite_existing=config["overwrite_metadata"],
             logger=self.logger,

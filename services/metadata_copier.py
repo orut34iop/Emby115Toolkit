@@ -13,7 +13,7 @@ class MetadataCopier:
         source_folders: List[str],
         target_folder: str,
         allowed_extensions,
-        num_threads=1,
+        thread_count=1,
         only_tvshow_nfo=False,
         overwrite_existing=False,
         logger=None,
@@ -24,14 +24,14 @@ class MetadataCopier:
             source_folders: 源文件夹路径列表
             target_folder: 目标文件夹路径
             allowed_extensions: 允许的文件扩展名
-            num_threads: 线程数
+            thread_count: 线程数
             overwrite_existing: 已存在元数据文件时是否覆盖
             logger: 日志记录器
         """
         self.source_folders = source_folders
         self.target_folder = target_folder
         self.metadata_extensions = allowed_extensions
-        self.num_threads = num_threads
+        self.thread_count = thread_count
         self.copied_metadatas = 0
         self.existing_links = 0
         self.file_queue = queue.Queue()
@@ -142,7 +142,7 @@ class MetadataCopier:
                 os.makedirs(self.target_folder, exist_ok=True)
 
                 threads = []
-                for i in range(self.num_threads):
+                for i in range(self.thread_count):
                     thread_name = f"Thread-{i + 1}"
                     thread = threading.Thread(target=self.start_to_copy_metadata, args=(thread_name,))
                     threads.append(thread)
@@ -153,7 +153,7 @@ class MetadataCopier:
                     self.file_queue.put((source_file, source_folder, root_directory))
 
                 # 添加停止任务
-                for _ in range(self.num_threads):
+                for _ in range(self.thread_count):
                     self.file_queue.put(None)
 
                 for thread in threads:

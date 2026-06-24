@@ -885,8 +885,8 @@ class TestMediaServerClientClearFiles:
 class TestMediaServerClientCallback:
     """测试回调功能"""
 
-    def test_check_duplicate_callback(self, temp_dir, sample_nfo_content):
-        """测试 check_duplicate 回调"""
+    def test_check_duplicates_callback(self, temp_dir, sample_nfo_content):
+        """测试 check_duplicates 回调"""
         from media_server.client import MediaServerClient
 
         # 创建 NFO 文件
@@ -909,7 +909,7 @@ class TestMediaServerClientCallback:
         # 模拟 get_all_media 返回包含该影片的数据（有重复）
         mock_movies = [{'Name': 'Test Movie', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/to/movie'}]
         with patch.object(operator, 'get_all_media', return_value=mock_movies):
-            operator.check_duplicate(temp_dir, callback)
+            operator.check_duplicates(temp_dir, callback)
             time.sleep(0.5)
 
         # 验证回调被调用
@@ -931,31 +931,21 @@ class TestMediaServerClientGenresMap:
 
     def test_common_genres_translation(self):
         """测试常见流派的翻译映射逻辑"""
-        # 验证常见的中英文流派映射
-        genres_map = {
-            'Action': '动作',
-            'Adventure': '冒险',
-            'Animation': '动画',
-            'Comedy': '喜剧',
-            'Crime': '犯罪',
-            'Documentary': '纪录片',
-            'Drama': '剧情',
-            'Family': '家庭',
-            'Fantasy': '奇幻',
-            'Horror': '恐怖',
-            'Mystery': '悬疑',
-            'Romance': '爱情',
-            'Science Fiction': '科幻',
-            'Thriller': '惊悚',
-            'War': '战争',
-            'Western': '西部',
-        }
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS, TV_GENRE_TRANSLATIONS
 
         # 验证映射不为空且包含常见流派
-        assert len(genres_map) > 0
-        assert 'Action' in genres_map
-        assert 'Drama' in genres_map
-        assert 'Comedy' in genres_map
-        assert genres_map['Action'] == '动作'
-        assert genres_map['Drama'] == '剧情'
-        assert genres_map['Comedy'] == '喜剧'
+        assert len(TV_GENRE_TRANSLATIONS) > 0
+        assert len(MOVIE_GENRE_TRANSLATIONS) > 0
+        assert TV_GENRE_TRANSLATIONS['Action'] == '动作'
+        assert TV_GENRE_TRANSLATIONS['Drama'] == '剧情'
+        assert TV_GENRE_TRANSLATIONS['Comedy'] == '喜剧'
+        assert MOVIE_GENRE_TRANSLATIONS['Action'] == '动作'
+        assert MOVIE_GENRE_TRANSLATIONS['Comedy'] == '喜剧'
+
+    def test_movie_genres_keep_duplicate_key_effective_values(self):
+        """测试抽离后保留旧字典重复键的最终生效值"""
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS
+
+        assert MOVIE_GENRE_TRANSLATIONS['エロス'] == '情色'
+        assert MOVIE_GENRE_TRANSLATIONS['セクシー'] == '性感'
+        assert MOVIE_GENRE_TRANSLATIONS['逆レイプ'] == '反向强奸'
