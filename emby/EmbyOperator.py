@@ -376,17 +376,33 @@ class EmbyOperator:
         self.logger.error("No matching tmdbid found.")
         return None
 
-    # 按照TMDb ID分组
-    def group_movies_by_tmdbid(self, movies):
+    def _get_provider_id(self, movie, provider_key):
+        provider_ids = movie.get("ProviderIds", {}) or {}
+        provider_key = str(provider_key or "").lower()
+        for key, value in provider_ids.items():
+            if str(key).lower() == provider_key and value:
+                provider_value = str(value).strip()
+                if provider_key == "num":
+                    return provider_value.upper()
+                return provider_value
+        return ""
+
+    def group_movies_by_provider_id(self, movies, provider_key):
         grouped_movies = {}
         for movie in movies:
-            tmdb_id = movie.get("ProviderIds", {}).get("Tmdb", "")
-            file_path = movie.get("Path", "")
-            if tmdb_id:
-                if tmdb_id not in grouped_movies:
-                    grouped_movies[tmdb_id] = []
-                grouped_movies[tmdb_id].append(movie)
+            provider_value = self._get_provider_id(movie, provider_key)
+            if provider_value:
+                if provider_value not in grouped_movies:
+                    grouped_movies[provider_value] = []
+                grouped_movies[provider_value].append(movie)
         return grouped_movies
+
+    def _count_mergeable_groups(self, grouped_movies):
+        return sum(1 for movies in grouped_movies.values() if len(movies) > 1)
+
+    # 按照TMDb ID分组
+    def group_movies_by_tmdbid(self, movies):
+        return self.group_movies_by_provider_id(movies, "tmdb")
 
     def emby_get_user_id(self):
         params = {"api_key": self.api_key}
@@ -411,23 +427,34 @@ class EmbyOperator:
             self.logger.error(response.text)
 
     # 合并同一个TMDb ID下的不同版本
-    def merge_movie_versions(self, grouped_movies):
+    def merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
         if self.server_type == 'jellyfin':
-            return self.jellyfin_merge_movie_versions(grouped_movies)
-        return self.emby_merge_movie_versions(grouped_movies)
+            return self.jellyfin_merge_movie_versions(grouped_movies, identity_label)
+        return self.emby_merge_movie_versions(grouped_movies, identity_label)
 
-    def emby_merge_movie_versions(self, grouped_movies):
-        return self._merge_movie_versions(grouped_movies, ids_key="Ids", server_label="Emby")
+    def emby_merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
+        return self._merge_movie_versions(
+            grouped_movies,
+            ids_key="Ids",
+            server_label="Emby",
+            identity_label=identity_label
+        )
 
-    def jellyfin_merge_movie_versions(self, grouped_movies):
-        return self._merge_movie_versions(grouped_movies, ids_key="ids", server_label="Jellyfin")
+    def jellyfin_merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
+        return self._merge_movie_versions(
+            grouped_movies,
+            ids_key="ids",
+            server_label="Jellyfin",
+            identity_label=identity_label
+        )
 
-    def _merge_movie_versions(self, grouped_movies, ids_key, server_label):
+    def _merge_movie_versions(self, grouped_movies, ids_key, server_label, identity_label="TMDB"):
         merged_movies = []
-        for tmdb_id, movies in grouped_movies.items():
+        for identity_value, movies in grouped_movies.items():
             if len(movies) > 1:
                 name = movies[0]["Name"]
                 self.logger.info("")
+                self.logger.info(f"发现相同 {identity_label} 影片：{identity_value}")
                 self.logger.info(f"已发现相同版本的影片::: {name}")
 
                 item_ids = ",".join(movie["Id"] for movie in movies)
@@ -464,10 +491,26 @@ class EmbyOperator:
                 self.logger.info(f"{server_label} 库里没有影片")
                 return
             self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影片")
-            grouped_movies = self.group_movies_by_tmdbid(all_movies)
-            self.logger.info(f"已分组影片，共 {len(grouped_movies)} 个TMDb ID")
-            merged_movies = self.merge_movie_versions(grouped_movies)
-            self.logger.info(f"已合并版本，共 {len(merged_movies)} 部影片")
+
+            self.logger.info("开始按 TMDB 合并标准影片版本")
+            tmdb_grouped_movies = self.group_movies_by_tmdbid(all_movies)
+            tmdb_mergeable_count = self._count_mergeable_groups(tmdb_grouped_movies)
+            self.logger.info(f"已分组影片，共 {len(tmdb_grouped_movies)} 个TMDb ID")
+            self.logger.info(f"TMDB 可合并分组：{tmdb_mergeable_count} 组")
+            merged_movies = self.merge_movie_versions(tmdb_grouped_movies, "TMDB")
+            self.logger.info(f"TMDB 已合并版本，共 {len(merged_movies)} 部影片")
+
+            self.logger.info("开始检查 AV 番号版本")
+            av_grouped_movies = self.group_movies_by_provider_id(all_movies, "num")
+            if not av_grouped_movies:
+                self.logger.info("未发现 AV 番号数据，跳过 AV 合并")
+            else:
+                av_mergeable_count = self._count_mergeable_groups(av_grouped_movies)
+                self.logger.info(f"已分组影片，共 {len(av_grouped_movies)} 个 AV 番号")
+                self.logger.info(f"AV 番号可合并分组：{av_mergeable_count} 组")
+                av_merged_movies = self.merge_movie_versions(av_grouped_movies, "AV 番号")
+                self.logger.info(f"AV 番号已合并版本，共 {len(av_merged_movies)} 部影片")
+                merged_movies.extend(av_merged_movies)
 
             if callback:
                 callback(merged_movies)

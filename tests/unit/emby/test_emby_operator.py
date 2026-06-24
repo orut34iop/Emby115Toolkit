@@ -172,6 +172,69 @@ class TestEmbyOperatorServerType:
         assert requests_made[0][2]['params']['Ids'] == '1,2'
         assert 'ids' not in requests_made[0][2]['params']
 
+    def test_merge_versions_runs_tmdb_then_av_num(self, monkeypatch):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )
+        operator.validate_server_type = lambda: True
+        operator._start_background_task = lambda target, task_name: target()
+        operator.get_movie_media = lambda: [
+            {'Id': 'tmdb-1', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-1080p.mkv'},
+            {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
+            {'Id': 'av-1', 'Name': 'AARM-009', 'ProviderIds': {'num': 'AARM-009'}, 'Path': '/path/AARM-009.mp4'},
+            {'Id': 'av-2', 'Name': 'AARM-009-C', 'ProviderIds': {'Num': 'AARM-009'}, 'Path': '/path/AARM-009-C.mp4'},
+            {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
+        ]
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+
+        result = operator.merge_versions(lambda message: None)
+
+        assert [request[2]['params']['Ids'] for request in requests_made] == [
+            'tmdb-1,tmdb-2',
+            'av-1,av-2',
+        ]
+        assert [movie['Id'] for movie in result] == ['tmdb-1', 'av-1']
+
+    def test_merge_versions_skips_av_when_num_provider_missing(self, monkeypatch, caplog):
+        from emby.EmbyOperator import EmbyOperator
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key',
+            server_type='emby'
+        )
+        operator.validate_server_type = lambda: True
+        operator._start_background_task = lambda target, task_name: target()
+        operator.get_movie_media = lambda: [
+            {'Id': 'tmdb-1', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-1080p.mkv'},
+            {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
+            {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
+        ]
+        monkeypatch.setattr('emby.EmbyOperator.requests.request', fake_request)
+
+        with caplog.at_level('INFO'):
+            result = operator.merge_versions(lambda message: None)
+
+        assert [request[2]['params']['Ids'] for request in requests_made] == ['tmdb-1,tmdb-2']
+        assert [movie['Id'] for movie in result] == ['tmdb-1']
+        assert '未发现 AV 番号数据，跳过 AV 合并' in caplog.text
+
     def test_item_update_path_follows_selected_server_type(self, monkeypatch):
         from emby.EmbyOperator import EmbyOperator
 
@@ -588,6 +651,49 @@ class TestEmbyOperatorGroupMovies:
         assert len(result) == 2
         assert len(result['12345']) == 1
         assert len(result['67890']) == 1
+
+    def test_group_movies_by_provider_id_matches_key_case_insensitive(self):
+        """测试 provider key 大小写不敏感"""
+        from emby.EmbyOperator import EmbyOperator
+
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key'
+        )
+
+        movies = [
+            {'Id': '1', 'Name': 'AARM-009', 'ProviderIds': {'num': 'AARM-009'}, 'Path': '/path/a'},
+            {'Id': '2', 'Name': 'AARM-009-C', 'ProviderIds': {'Num': 'AARM-009'}, 'Path': '/path/b'},
+            {'Id': '3', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/c'},
+            {'Id': '4', 'Name': 'No Provider', 'ProviderIds': {}, 'Path': '/path/d'},
+        ]
+
+        av_result = operator.group_movies_by_provider_id(movies, 'num')
+        tmdb_result = operator.group_movies_by_provider_id(movies, 'tmdb')
+
+        assert list(av_result.keys()) == ['AARM-009']
+        assert [movie['Id'] for movie in av_result['AARM-009']] == ['1', '2']
+        assert list(tmdb_result.keys()) == ['12345']
+        assert [movie['Id'] for movie in tmdb_result['12345']] == ['3']
+
+    def test_group_movies_by_provider_id_normalizes_av_num_value_case(self):
+        """测试 AV 番号值大小写不同时仍合并到同一组"""
+        from emby.EmbyOperator import EmbyOperator
+
+        operator = EmbyOperator(
+            emby_url='http://localhost:8096',
+            emby_api='test-api-key'
+        )
+
+        movies = [
+            {'Id': '1', 'Name': 'AARM-009', 'ProviderIds': {'num': 'AARM-009'}, 'Path': '/path/a'},
+            {'Id': '2', 'Name': 'aarm-009', 'ProviderIds': {'num': 'aarm-009'}, 'Path': '/path/b'},
+        ]
+
+        result = operator.group_movies_by_provider_id(movies, 'num')
+
+        assert list(result.keys()) == ['AARM-009']
+        assert [movie['Id'] for movie in result['AARM-009']] == ['1', '2']
 
 
 class TestEmbyOperatorFindRelatedVideos:
