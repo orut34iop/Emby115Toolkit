@@ -2,4 +2,4 @@ PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv venv
 PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install -r requirements.txt
 PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install PyYAML
 PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv pip install requests
-PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv run python .\main.py
+PS C:\Users\wiz\Desktop\dev\Emby115Toolkit> uv run python .\windows_main.py

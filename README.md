@@ -7,7 +7,7 @@
 ## 我的环境
 
 - Windows系统
-- macOS 系统请使用 PyQt5 版本入口 `qt_main.py`
+- macOS 系统请使用 PyQt5 版本入口 `macos_main.py`
 - Python 3.x
 - Windows主机：挂载CloudDrive2, 并运行Emby Server
 - 播放端推荐：Apple TV + Infuse播放器
@@ -92,16 +92,25 @@ Windows系统：
 
 1. 安装依赖：  pip install -r requirements.txt
 
-2. 运行程序:   python main.py
+2. 运行程序:   python windows_main.py
 
 macOS系统：
 
 1. 安装依赖：  pip install -r requirements.txt
 
-2. 运行程序:   python qt_main.py
+2. 运行程序:   python macos_main.py
 
-注意：macOS 不再支持 tkinter 入口 `main.py`，请勿在 macOS 上运行 `python main.py`。
+注意：macOS 不再支持 tkinter 入口 `windows_main.py`，请勿在 macOS 上运行 `python windows_main.py`。
 
-注意：Linux 不再支持，请不要在 Linux 上运行 `main.py` 或 `qt_main.py`。
+注意：Linux 不再支持，请不要在 Linux 上运行 `windows_main.py` 或 `macos_main.py`。
+
+## 平台文件命名
+
+| 平台 | 入口文件 | GUI 目录 | 打包文件 |
+|------|----------|----------|----------|
+| Windows | `windows_main.py` | `windows_gui/` | `windows_build.bat`, `windows_build.spec`, `windows_emby_toolkit.spec` |
+| macOS | `macos_main.py` | `macos_gui/` | 暂无 |
+
+共享后端代码在 `services/`、`media_server/`、`utils/` 中，两个 GUI 版本共同使用。
 
 致谢： 项目中使用了shenxianmq的MediaHelper项目（https://github.com/shenxianmq/MediaHelper）的部分代码，感谢shenxianmq!

@@ -1,12 +1,12 @@
 """
 utils.logger 模块单元测试
 """
-import pytest
-import os
+
 import logging
-import tempfile
-import time
+import os
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestSetupLogger:
@@ -144,15 +144,15 @@ class TestTextHandler:
 
     def test_text_handler_emit(self, mock_text_widget):
         """测试 emit 方法将消息放入队列"""
-        from utils.logger import TextHandler
         import logging
+
+        from utils.logger import TextHandler
 
         handler = TextHandler(mock_text_widget)
         handler.setFormatter(logging.Formatter('%(message)s'))
 
         record = logging.LogRecord(
-            name='test', level=logging.INFO, pathname='', lineno=0,
-            msg='test message', args=(), exc_info=None
+            name='test', level=logging.INFO, pathname='', lineno=0, msg='test message', args=(), exc_info=None
         )
         handler.emit(record)
 
@@ -163,8 +163,9 @@ class TestTextHandler:
 
     def test_text_handler_emit_different_levels(self, mock_text_widget):
         """测试不同级别的日志 emit"""
-        from utils.logger import TextHandler
         import logging
+
+        from utils.logger import TextHandler
 
         handler = TextHandler(mock_text_widget)
         handler.setFormatter(logging.Formatter('%(message)s'))
@@ -178,8 +179,7 @@ class TestTextHandler:
 
         for level, levelname in levels:
             record = logging.LogRecord(
-                name='test', level=level, pathname='', lineno=0,
-                msg=f'{levelname} msg', args=(), exc_info=None
+                name='test', level=level, pathname='', lineno=0, msg=f'{levelname} msg', args=(), exc_info=None
             )
             handler.emit(record)
 
@@ -263,6 +263,7 @@ class TestTextHandler:
     def test_setup_logger_with_text_widget(self, mock_text_widget):
         """测试带 text_widget 的 setup_logger"""
         import tkinter as tk
+
         from utils.logger import setup_logger
 
         # 需要 tk.END 作为常量

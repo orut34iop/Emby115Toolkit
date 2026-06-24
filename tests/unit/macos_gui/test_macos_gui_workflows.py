@@ -1,0 +1,456 @@
+"""
+macOS PyQt5 frontend smoke and workflow tests.
+"""
+
+import os
+import threading
+import time
+
+import pytest
+import yaml
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PyQt5")
+
+from PyQt5.QtWidgets import QApplication, QMessageBox
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+@pytest.fixture
+def isolated_config(tmp_path, monkeypatch):
+    from utils.config import Config
+
+    def initialize(self):
+        self.config_dir = str(tmp_path)
+        self.config_file = str(tmp_path / "config.yaml")
+        if not os.path.exists(self.config_file):
+            self._create_default_config()
+        self._load_config()
+
+    Config._instance = None
+    Config._config = None
+    monkeypatch.setattr(Config, "_initialize", initialize)
+    yield tmp_path
+    Config._instance = None
+    Config._config = None
+
+
+def wait_until(qapp, predicate, timeout=3):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def test_main_window_initializes_all_tabs(qapp, isolated_config):
+    from macos_gui.main_window import MainWindow
+
+    window = MainWindow()
+
+    assert window.tabs.count() == 6
+    assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == [
+        "导出软链接",
+        "文件夹操作",
+        "文件合并",
+        "合并版本",
+        "更新流派",
+        "115目录树镜像",
+    ]
+
+    window.close()
+
+
+def test_symlink_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+    (source / "movie.nfo").write_text("<movie />", encoding="utf-8")
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+    tab.spin_interval.setValue(0)
+
+    tab.create_symlink()
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+    assert wait_until(qapp, tab.btn_create_link.isEnabled)
+
+    tab.download_metadata()
+    copied_metadata = target / "movie.nfo"
+    assert wait_until(qapp, copied_metadata.exists)
+
+
+def test_symlink_export_tab_load_preserves_saved_config(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+    from utils.config import Config
+
+    saved_config = Config()
+    saved_config.set('symlink_export', 'link_folders', ['/saved/source'])
+    saved_config.set('symlink_export', 'target_folder', '/saved/target')
+    saved_config.set('symlink_export', 'thread_count', 9)
+    saved_config.set('symlink_export', 'op_interval_sec', 11)
+    saved_config.set('symlink_export', 'enable_115_protect', True)
+    saved_config.set('symlink_export', 'enable_replace_path', True)
+    saved_config.set('symlink_export', 'only_tvshow_nfo', False)
+    saved_config.set('symlink_export', 'overwrite_metadata', True)
+    saved_config.set('symlink_export', 'original_path', '/old/root')
+    saved_config.set('symlink_export', 'replace_path', '/new/root')
+    saved_config.set('symlink_export', 'link_suffixes', ['.mp4', '.mkv'])
+    saved_config.set('symlink_export', 'meta_suffixes', ['.nfo', '.jpg'])
+    saved_config.save()
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+
+    assert tab.link_list.item(0).text() == '/saved/source'
+    assert tab.target_edit.text() == '/saved/target'
+    assert tab.spin_threads.value() == 9
+    assert tab.spin_interval.value() == 11
+    assert tab.chk_protect.isChecked()
+    assert tab.chk_replace.isChecked()
+    assert not tab.chk_tvshow.isChecked()
+    assert tab.chk_overwrite_meta.isChecked()
+    assert tab.original_edit.text() == '/old/root'
+    assert tab.replace_edit.text() == '/new/root'
+    assert tab.edit_link_suffix.text() == '.mp4;.mkv'
+    assert tab.edit_meta_suffix.text() == '.nfo;.jpg'
+
+    with open(saved_config.config_file, 'r', encoding='utf-8') as f:
+        reloaded = yaml.safe_load(f)
+    assert reloaded['symlink_export']['target_folder'] == '/saved/target'
+    assert reloaded['symlink_export']['enable_115_protect'] is True
+    assert reloaded['symlink_export']['enable_replace_path'] is True
+    assert reloaded['symlink_export']['overwrite_metadata'] is True
+
+
+def test_symlink_export_tab_path_edits_persist_to_config(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+    from utils.config import Config
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.target_edit.setText('/manual/target')
+    qapp.processEvents()
+
+    saved_config = Config()
+    with open(saved_config.config_file, 'r', encoding='utf-8') as f:
+        reloaded = yaml.safe_load(f)
+    assert reloaded['symlink_export']['target_folder'] == '/manual/target'
+
+
+def test_symlink_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+    from utils.config import Config
+
+    first_tab = SymlinkExportTab(str(tmp_path / "logs"))
+    first_tab.link_list.clear()
+    first_tab.link_list.addItem('/runtime/source')
+    first_tab.target_edit.setText('/runtime/target')
+    first_tab.spin_threads.setValue(7)
+    first_tab.chk_protect.setChecked(True)
+    first_tab.chk_tvshow.setChecked(False)
+    first_tab.edit_link_suffix.setText('.mp4;.mkv')
+    first_tab.save_config()
+
+    Config._instance = None
+    Config._config = None
+
+    second_tab = SymlinkExportTab(str(tmp_path / "logs"))
+
+    assert second_tab.link_list.item(0).text() == '/runtime/source'
+    assert second_tab.target_edit.text() == '/runtime/target'
+    assert second_tab.spin_threads.value() == 7
+    assert second_tab.chk_protect.isChecked()
+    assert not second_tab.chk_tvshow.isChecked()
+    assert second_tab.edit_link_suffix.text() == '.mp4;.mkv'
+
+
+def test_export_create_symlink_shows_progress_logs(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie1.mp4").write_text("video1", encoding="utf-8")
+    (source / "movie2.mp4").write_text("video2", encoding="utf-8")
+    (source / "poster.jpg").write_text("image", encoding="utf-8")
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.spin_interval.setValue(0)
+
+    tab.create_symlink()
+
+    assert wait_until(qapp, tab.btn_create_link.isEnabled)
+    log_text = tab.log_text.toPlainText()
+    assert "创建软链接已在后台启动" in log_text
+    assert "准备创建软链接" in log_text
+    assert "扫描源文件夹" in log_text
+    assert "扫描 3 个文件，匹配 2 个软链接候选" in log_text
+    assert "待创建软链接候选: 2 个" in log_text
+    assert "创建进度: 2/2" in log_text
+
+
+def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, monkeypatch):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+
+    started = threading.Event()
+    release = threading.Event()
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.spin_interval.setValue(0)
+
+    def slow_metadata(config):
+        started.set()
+        release.wait(timeout=2)
+
+    monkeypatch.setattr(tab, "_run_metadata_copy", slow_metadata)
+
+    start_time = time.time()
+    tab.sync_all()
+
+    assert time.time() - start_time < 0.2
+    assert wait_until(qapp, started.is_set)
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+    assert not tab.btn_sync_all.isEnabled()
+
+    release.set()
+    assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
+def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    (source / "movie.mp4").write_text("video", encoding="utf-8")
+    (source / "movie.nfo").write_text("<movie />", encoding="utf-8")
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+    tab.spin_interval.setValue(0)
+
+    tab.sync_all()
+
+    assert wait_until(qapp, lambda: os.path.islink(target / "movie.mp4"))
+    assert wait_until(qapp, lambda: (target / "movie.nfo").exists())
+    assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
+def test_export_metadata_overwrite_checkbox_controls_existing_files(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    existing_target = target / "movie.nfo"
+    source.mkdir()
+    existing_target.parent.mkdir(parents=True)
+    (source / "movie.nfo").write_text("new content", encoding="utf-8")
+    existing_target.write_text("existing content", encoding="utf-8")
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.clear()
+    tab.link_list.addItem(str(source))
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+
+    assert not tab.chk_overwrite_meta.isChecked()
+
+    tab.download_metadata()
+    assert wait_until(qapp, tab.btn_download_meta.isEnabled)
+    assert existing_target.read_text(encoding="utf-8") == "existing content"
+
+    (source / "movie.nfo").write_text("overwritten content", encoding="utf-8")
+    tab.chk_overwrite_meta.setChecked(True)
+    tab.download_metadata()
+    assert wait_until(qapp, tab.btn_download_meta.isEnabled)
+    assert existing_target.read_text(encoding="utf-8") == "overwritten content"
+
+
+def test_folder_tools_tab_operations_do_not_raise(qapp, isolated_config, tmp_path):
+    from macos_gui.folder_tools_tab import FolderToolsTab
+
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    real_file = folder / "real.mp4"
+    real_file.write_text("video", encoding="utf-8")
+    link_file = folder / "linked.mp4"
+    os.symlink(real_file, link_file)
+
+    tab = FolderToolsTab(str(tmp_path / "logs"))
+    tab.target_edit.setText(str(folder))
+
+    tab.combo_op.setCurrentText("删除软链接")
+    tab.execute()
+    assert not os.path.lexists(link_file)
+
+    tab.combo_op.setCurrentText("删除所有视频文件")
+    tab.execute()
+    assert wait_until(qapp, lambda: not real_file.exists())
+
+    tab.combo_op.setCurrentText("检查刮削数据完整性")
+    tab.execute()
+    qapp.processEvents()
+
+
+def test_merge_and_tree_mirror_tabs_run_backends(qapp, isolated_config, tmp_path):
+    from macos_gui.file_merge_tab import FileMergeTab
+    from macos_gui.tree_mirror_tab import TreeMirrorTab
+
+    metadata = tmp_path / "metadata"
+    video = tmp_path / "video"
+    metadata.mkdir()
+    video.mkdir()
+    (metadata / "movie.nfo").write_text("<movie />", encoding="utf-8")
+    (video / "movie.mp4").write_text("video", encoding="utf-8")
+
+    file_merge_tab = FileMergeTab(str(tmp_path / "logs"))
+    file_merge_tab.metadata_edit.setText(str(metadata))
+    file_merge_tab.video_edit.setText(str(video))
+    file_merge_tab.merge_files()
+    assert (video / "movie.nfo").exists()
+
+    tree_file = tmp_path / "tree.txt"
+    export = tmp_path / "mirror"
+    export.mkdir()
+    tree_file.write_text("Root\n|——电影\n| |- Movie.2024.mp4\n", encoding="utf-8")
+
+    tree_mirror_tab = TreeMirrorTab(str(tmp_path / "logs"))
+    tree_mirror_tab.tree_edit.setText(str(tree_file))
+    tree_mirror_tab.export_edit.setText(str(export))
+    tree_mirror_tab.start_mirror()
+    assert (export / "电影" / "Movie.2024.mp4").exists()
+
+
+def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkeypatch):
+    from macos_gui.genre_update_tab import GenreUpdateTab
+    from macos_gui.version_merge_tab import VersionMergeTab
+    from media_server.client import MediaServerClient
+
+    calls = []
+
+    def fake_merge_versions(self, callback):
+        calls.append(("merge_versions", self.server_url, self.api_key, self.server_type))
+        callback("merge done")
+
+    def fake_update_genres(self, callback=None):
+        calls.append(("update_genres", self.server_url, self.api_key, self.username, self.server_type))
+        if callback:
+            callback("genres done")
+
+    monkeypatch.setattr(MediaServerClient, "merge_versions", fake_merge_versions)
+    monkeypatch.setattr(MediaServerClient, "update_genres", fake_update_genres)
+
+    version_merge_tab = VersionMergeTab(str(tmp_path / "logs"))
+    version_merge_tab.edit_url.setText("http://jellyfin.local")
+    version_merge_tab.edit_api.setText("api")
+    version_merge_tab.radio_jellyfin.setChecked(True)
+    version_merge_tab.merge_versions()
+
+    genre_update_tab = GenreUpdateTab(str(tmp_path / "logs"))
+    genre_update_tab.edit_url.setText("http://emby.local")
+    genre_update_tab.edit_api.setText("api")
+    genre_update_tab.edit_user.setText("user")
+    genre_update_tab.radio_emby.setChecked(True)
+    genre_update_tab.update_genres()
+
+    assert calls == [
+        ("merge_versions", "http://jellyfin.local", "api", "jellyfin"),
+        ("update_genres", "http://emby.local", "api", "user", "emby"),
+    ]
+
+
+def test_qt_slot_exception_guard_logs_instead_of_raising(qapp, isolated_config, tmp_path, monkeypatch):
+    import macos_gui.file_merge_tab as merge_module
+    from macos_gui.file_merge_tab import FileMergeTab
+
+    class FailingMerger:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    metadata = tmp_path / "metadata"
+    video = tmp_path / "video"
+    metadata.mkdir()
+    video.mkdir()
+
+    monkeypatch.setattr(merge_module, "FileMerger", FailingMerger)
+
+    tab = FileMergeTab(str(tmp_path / "logs"))
+    tab.metadata_edit.setText(str(metadata))
+    tab.video_edit.setText(str(video))
+
+    tab.merge_files()
+    assert "boom" in tab.log_text.toPlainText()
+
+
+def test_qtextedit_log_handler_swallows_widget_slot_errors(qapp):
+    from macos_gui.qt_utils import QTextEditLogHandler
+
+    class FailingWidget:
+        def append(self, message):
+            raise KeyboardInterrupt()
+
+    handler = QTextEditLogHandler(FailingWidget())
+
+    handler._append_message("hello")
+
+
+def test_main_window_confirms_close_while_export_task_running(qapp, isolated_config, monkeypatch):
+    from macos_gui.main_window import MainWindow
+
+    class FakeCloseEvent:
+        def __init__(self):
+            self.accepted = False
+            self.ignored = False
+
+        def accept(self):
+            self.accepted = True
+
+        def ignore(self):
+            self.ignored = True
+
+    window = MainWindow()
+    monkeypatch.setattr(window.symlink_export_tab, "is_task_running", lambda: True)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.No)
+    cancel_event = FakeCloseEvent()
+    window.closeEvent(cancel_event)
+    assert cancel_event.ignored
+    assert not cancel_event.accepted
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
+    accept_event = FakeCloseEvent()
+    window.closeEvent(accept_event)
+    assert accept_event.accepted
+    assert not accept_event.ignored
+
+    window.close()

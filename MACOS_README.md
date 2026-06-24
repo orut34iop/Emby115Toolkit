@@ -5,7 +5,7 @@
 macOS 只支持 PyQt5 版本入口：
 
 ```bash
-python qt_main.py
+python macos_main.py
 ```
 - **原生支持 macOS 拖拽**
 - 支持单个/多个文件夹拖拽
@@ -13,7 +13,7 @@ python qt_main.py
 - 无需管理员权限
 - 修复窗口最大化问题
 
-请不要在 macOS 上运行 `python main.py`。`main.py` 是 Windows tkinter 入口，macOS 上会直接提示改用 `qt_main.py` 并退出。
+请不要在 macOS 上运行 `python windows_main.py`。`windows_main.py` 是 Windows tkinter 入口，macOS 上会直接提示改用 `macos_main.py` 并退出。
 
 ## 安装依赖
 
@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 ## 功能对比
 
-| 功能 | Windows tkinter (main.py) | macOS PyQt5 (qt_main.py) |
+| 功能 | Windows tkinter (windows_main.py) | macOS PyQt5 (macos_main.py) |
 |------|-------------------|-------------------|
 | 窗口显示 | ✅ | ✅ |
 | 文件浏览 | ✅ | ✅ |
@@ -47,20 +47,23 @@ A: 是的，两个版本使用相同的 `config.yaml` 配置文件。
 ### 代码结构
 ```
 Emby115Toolkit/
-├── main.py              # Windows tkinter 版本入口
-├── qt_main.py           # macOS PyQt5 版本入口 ⭐
-├── qt_gui/              # PyQt5 界面模块
+├── windows_main.py              # Windows tkinter 版本入口
+├── macos_main.py                # macOS PyQt5 版本入口
+├── macos_gui/                   # macOS PyQt5 界面模块
 │   ├── main_window.py
-│   ├── export_tab.py    # 导出软链接（支持拖拽）
-│   ├── folder_tab.py    # 文件夹操作（支持拖拽）
-│   ├── merge_tab.py     # 文件合并（支持拖拽）
-│   ├── mirror_tab.py    # 目录树镜像（支持拖拽）
+│   ├── symlink_export_tab.py    # 导出软链接（支持拖拽）
+│   ├── folder_tools_tab.py      # 文件夹操作（支持拖拽）
+│   ├── file_merge_tab.py        # 文件合并（支持拖拽）
+│   ├── tree_mirror_tab.py       # 目录树镜像（支持拖拽）
 │   └── ...
-└── tabs/                # tkinter 界面模块（Windows 专用）
+├── windows_gui/                 # tkinter 界面模块（Windows 专用）
+├── services/                    # 共享业务逻辑
+├── media_server/                # Emby/Jellyfin 集成
+└── utils/                       # 配置、日志、通用工具
 ```
 
 ### 设计原则
-- `main.py`: 保持 Windows tkinter 版本完整，不支持 macOS 或 Linux
-- `qt_main.py` + `qt_gui/`: 独立的 PyQt5 模块，专用于 macOS
+- `windows_main.py`: 保持 Windows tkinter 版本完整，不支持 macOS 或 Linux
+- `macos_main.py` + `macos_gui/`: 独立的 PyQt5 模块，专用于 macOS
 - macOS 不再维护 tkinter 版本，避免使用和维护上的混淆
 - Linux 不再支持，避免维护第三套平台差异

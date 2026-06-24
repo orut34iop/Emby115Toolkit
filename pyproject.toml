@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+extend-exclude = [
+    "logs",
+    "services/mergeLog",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"media_server/client.py" = ["F601"]
+"services/auto_uploader.py" = ["F403", "F405"]
+"services/metadata_checker.py" = ["F403", "F405"]
+"services/symlink_checker.py" = ["F403", "F405"]
+"services/symlink_dir_checker.py" = ["F403", "F405"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+line-ending = "lf"

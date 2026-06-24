@@ -1,0 +1,198 @@
+import os
+import tkinter as tk
+from tkinter import ttk
+
+from services.tree_mirror import TreeMirror
+from utils.config import Config
+from utils.history_entry import HistoryEntry
+from utils.logger import setup_logger
+
+from .base_tab import BaseTab
+
+
+class TreeMirrorTab(BaseTab):
+    def __init__(self, frame, log_dir):
+        super().__init__(frame, log_dir)
+        self.config = Config()
+        self.init_ui()
+        self.load_config()
+        self.logger.info("115目录树镜像标签页初始化完成")
+
+    def load_config(self):
+        """从配置文件加载设置"""
+        config = self.config.get('tree_mirror')
+        if config:
+            # 加载目标文件
+            if 'tree_file' in config:
+                tree_file = config['tree_file']
+                if tree_file and tree_file != '':
+                    tree_file = os.path.normpath(tree_file)
+                self.tree_file_entry.delete(0, tk.END)
+                self.tree_file_entry.insert(0, tree_file)
+                self.logger.info(f"加载115目录树文件: {tree_file}")
+
+            # 加载导出目录
+            if 'export_folder' in config:
+                export_folder = config['export_folder']
+                if export_folder and export_folder != '':
+                    export_folder = os.path.normpath(export_folder)
+                self.export_folder_entry.delete(0, tk.END)
+                self.export_folder_entry.insert(0, export_folder)
+                self.logger.info(f"加载导出镜像文件夹: {export_folder}")
+
+            # 加载修复乱码设置
+            if 'fix_garbled_text' in config:
+                self.fix_garbled_var.set(config['fix_garbled_text'])
+                self.logger.info(f"加载乱码修复设置: {config['fix_garbled_text']}")
+
+    def save_config(self):
+        """保存当前设置到配置文件"""
+        # 更新配置
+        tree_file = self.tree_file_entry.get().strip()
+        if tree_file and tree_file != '':
+            tree_file = os.path.normpath(tree_file)  # 规范化路径
+        self.config.set('tree_mirror', 'tree_file', tree_file)
+
+        export_folder = self.export_folder_entry.get().strip()
+        if export_folder and export_folder != '':
+            export_folder = os.path.normpath(export_folder)  # 规范化路径
+        self.config.set('tree_mirror', 'export_folder', export_folder)
+
+        self.config.set('tree_mirror', 'fix_garbled_text', bool(self.fix_garbled_var.get()))
+
+        # 保存到文件
+        self.config.save()
+        self.logger.info("配置已保存")
+
+    def validate_target_folder(self, path):
+        """验证目标文件路径"""
+        path = path.strip()
+        if not path:
+            return True
+        if not os.path.exists(path):
+            self.logger.warning("无效的文件路径")
+            return False
+        if not os.path.isfile(path):
+            self.logger.warning("所选路径不是文件")
+            return False
+        return True
+
+    def init_ui(self):
+        # 使用说明
+        desc_label = ttk.Label(self.frame, text="使用说明: 选择或拖拽115导出的目录树文件到输入框即可创建目录树镜像")
+        desc_label.pack(fill='x', padx=5, pady=5)
+
+        # 目录树文件选择（带历史记录）
+        self.tree_file_entry = HistoryEntry(
+            self.frame,
+            self.config,
+            'tree_mirror',
+            'tree_file',
+            label_text="115目录树文件",
+            is_file=True,
+            file_types=[("文本文件", "*.txt"), ("所有文件", "*.*")],
+        )
+        self.tree_file_entry.pack(fill='x', padx=5, pady=5)
+        self.tree_file_entry.on_change = lambda path: self.save_config()
+
+        # 导出镜像文件夹选择（带历史记录）
+        self.export_folder_entry = HistoryEntry(
+            self.frame, self.config, 'tree_mirror', 'export_folder', label_text="导出镜像文件夹"
+        )
+        self.export_folder_entry.pack(fill='x', padx=5, pady=5)
+        self.export_folder_entry.on_change = lambda path: self.save_config()
+
+        # 操作按钮组
+        btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
+        btn_frame.pack(fill='x', padx=5, pady=5)
+
+        mirror_tree_btn = ttk.Button(btn_frame, text="创建镜像", command=self.mirror_tree)
+        mirror_tree_btn.pack(side='left', padx=5)
+
+        # 添加修复乱码勾选框
+        self.fix_garbled_var = tk.BooleanVar(value=False)
+
+        # 创建勾选框样式
+        style = ttk.Style()
+        style.configure(
+            "Check.TCheckbutton",
+            indicatorrelief='flat',
+            indicatorcolor='#32CD32',
+            indicatordiameter=20,
+            font=('Segoe UI', 9),
+        )
+        style.map(
+            "Check.TCheckbutton",
+            background=[('active', '#f0f0f0')],
+            indicatorcolor=[('selected', '#32CD32'), ('pressed', '#228B22')],
+        )
+
+        fix_garbled_check = ttk.Checkbutton(
+            btn_frame,
+            text="尝试修复异常乱码字符的目录名/文件名",
+            variable=self.fix_garbled_var,
+            command=self.on_fix_garbled_change,
+            style="Check.TCheckbutton",
+            takefocus=False,
+        )
+        fix_garbled_check.pack(side='left', padx=5)
+
+        # 日志区域
+        self.log_frame, self.log_text = self.create_log_frame(self.frame)
+        self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
+        # 设置日志系统
+        log_file = os.path.join(self.log_dir, 'tree_mirror.log')
+        self.logger = setup_logger('tree_mirror', self.log_text, log_file)
+
+    def on_tree_file_drop(self, event):
+        """处理目录树文件拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
+
+    def on_export_folder_drop(self, event):
+        """处理导出文件夹拖放事件（HistoryEntry已内置拖放功能）"""
+        pass
+
+    def validate_and_save_target(self):
+        """验证并保存目标文件路径（HistoryEntry自动保存）"""
+        pass
+
+    def on_fix_garbled_change(self):
+        """处理修复乱码设置变化"""
+        self.save_config()
+        self.logger.info(f"乱码修复功能已{'开启' if self.fix_garbled_var.get() else '关闭'}")
+
+    def mirror_tree(self):
+        """镜像目录树"""
+        tree_file = self.tree_file_entry.get().strip()
+        export_folder = self.export_folder_entry.get().strip()
+        fix_garbled = self.fix_garbled_var.get()
+
+        # 验证路径
+        if not tree_file or not export_folder:
+            self.logger.info("提示: 目录树文件或导出文件夹路径为空")
+            return
+
+        if not os.path.isfile(tree_file):
+            self.logger.error("无效的115目录树文件")
+            return
+
+        if not os.path.isdir(export_folder):
+            self.logger.error("无效的导出镜像文件夹")
+            return
+
+        self.logger.info("开始创建目录树镜像")
+        self.logger.info(f"目录树文件: {tree_file}")
+        self.logger.info(f"导出目录: {export_folder}")
+        self.logger.info(f"乱码修复功能: {'开启' if fix_garbled else '关闭'}")
+
+        mirror = TreeMirror(
+            tree_file=tree_file, export_folder=export_folder, fix_garbled_text=fix_garbled, logger=self.logger
+        )
+
+        # 运行目录树镜像创建
+        mirror.run()
+
+        # 显示总结信息
+        summary = "目录树镜像创建完成\n"
+        self.logger.info(summary)

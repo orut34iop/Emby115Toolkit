@@ -1,8 +1,7 @@
+import logging
 import os
 import time
-from pathlib import Path
-import logging
-from utils.logger import setup_logger
+
 
 def generate_output_filename(folder_path: str) -> str:
     """
@@ -16,7 +15,8 @@ def generate_output_filename(folder_path: str) -> str:
     timestamp = time.strftime('%Y%m%d_%H%M%S')
     return f"{folder_name}_files_{timestamp}.txt"
 
-def list_files(folder_path: str, output_path = "", logger = None) -> tuple[int, str]:
+
+def list_files(folder_path: str, output_path="", logger=None) -> tuple[int, str]:
 
     list_files_logger = logger or logging.getLogger(__name__)  # 使用传递的logger
     """
@@ -29,11 +29,11 @@ def list_files(folder_path: str, output_path = "", logger = None) -> tuple[int, 
 
     # 生成保存遍历结果的文件列表文本对应的文件名
     output_filename = generate_output_filename(folder_path)
-    
+
     # 在当前工作目录下创建mergeLog目录
     output_dir = os.path.join(os.getcwd(), "mergeLog")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # 完整的输出文件路径
     output_path = os.path.join(output_dir, output_filename)
     # 删除同名文件
@@ -77,6 +77,7 @@ def list_files(folder_path: str, output_path = "", logger = None) -> tuple[int, 
         list_files_logger.error(f"遍历文件夹时出错: {str(e)}")
         return 0, ""
 
+
 def get_file_count(folder_path: str) -> int:
     """
     获取文件夹中的文件总数
@@ -86,6 +87,6 @@ def get_file_count(folder_path: str) -> int:
     try:
         count = sum(len(files) for _, _, files in os.walk(folder_path))
         return count
-    except Exception as e:
-        #logging.error(f"获取文件数量时出错: {str(e)}")
+    except Exception:
+        # logging.error(f"获取文件数量时出错: {str(e)}")
         return 0

@@ -1,13 +1,15 @@
 """
 测试配置和共享夹具
 """
-import pytest
-import tempfile
+
 import os
 import shutil
 import sys
+import tempfile
 import types
 from pathlib import Path
+
+import pytest
 
 # 确保项目根目录在 sys.path 的最前面
 project_root = str(Path(__file__).parent.parent)
@@ -29,6 +31,7 @@ except ImportError:
     sys.modules['utils.shentools'] = mock_shentools
     # Also register under the package path
     import utils
+
     utils.shentools = mock_shentools
 
 
@@ -145,9 +148,7 @@ def mock_emby_response():
                 "Id": "item-id-1",
                 "Name": "Test Movie 1",
                 "ProviderIds": {"Tmdb": "12345"},
-                "MediaSources": [
-                    {"Id": "source-1", "Path": "/path/to/movie1.mkv"}
-                ]
+                "MediaSources": [{"Id": "source-1", "Path": "/path/to/movie1.mkv"}],
             },
             {
                 "Id": "item-id-2",
@@ -155,17 +156,18 @@ def mock_emby_response():
                 "ProviderIds": {"Tmdb": "67890"},
                 "MediaSources": [
                     {"Id": "source-2", "Path": "/path/to/movie2.mp4"},
-                    {"Id": "source-3", "Path": "/path/to/movie2-alt.mkv"}
-                ]
-            }
+                    {"Id": "source-3", "Path": "/path/to/movie2-alt.mkv"},
+                ],
+            },
         ],
-        "TotalRecordCount": 2
+        "TotalRecordCount": 2,
     }
 
 
 @pytest.fixture
 def create_test_file_structure(temp_dir):
     """创建测试用的文件结构"""
+
     def _create(structure):
         """
         structure: dict，键为路径，值为内容（字符串）或 None（表示目录）
@@ -182,6 +184,7 @@ def create_test_file_structure(temp_dir):
                     else:
                         f.write(str(content))
         return temp_dir
+
     return _create
 
 
@@ -190,7 +193,7 @@ def mock_config_file(temp_dir):
     """创建模拟的配置文件"""
     config_path = os.path.join(temp_dir, 'config.yaml')
     config_content = """
-export_symlink:
+symlink_export:
   link_suffixes:
     - .mp4
     - .mkv
@@ -207,29 +210,29 @@ export_symlink:
   replace_path: ""
   only_tvshow_nfo: true
 
-delete_symlink:
+symlink_delete:
   target_folder: ""
 
-merge_file:
-  scrap_folder: ""
+file_merge:
+  metadata_folder: ""
   target_folder: ""
 
-merge_version:
-  emby_url: "http://localhost:8096"
-  emby_api: "test-api-key"
+version_merge:
+  server_url: "http://localhost:8096"
+  api_key: "test-api-key"
 
-update_genres:
-  emby_url: "http://localhost:8096"
-  emby_api: "test-api-key"
-  emby_username: "test-user"
+genre_update:
+  server_url: "http://localhost:8096"
+  api_key: "test-api-key"
+  username: "test-user"
 
-mirror_115_tree:
+tree_mirror:
   tree_file: ""
   export_folder: ""
   fix_garbled_text: false
 
-last_tab_index:
-  index: 0
+ui_state:
+  selected_tab_index: 0
 """
     with open(config_path, 'w', encoding='utf-8') as f:
         f.write(config_content)
