@@ -1,7 +1,7 @@
 # GUI依赖
-ttkthemes>=3.2.2  # 美化GUI主题
-tkinterdnd2>=0.3.0  # 拖放功能支持
-PyQt5>=5.15.0  # macOS PyQt5 界面
+ttkthemes>=3.2.2; platform_system == "Windows"  # Windows tkinter 主题
+tkinterdnd2>=0.3.0; platform_system == "Windows"  # Windows tkinter 拖放功能支持
+PyQt5>=5.15.0; platform_system == "Darwin"  # macOS PyQt5 界面
 
 # 文件处理
 watchdog>=2.1.9   # 文件系统事件监控

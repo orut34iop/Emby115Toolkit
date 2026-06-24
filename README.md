@@ -2,11 +2,12 @@
 
 # Emby115Toolkit
 
-针对115网盘 + CloudDrive2 + Emby 优化的实用工具，在Windows/Linux中运行.
+针对115网盘 + CloudDrive2 + Emby 优化的实用工具。Windows 使用 tkinter 界面，macOS 使用 PyQt5 界面。
 
 ## 我的环境
 
-- Windows系统 (Linux可用，Mac系统未测试)
+- Windows系统
+- macOS 系统请使用 PyQt5 版本入口 `qt_main.py`
 - Python 3.x
 - Windows主机：挂载CloudDrive2, 并运行Emby Server
 - 播放端推荐：Apple TV + Infuse播放器
@@ -93,23 +94,14 @@ Windows系统：
 
 2. 运行程序:   python main.py
 
-Ubuntu系统：
+macOS系统：
 
-1. 安装依赖包：
+1. 安装依赖：  pip install -r requirements.txt
 
-    sudo apt install python3-pip
+2. 运行程序:   python qt_main.py
 
-    sudo apt install python3-tkinter
+注意：macOS 不再支持 tkinter 入口 `main.py`，请勿在 macOS 上运行 `python main.py`。
 
-    sudo apt-get install python3-tk
-
-    pip3 install ttkthemes
-
-    pip3 install tkinterdnd2
-
-   
-3. 运行程序
-
-   python3 main.py
+注意：Linux 不再支持，请不要在 Linux 上运行 `main.py` 或 `qt_main.py`。
 
 致谢： 项目中使用了shenxianmq的MediaHelper项目（https://github.com/shenxianmq/MediaHelper）的部分代码，感谢shenxianmq!

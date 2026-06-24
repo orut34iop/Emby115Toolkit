@@ -11,6 +11,12 @@ import threading
 import traceback
 from logging.handlers import RotatingFileHandler
 
+PYQT_UNSUPPORTED_MESSAGE = "qt_main.py 仅支持 macOS；Windows 请使用 tkinter 版本：python main.py；Linux 不再支持。"
+
+if sys.platform != 'darwin' and __name__ == '__main__':
+    print(PYQT_UNSUPPORTED_MESSAGE)
+    sys.exit(1)
+
 # 确保可以导入项目模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -74,6 +80,10 @@ def _setup_runtime_logging():
 
 def main():
     """主函数"""
+    if sys.platform != 'darwin':
+        print(PYQT_UNSUPPORTED_MESSAGE)
+        sys.exit(1)
+
     logger = _setup_runtime_logging()
     logger.info("PyQt入口启动: %s", sys.argv)
 

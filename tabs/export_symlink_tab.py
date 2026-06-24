@@ -467,11 +467,7 @@ class ExportSymlinkTab(BaseTab):
                 if sys.gettrace():
                     return True
                 return ctypes.windll.shell32.IsUserAnAdmin()
-            elif sys.platform == 'linux' or sys.platform == 'darwin':
-                return True #不需要切换管理员模式
-                #return os.geteuid() == 0
-            else:
-                return True	#不需要切换管理员模式
+            return False
         except:
             return False
 
@@ -480,10 +476,6 @@ class ExportSymlinkTab(BaseTab):
         if sys.platform == 'win32':
             params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
             ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
-        elif sys.platform == 'linux' or sys.platform == 'darwin':
-            # 使用sudo重新运行脚本
-            params = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in sys.argv])
-            os.execvp('sudo', ['sudo', sys.executable] + sys.argv)
         sys.exit()
 
     def download_metadata(self):

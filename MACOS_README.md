@@ -2,17 +2,8 @@
 
 ## 版本选择
 
-本项目提供两个入口文件，根据您的系统选择：
+macOS 只支持 PyQt5 版本入口：
 
-### 1. Windows 版本 (main.py)
-```bash
-python main.py
-```
-- 完整功能（包括拖拽）
-- 需要管理员权限创建软链接
-- 适用于 Windows 系统
-
-### 2. macOS PyQt5 版本 (qt_main.py) ⭐ 推荐
 ```bash
 python qt_main.py
 ```
@@ -22,19 +13,17 @@ python qt_main.py
 - 无需管理员权限
 - 修复窗口最大化问题
 
+请不要在 macOS 上运行 `python main.py`。`main.py` 是 Windows tkinter 入口，macOS 上会直接提示改用 `qt_main.py` 并退出。
+
 ## 安装依赖
 
 ```bash
-# 基础依赖
-pip install pyyaml requests
-
-# PyQt5 版本需要
-pip install PyQt5
+pip install -r requirements.txt
 ```
 
 ## 功能对比
 
-| 功能 | Windows (main.py) | macOS (qt_main.py) |
+| 功能 | Windows tkinter (main.py) | macOS PyQt5 (qt_main.py) |
 |------|-------------------|-------------------|
 | 窗口显示 | ✅ | ✅ |
 | 文件浏览 | ✅ | ✅ |
@@ -48,7 +37,7 @@ pip install PyQt5
 A: 不需要。macOS 上普通用户即可创建软链接。
 
 ### Q: 为什么使用 PyQt5 而不是 tkinter？
-A: tkinterdnd2 库在 macOS 上与 Tcl/Tk 9.0 不兼容，无法实现拖拽功能。PyQt5 原生支持 macOS 拖拽。
+A: tkinterdnd2 库在 macOS 上与 Tcl/Tk 9.0 不兼容，无法稳定实现拖拽功能。为避免维护两个 macOS GUI 版本，macOS 只保留 PyQt5 入口。
 
 ### Q: PyQt5 版本和 Windows 版本配置互通吗？
 A: 是的，两个版本使用相同的 `config.yaml` 配置文件。
@@ -58,7 +47,7 @@ A: 是的，两个版本使用相同的 `config.yaml` 配置文件。
 ### 代码结构
 ```
 Emby115Toolkit/
-├── main.py              # Windows 版本入口
+├── main.py              # Windows tkinter 版本入口
 ├── qt_main.py           # macOS PyQt5 版本入口 ⭐
 ├── qt_gui/              # PyQt5 界面模块
 │   ├── main_window.py
@@ -71,6 +60,7 @@ Emby115Toolkit/
 ```
 
 ### 设计原则
-- `main.py`: 保持 Windows 版本完整不变
+- `main.py`: 保持 Windows tkinter 版本完整，不支持 macOS 或 Linux
 - `qt_main.py` + `qt_gui/`: 独立的 PyQt5 模块，专用于 macOS
-- 代码完全隔离，无冲突风险
+- macOS 不再维护 tkinter 版本，避免使用和维护上的混淆
+- Linux 不再支持，避免维护第三套平台差异

@@ -1,19 +1,27 @@
-import tkinter as tk
-from tkinter import ttk
-from tkinterdnd2 import TkinterDnD
-import os
 import sys
-import platform  # 添加在文件开头的import部分
-from tabs import (
-    ExportSymlinkTab,
-    ManipulateFolderTab,
-    MergeFilesTab,
-    MergeVersionTab,
-    UpdateGenresTab,
-    Mirror115TreeTab  # 添加新的导入
-)
-from utils.logger import setup_logger  # 导入日志设置函数
-from utils.config import Config  # 导入配置管理类
+
+TKINTER_UNSUPPORTED_MESSAGE = "main.py 仅支持 Windows；macOS 请使用 PyQt5 版本：python qt_main.py；Linux 不再支持。"
+
+if sys.platform != 'win32' and __name__ == "__main__":
+    print(TKINTER_UNSUPPORTED_MESSAGE)
+    sys.exit(1)
+
+import os
+
+if sys.platform == 'win32':
+    import tkinter as tk
+    from tkinter import ttk
+    from tkinterdnd2 import TkinterDnD
+    from tabs import (
+        ExportSymlinkTab,
+        ManipulateFolderTab,
+        MergeFilesTab,
+        MergeVersionTab,
+        UpdateGenresTab,
+        Mirror115TreeTab
+    )
+    from utils.logger import setup_logger
+    from utils.config import Config
 
 class EmbyToolkit:
     def __init__(self, root):
@@ -92,16 +100,14 @@ def force_exit():
         os._exit(0) 
 
 def maximize_window(root):
-    """跨平台窗口最大化"""
-    system = platform.system().lower()
-    if system == 'windows':
-        root.state('zoomed')
-    elif system == 'linux':
-        root.attributes('-zoomed', True)
-    else:  # macOS或其他系统
-        root.attributes('-fullscreen', True)
+    """Windows 窗口最大化"""
+    root.state('zoomed')
 
 def main():
+    if sys.platform != 'win32':
+        print(TKINTER_UNSUPPORTED_MESSAGE)
+        sys.exit(1)
+
     global root
     root = TkinterDnD.Tk()  # 使用 TkinterDnD.Tk 作为根窗口类
     style = ttk.Style(root)

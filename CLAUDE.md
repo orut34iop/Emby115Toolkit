@@ -9,15 +9,15 @@ Emby115Toolkit is a Python desktop utility for integrating 115 cloud drive, Clou
 ## Stack
 
 - **Language**: Python 3.x
-- **GUI**: Dual frontend — tkinter (`main.py`) and PyQt5 (`qt_main.py`)
+- **GUI**: Dual frontend — tkinter (`main.py`) for Windows and PyQt5 (`qt_main.py`) for macOS
 - **Testing**: pytest
 - **Config**: YAML via `utils/config.py` singleton
 
 ## Commands
 
 ### Run
-- `python main.py` — Launch tkinter version (default, Windows/Linux)
-- `python qt_main.py` — Launch PyQt5 version (preferred for macOS native drag-and-drop)
+- `python main.py` — Launch tkinter version (Windows only)
+- `python qt_main.py` — Launch PyQt5 version (macOS only)
 
 ### Test
 - `pytest` — Run all tests
@@ -34,10 +34,10 @@ Emby115Toolkit is a Python desktop utility for integrating 115 cloud drive, Clou
 ### Dual GUI Frontends
 The app maintains **two parallel GUI implementations** that share the same business logic:
 
-- **tkinter** (`main.py` + `tabs/`): Uses `TkinterDnD.Tk` for drag-and-drop. Each tab inherits from `tabs/base_tab.py`.
-- **PyQt5** (`qt_main.py` + `qt_gui/`): Uses native Qt drag-and-drop. `qt_gui/main_window.py` wires tabs directly as QWidgets.
+- **tkinter** (`main.py` + `tabs/`): Windows only. Uses `TkinterDnD.Tk` for drag-and-drop. Each tab inherits from `tabs/base_tab.py`. Do not add macOS- or Linux-specific tkinter behavior.
+- **PyQt5** (`qt_main.py` + `qt_gui/`): macOS only. Uses native Qt drag-and-drop. `qt_gui/main_window.py` wires tabs directly as QWidgets.
 
-When adding a new tab or UI feature, both frontends may need updates unless the change is backend-only.
+When adding a new tab or UI feature, both frontends may need updates unless the change is backend-only. macOS support should be implemented only in the PyQt5 frontend. Linux is not supported.
 
 ### Business Logic (`autosync/`)
 Core operations are GUI-agnostic classes:
@@ -71,7 +71,7 @@ These classes accept a `logger` parameter and use `threading.Event` (`stop_flag`
 
 ## Verification
 - Run `pytest` before shipping changes.
-- If changing GUI code, verify both `main.py` and `qt_main.py` when applicable.
+- If changing GUI code, verify the affected frontend: `main.py` for Windows tkinter, `qt_main.py` for macOS PyQt5.
 
 ## Working agreement
 - Prefer small, reviewable changes.
