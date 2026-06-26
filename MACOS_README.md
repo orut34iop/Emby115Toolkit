@@ -21,6 +21,32 @@ python macos_main.py
 pip install -r requirements.txt
 ```
 
+## 使用 uv 运行（推荐）
+
+如果你使用 `uv`，可直接用一套命令完成环境搭建与启动（macOS 下兼容）：
+
+```bash
+# 仅首次执行：安装 uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 在项目内创建/重建虚拟环境（如需）
+cd /Users/wiz/dev/Emby115Toolkit
+uv venv .venv --clear
+source .venv/bin/activate
+
+# 安装项目依赖
+uv pip install -r requirements.txt
+
+# 启动 macOS 入口
+uv run macos_main.py
+```
+
+若临时希望免环境持久化，也可直接执行：
+
+```bash
+uv run --with PyQt5 macos_main.py
+```
+
 ## 功能对比
 
 | 功能 | Windows tkinter (windows_main.py) | macOS PyQt5 (macos_main.py) |
