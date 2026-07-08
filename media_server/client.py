@@ -67,6 +67,7 @@ class MediaServerClient:
         self.server_type = self._normalize_server_type(server_type)
         self.detected_server_type = None
         self.api_prefix = self._configured_api_prefix()
+        self.stop_flag = threading.Event()
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -75,7 +76,13 @@ class MediaServerClient:
     def _configured_api_prefix(self):
         return '' if self.server_type == 'jellyfin' else '/emby'
 
+    def request_stop(self):
+        self.stop_flag.set()
+        self.logger.info("已请求停止当前媒体服务器任务")
+
     def _start_background_task(self, target, task_name):
+        self.stop_flag.clear()
+
         def safe_target():
             try:
                 target()
@@ -246,6 +253,45 @@ class MediaServerClient:
             )
         except requests.exceptions.RequestException as err:
             return RequestFailureResponse(err)
+
+    def _resolve_genre_translation(self, genre, genres_map):
+        current = genre
+        seen = set()
+        while current in genres_map:
+            if current in seen:
+                break
+            seen.add(current)
+            translated = genres_map[current]
+            if translated == current:
+                break
+            current = translated
+        return current
+
+    def _translate_genres(self, genres, genres_map):
+        translated_genres = []
+        seen = set()
+        for genre in genres:
+            translated = self._resolve_genre_translation(genre, genres_map)
+            if translated not in seen:
+                translated_genres.append(translated)
+                seen.add(translated)
+        return translated_genres
+
+    def _unique_items_by_id(self, items, item_label):
+        unique_items = []
+        seen_ids = set()
+        duplicate_count = 0
+        for item in items:
+            item_id = item.get('Id')
+            if item_id and item_id in seen_ids:
+                duplicate_count += 1
+                continue
+            if item_id:
+                seen_ids.add(item_id)
+            unique_items.append(item)
+        if duplicate_count:
+            self.logger.info(f"{item_label}列表中跳过重复条目 {duplicate_count} 个")
+        return unique_items
 
     def check_duplicates(self, target_folder, callback):
         def run_check():
@@ -577,7 +623,8 @@ class MediaServerClient:
         response = self._request('get', '/Items', params=params)
 
         if response.status_code == 200:
-            tvs = response.json().get('Items', [])
+            tvs = self._unique_items_by_id(response.json().get('Items', []), "剧集")
+            total_items = len(tvs)
 
             # Use a set to remove duplicate genres
             all_genres = set()
@@ -594,10 +641,15 @@ class MediaServerClient:
             self.logger.info(f"剧集所有去重后的Genres: {sorted(all_genres)}")
             self.logger.info(f"剧集所有去重后的GenreItems: {sorted(all_genreitems)}")
 
+            stopped = False
             for each_tv in tvs:
+                if self.stop_flag.is_set():
+                    stopped = True
+                    break
+
                 tv_id = each_tv['Id']
                 original_genres = each_tv.get('Genres', [])
-                translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
+                translated_genres = self._translate_genres(original_genres, genres_map)
                 total_count += 1
 
                 if original_genres == translated_genres:
@@ -609,9 +661,13 @@ class MediaServerClient:
                     continue
 
                 original_genres = tv.get('Genres', [])
-                translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
+                translated_genres = self._translate_genres(original_genres, genres_map)
 
                 if original_genres != translated_genres:
+                    if self.stop_flag.is_set():
+                        stopped = True
+                        break
+
                     # 根据 translated_genres，从 all_genreitems 中查找对应的 id
                     genreitems = []
                     for genre in translated_genres:
@@ -643,11 +699,16 @@ class MediaServerClient:
                         self.logger.error(update_response.text)
                 else:
                     self.logger.info(f"剧集 '{tv['Name']}' 的流派信息没有改变.")
+            if stopped:
+                self.logger.info(
+                    f"剧集流派更新已停止，已检查 {total_count}/{total_items} 部，已更新 {update_count} 部"
+                )
+            else:
+                self.logger.info(f"剧集共 {total_count} 部")
         else:
             self.logger.info(f"请求失败，状态码: {response.status_code}")
             self.logger.info(response.text)
 
-        self.logger.info(f"剧集共 {total_count} 部")
         if update_count == 0:
             self.logger.info("没有需要更新的剧集流派信息。")
 
@@ -664,7 +725,8 @@ class MediaServerClient:
         response = self._request('get', '/Items', params=params)
 
         if response.status_code == 200:
-            movies = response.json().get('Items', [])
+            movies = self._unique_items_by_id(response.json().get('Items', []), "影片")
+            total_items = len(movies)
             # Use a set to remove duplicate genres
             all_genres = set()
             all_genreitems = set()
@@ -680,10 +742,15 @@ class MediaServerClient:
             self.logger.info(f"影片所有去重后的Genres: {sorted(all_genres)}")
             self.logger.info(f"影片所有去重后的GenreItems: {sorted(all_genreitems)}")
 
+            stopped = False
             for each_movie in movies:
+                if self.stop_flag.is_set():
+                    stopped = True
+                    break
+
                 movie_id = each_movie['Id']
                 original_genres = each_movie.get('Genres', [])
-                translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
+                translated_genres = self._translate_genres(original_genres, genres_map)
                 total_count += 1
                 if original_genres == translated_genres:
                     continue
@@ -694,9 +761,13 @@ class MediaServerClient:
                     continue
 
                 original_genres = movie.get('Genres', [])
-                translated_genres = [genres_map.get(genre, genre) for genre in original_genres]
+                translated_genres = self._translate_genres(original_genres, genres_map)
 
                 if original_genres != translated_genres:
+                    if self.stop_flag.is_set():
+                        stopped = True
+                        break
+
                     # 根据 translated_genres，从 all_genreitems 中查找对应的 id
                     genreitems = []
                     for genre in translated_genres:
@@ -728,11 +799,16 @@ class MediaServerClient:
                         self.logger.error(update_response.text)
                 else:
                     self.logger.info(f"影片 '{movie['Name']}' 的流派信息没有改变.")
+            if stopped:
+                self.logger.info(
+                    f"影片流派更新已停止，已检查 {total_count}/{total_items} 部，已更新 {update_count} 部"
+                )
+            else:
+                self.logger.info(f"影片共 {total_count} 部")
         else:
             self.logger.error(f"请求失败，状态码: {response.status_code}")
             self.logger.error(response.text)
 
-        self.logger.info(f"影片共 {total_count} 部")
         if update_count == 0:
             self.logger.info("没有需要更新的影片流派信息。")
 
@@ -818,10 +894,19 @@ class MediaServerClient:
             self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info("开始更新影片流派信息...")
             updated_movies = self.emby_movie_translate_genres_and_update_whole_item()
-            self.logger.info("完成更新影片流派信息")
-            self.logger.info("开始更新剧集流派信息...")
-            updated_series = self.emby_tv_translate_genres_and_update_whole_item()
-            self.logger.info("完成更新剧集流派信息")
+            stopped = self.stop_flag.is_set()
+            if stopped:
+                self.logger.info("已停止更新影片流派信息")
+                updated_series = []
+            else:
+                self.logger.info("完成更新影片流派信息")
+                self.logger.info("开始更新剧集流派信息...")
+                updated_series = self.emby_tv_translate_genres_and_update_whole_item()
+                stopped = self.stop_flag.is_set()
+                if stopped:
+                    self.logger.info("已停止更新剧集流派信息")
+                else:
+                    self.logger.info("完成更新剧集流派信息")
 
             # 汇总信息
             if updated_movies:
@@ -836,10 +921,11 @@ class MediaServerClient:
             else:
                 series_message = "没有需要更新的剧集流派信息。\n"
 
+            title = "已停止更新流派" if stopped else "完成更新所有影剧流派"
             message = (
                 f"\n"
                 f"----------------------------------------\n"
-                f"完成更新所有影剧流派\n"
+                f"{title}\n"
                 f"{movies_message}"
                 f"{series_message}"
                 f"----------------------------------------\n"

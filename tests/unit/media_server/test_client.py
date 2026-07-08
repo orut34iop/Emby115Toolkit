@@ -418,6 +418,125 @@ class TestMediaServerClientServerType:
         assert updates[0][0] == 'movie1'
         assert updates[0][1]['Genres'] == ['动作']
 
+    def test_genre_translation_resolves_chained_mapping(self):
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_genres(['Suspense', '悬念', 'Action'], MOVIE_GENRE_TRANSLATIONS) == [
+            '悬疑',
+            '动作',
+        ]
+
+    def test_movie_genre_update_resolves_chained_mapping_before_post(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        monkeypatch.setattr(
+            operator,
+            '_request',
+            lambda method, path, params=None: FakeResponse(
+                payload={
+                    'Items': [
+                        {
+                            'Id': 'movie1',
+                            'Name': 'Movie',
+                            'Genres': ['Suspense', '悬念'],
+                            'GenreItems': [],
+                        }
+                    ]
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: {
+                'Id': item_id,
+                'Name': 'Movie',
+                'Genres': ['Suspense', '悬念'],
+                'GenreItems': [],
+            },
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert len(updated_movies) == 1
+        assert updates[0][1]['Genres'] == ['悬疑']
+
+    def test_movie_genre_update_skips_duplicate_item_ids(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        monkeypatch.setattr(
+            operator,
+            '_request',
+            lambda method, path, params=None: FakeResponse(
+                payload={
+                    'Items': [
+                        {'Id': 'movie1', 'Name': 'Movie', 'Genres': ['Action'], 'GenreItems': []},
+                        {'Id': 'movie1', 'Name': 'Movie duplicate', 'Genres': ['Action'], 'GenreItems': []},
+                    ]
+                }
+            ),
+        )
+        detail_calls = []
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: detail_calls.append(item_id)
+            or {'Id': item_id, 'Name': 'Movie', 'Genres': ['Action'], 'GenreItems': []},
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert detail_calls == ['movie1']
+        assert [update[0] for update in updates] == ['movie1']
+
+    def test_movie_genre_update_respects_stop_flag_before_post(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        operator.stop_flag.set()
+
+        monkeypatch.setattr(
+            operator,
+            '_request',
+            lambda method, path, params=None: FakeResponse(
+                payload={
+                    'Items': [
+                        {'Id': 'movie1', 'Name': 'Movie', 'Genres': ['Action'], 'GenreItems': []},
+                    ]
+                }
+            ),
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert updated_movies == []
+        assert updates == []
+
 
 class TestMediaServerClientExtractTmdbid:
     """测试 extract_tmdbid_from_nfo 方法"""
@@ -948,4 +1067,4 @@ class TestMediaServerClientGenresMap:
 
         assert MOVIE_GENRE_TRANSLATIONS['エロス'] == '情色'
         assert MOVIE_GENRE_TRANSLATIONS['セクシー'] == '性感'
-        assert MOVIE_GENRE_TRANSLATIONS['逆レイプ'] == '反向强奸'
+        assert MOVIE_GENRE_TRANSLATIONS['逆レイプ'] == '逆强奸'

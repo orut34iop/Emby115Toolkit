@@ -4,7 +4,9 @@
 
 import os
 import sys
+import threading
 
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
     QButtonGroup,
     QGroupBox,
@@ -28,10 +30,15 @@ from utils.config import Config
 class GenreUpdateTab(QWidget):
     """更新流派标签页"""
 
+    task_finished = pyqtSignal(str)
+
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._active_operator = None
+        self._active_task = None
+        self.task_finished.connect(self._on_task_finished)
         self.init_ui()
 
     def init_ui(self):
@@ -82,6 +89,10 @@ class GenreUpdateTab(QWidget):
         self.btn_update = QPushButton("开始更新流派")
         self.btn_update.clicked.connect(self.update_genres)
         btn_layout.addWidget(self.btn_update)
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_update)
+        btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
@@ -126,6 +137,10 @@ class GenreUpdateTab(QWidget):
         return run_with_error_dialog(self, self.logger, "更新流派", self._update_genres)
 
     def _update_genres(self):
+        if self._active_task and self._active_task.is_alive():
+            self.logger.warning("已有流派更新任务正在运行")
+            return
+
         server_url = self.edit_url.text().strip()
         api_key = self.edit_api.text().strip()
         username = self.edit_user.text().strip()
@@ -139,4 +154,32 @@ class GenreUpdateTab(QWidget):
         operator = MediaServerClient(
             server_url=server_url, api_key=api_key, username=username, logger=self.logger, server_type=server_type
         )
-        operator.update_genres(lambda message: self.logger.info(message))
+        task = operator.update_genres(lambda message: self.logger.info(message))
+        if task and hasattr(task, "is_alive"):
+            self._active_operator = operator
+            self._active_task = task
+            self._set_running(True)
+            threading.Thread(target=self._wait_for_task, args=(task,), daemon=True).start()
+        return task
+
+    def stop_update(self):
+        if self._active_operator and self._active_task and self._active_task.is_alive():
+            self._active_operator.request_stop()
+            self.btn_stop.setEnabled(False)
+            self.logger.info("正在停止流派更新，请等待当前请求结束...")
+        else:
+            self.logger.warning("当前没有正在运行的流派更新任务")
+
+    def _set_running(self, running):
+        self.btn_update.setEnabled(not running)
+        self.btn_stop.setEnabled(running)
+
+    def _wait_for_task(self, task):
+        task.join()
+        self.task_finished.emit("更新流派")
+
+    def _on_task_finished(self, task_name):
+        self._active_task = None
+        self._active_operator = None
+        self._set_running(False)
+        self.logger.info(f"{task_name}后台任务结束")

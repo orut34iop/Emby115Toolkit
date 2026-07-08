@@ -13,6 +13,8 @@ class GenreUpdateTab(BaseTab):
     def __init__(self, frame, log_dir):
         super().__init__(frame, log_dir)
         self.config = Config()
+        self.media_server_client = None
+        self.active_task = None
         self.init_ui()
         self.load_config()
         self.logger.info("更新流派标签页初始化完成")
@@ -102,8 +104,11 @@ class GenreUpdateTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        update_genres_btn = ttk.Button(btn_frame, text="更新所有流派为中文", command=self.update_genres)
-        update_genres_btn.pack(side='left', padx=5)
+        self.update_genres_btn = ttk.Button(btn_frame, text="更新所有流派为中文", command=self.update_genres)
+        self.update_genres_btn.pack(side='left', padx=5)
+
+        self.stop_genres_btn = ttk.Button(btn_frame, text="停止", command=self.stop_update, state=tk.DISABLED)
+        self.stop_genres_btn.pack(side='left', padx=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -114,6 +119,10 @@ class GenreUpdateTab(BaseTab):
         self.logger = setup_logger('genre_update', self.log_text, log_file)
 
     def update_genres(self):
+        if self.active_task and self.active_task.is_alive():
+            self.logger.warning("已有流派更新任务正在运行")
+            return
+
         server_url = self.server_url_entry.get().strip()
         api_key = self.api_key_entry.get().strip()
         username = self.username_entry.get().strip()
@@ -137,6 +146,35 @@ class GenreUpdateTab(BaseTab):
             self.logger.info("更新流派结束")
 
         try:
-            media_server_client.update_genres(on_check_complete)
+            task = media_server_client.update_genres(on_check_complete)
         except RuntimeError as e:
             self.logger.error(str(e))
+            return
+
+        if task and hasattr(task, 'is_alive'):
+            self.media_server_client = media_server_client
+            self.active_task = task
+            self._set_running(True)
+            self._poll_task()
+
+    def stop_update(self):
+        if self.media_server_client and self.active_task and self.active_task.is_alive():
+            self.media_server_client.request_stop()
+            self.stop_genres_btn.config(state=tk.DISABLED)
+            self.logger.info("正在停止流派更新，请等待当前请求结束...")
+        else:
+            self.logger.warning("当前没有正在运行的流派更新任务")
+
+    def _set_running(self, running):
+        self.update_genres_btn.config(state=tk.DISABLED if running else tk.NORMAL)
+        self.stop_genres_btn.config(state=tk.NORMAL if running else tk.DISABLED)
+
+    def _poll_task(self):
+        if self.active_task and self.active_task.is_alive():
+            self.frame.after(500, self._poll_task)
+            return
+
+        self.active_task = None
+        self.media_server_client = None
+        self._set_running(False)
+        self.logger.info("更新流派后台任务结束")
