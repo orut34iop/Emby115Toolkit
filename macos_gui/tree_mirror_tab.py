@@ -14,13 +14,13 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from macos_gui.qt_utils import run_with_error_dialog, setup_qt_logger
+from macos_gui.task_helpers import BackgroundTaskMixin
 from services.tree_mirror import TreeMirror
 from utils.config import Config
 
@@ -53,13 +53,14 @@ class DropLineEdit(QLineEdit):
                 break
 
 
-class TreeMirrorTab(QWidget):
+class TreeMirrorTab(BackgroundTaskMixin, QWidget):
     """115目录树镜像标签页"""
 
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._init_task_state()
         self.init_ui()
 
     def init_ui(self):
@@ -99,19 +100,16 @@ class TreeMirrorTab(QWidget):
         self.btn_mirror = QPushButton("开始镜像")
         self.btn_mirror.clicked.connect(self.start_mirror)
         btn_layout.addWidget(self.btn_mirror)
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_background_task)
+        btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+        self._register_task_buttons(self.btn_mirror, self.btn_browse_tree, self.btn_browse_export, self.chk_fix_garbled)
 
-        # 日志区域
-        log_group = QGroupBox("日志")
-        log_layout = QVBoxLayout()
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
-
-        layout.addStretch()
+        layout.addWidget(self._create_progress_group())
+        layout.addWidget(self._create_log_group(), 1)
 
         self.logger = setup_qt_logger('tree_mirror', self.log_text, os.path.join(self.log_dir, 'tree_mirror.log'))
         self.load_config()
@@ -159,14 +157,21 @@ class TreeMirrorTab(QWidget):
             QMessageBox.warning(self, "警告", "请选择有效的导出文件夹")
             return
 
-        self.logger.info("开始镜像...")
-        self.logger.info(f"树文件: {tree_file}")
-        self.logger.info(f"导出到: {export_folder}")
+        fix_garbled = self.chk_fix_garbled.isChecked()
 
-        mirror = TreeMirror(
-            tree_file=tree_file,
-            export_folder=export_folder,
-            fix_garbled_text=self.chk_fix_garbled.isChecked(),
-            logger=self.logger,
-        )
-        mirror.run(lambda message: self.logger.info(message))
+        def task():
+            self.logger.info("开始镜像...")
+            self.logger.info(f"树文件: {tree_file}")
+            self.logger.info(f"导出到: {export_folder}")
+
+            mirror = self._track_worker(
+                TreeMirror(
+                    tree_file=tree_file,
+                    export_folder=export_folder,
+                    fix_garbled_text=fix_garbled,
+                    logger=self.logger,
+                )
+            )
+            mirror.run(lambda message: self.logger.info(message))
+
+        self._start_background_task("115目录树镜像", task)

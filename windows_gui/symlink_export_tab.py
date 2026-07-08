@@ -285,22 +285,33 @@ class SymlinkExportTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="开始同步", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        sync_all_btn = ttk.Button(btn_frame, text="一键全同步", command=self.sync_all)
-        sync_all_btn.pack(side='left', padx=5)
+        self.sync_all_btn = ttk.Button(btn_frame, text="一键全同步", command=self.sync_all)
+        self.sync_all_btn.pack(side='left', padx=5)
 
-        create_link_btn = ttk.Button(btn_frame, text="创建软链接", command=self.create_symlink)
-        create_link_btn.pack(side='left', padx=5)
+        self.create_link_btn = ttk.Button(btn_frame, text="创建软链接", command=self.create_symlink)
+        self.create_link_btn.pack(side='left', padx=5)
 
-        download_meta_btn = ttk.Button(btn_frame, text="下载元数据", command=self.download_metadata)
-        download_meta_btn.pack(side='left', padx=5)
+        self.download_meta_btn = ttk.Button(btn_frame, text="下载元数据", command=self.download_metadata)
+        self.download_meta_btn.pack(side='left', padx=5)
+
+        self.create_stop_button(btn_frame)
 
         def clear_list():
             self.link_text.delete('1.0', tk.END)
             self.save_config()
             self.logger.info("已清空文件夹列表")
 
-        clear_list_btn = ttk.Button(btn_frame, text="清空文件夹列表", command=clear_list)
-        clear_list_btn.pack(side='left', padx=5)
+        self.clear_list_btn = ttk.Button(btn_frame, text="清空文件夹列表", command=clear_list)
+        self.clear_list_btn.pack(side='left', padx=5)
+        self.register_task_buttons(
+            self.sync_all_btn,
+            self.create_link_btn,
+            self.download_meta_btn,
+            self.clear_list_btn,
+        )
+
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -352,35 +363,40 @@ class SymlinkExportTab(BaseTab):
                 replace_path,
                 only_tvshow_nfo,
             ) = config
-            # 开始同步流程
-            self.logger.info("=== 开始全同步操作 ===")
-            self.logger.info(f"源文件夹: {link_folders}")
-            self.logger.info(f"目标文件夹: {target_folder}")
-            self.logger.info(f"线程数: {thread_count}")
-            self.logger.info(f"允许的扩展名: {allowed_extensions}")
-            self.logger.info(f"替换文件路径选项: {enable_replace_path}")
-            self.logger.info(f"替换原路径: {original_path}")
-            self.logger.info(f"替换新路径: {replace_path}")
-            self.logger.info(f"只下载剧集tvshow.nfo: {only_tvshow_nfo}")
 
-            # 创建元数据复制器
-            copier = MetadataCopier(
-                source_folders=link_folders,
-                target_folder=target_folder,
-                allowed_extensions=allowed_extensions,
-                thread_count=thread_count,
-                only_tvshow_nfo=only_tvshow_nfo,
-                logger=self.logger,
-            )
+            def task():
+                self.logger.info("=== 开始全同步操作 ===")
+                self.logger.info(f"源文件夹: {link_folders}")
+                self.logger.info(f"目标文件夹: {target_folder}")
+                self.logger.info(f"线程数: {thread_count}")
+                self.logger.info(f"允许的扩展名: {allowed_extensions}")
+                self.logger.info(f"替换文件路径选项: {enable_replace_path}")
+                self.logger.info(f"替换原路径: {original_path}")
+                self.logger.info(f"替换新路径: {replace_path}")
+                self.logger.info(f"只下载剧集tvshow.nfo: {only_tvshow_nfo}")
 
-            def on_sync_all_complete(message):
-                """元数据下载完成后的回调"""
-                self.logger.info("=== 元数据下载完成 ===")
-                self.logger.info(message)
-                self.create_symlink()  # 继续创建软链接
+                copier = self.track_worker(
+                    MetadataCopier(
+                        source_folders=link_folders,
+                        target_folder=target_folder,
+                        allowed_extensions=allowed_extensions,
+                        thread_count=thread_count,
+                        only_tvshow_nfo=only_tvshow_nfo,
+                        logger=self.logger,
+                    )
+                )
+                copy_thread = copier.run(lambda message: self.logger.info(message))
+                if copy_thread:
+                    copy_thread.join()
 
-            # 运行元数据复制
-            copier.run(on_sync_all_complete)
+                if copier.stop_flag.is_set():
+                    self.logger.info("全同步已停止，跳过创建软链接")
+                    return
+
+                self._run_create_symlink_task()
+                self.logger.info("=== 全同步操作完成 ===")
+
+            self.start_background_task("全同步", task)
 
         except Exception as e:
             self.logger.error(f"全同步操作发生错误: {str(e)}")
@@ -423,6 +439,14 @@ class SymlinkExportTab(BaseTab):
         )
 
     def create_symlink(self):
+        if not self.is_admin():
+            self.logger.info("需要管理员权限，正在切换到管理员权限...")
+            self.run_as_admin()
+            return
+
+        self.start_background_task("创建软链接", self._run_create_symlink_task)
+
+    def _run_create_symlink_task(self):
         link_folders = self.config.get('symlink_export', 'link_folders')
         target_folder = self.config.get('symlink_export', 'target_folder')
         thread_count = self.config.get('symlink_export', 'thread_count')
@@ -436,14 +460,9 @@ class SymlinkExportTab(BaseTab):
             self.logger.info("提示", "源目录路径列表为空")
             return
 
-        if not self.is_admin():
-            self.logger.info("需要管理员权限，正在切换到管理员权限...")
-            self.run_as_admin()
-            return
-
         self.logger.info("开始创建软链接")
 
-        creator = SymlinkCreator(
+        creator = self.track_worker(SymlinkCreator(
             link_folders=link_folders,
             target_folder=target_folder,
             allowed_extensions=soft_link_extensions,
@@ -452,7 +471,7 @@ class SymlinkExportTab(BaseTab):
             original_path=original_path,
             replace_path=replace_path,
             logger=self.logger,  # 传递logger
-        )
+        ))
 
         def on_create_symlink_complete(message):
             self.logger.info(message)
@@ -480,6 +499,9 @@ class SymlinkExportTab(BaseTab):
         sys.exit()
 
     def download_metadata(self):
+        self.start_background_task("下载元数据", self._run_download_metadata_task)
+
+    def _run_download_metadata_task(self):
         link_folders = self.config.get('symlink_export', 'link_folders')
         target_folder = self.config.get('symlink_export', 'target_folder')
         thread_count = self.config.get('symlink_export', 'thread_count')
@@ -492,20 +514,22 @@ class SymlinkExportTab(BaseTab):
 
         self.logger.info("开始下载元数据")
 
-        copier = MetadataCopier(
+        copier = self.track_worker(MetadataCopier(
             source_folders=link_folders,
             target_folder=target_folder,
             allowed_extensions=allowed_extensions,
             thread_count=thread_count,
             only_tvshow_nfo=self.only_tvshow_nfo_var.get(),
             logger=self.logger,  # 传递logger
-        )
+        ))
 
         def on_download_metadata_complete(message):
             self.logger.info(message)
 
         # 运行元数据复制
-        copier.run(on_download_metadata_complete)
+        thread = copier.run(on_download_metadata_complete)
+        if thread:
+            thread.join()
 
     def on_replace_path_change(self):
         """处理替换文件路径设置变化"""

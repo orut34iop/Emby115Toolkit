@@ -110,6 +110,9 @@ class GenreUpdateTab(BaseTab):
         self.stop_genres_btn = ttk.Button(btn_frame, text="停止", command=self.stop_update, state=tk.DISABLED)
         self.stop_genres_btn.pack(side='left', padx=5)
 
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
+
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
         self.log_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -168,6 +171,11 @@ class GenreUpdateTab(BaseTab):
     def _set_running(self, running):
         self.update_genres_btn.config(state=tk.DISABLED if running else tk.NORMAL)
         self.stop_genres_btn.config(state=tk.NORMAL if running else tk.DISABLED)
+        if running:
+            self.progress_bar.start(10)
+        else:
+            self.progress_bar.stop()
+            self.progress_bar.config(value=0)
 
     def _poll_task(self):
         if self.active_task and self.active_task.is_alive():

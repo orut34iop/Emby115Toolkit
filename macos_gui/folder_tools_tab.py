@@ -14,13 +14,13 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from macos_gui.qt_utils import run_with_error_dialog, setup_qt_logger
+from macos_gui.task_helpers import BackgroundTaskMixin
 from media_server.client import MediaServerClient
 from services.symlink_deleter import SymlinkDeleter
 from utils.config import Config
@@ -53,13 +53,14 @@ class DropLineEdit(QLineEdit):
                 break
 
 
-class FolderToolsTab(QWidget):
+class FolderToolsTab(BackgroundTaskMixin, QWidget):
     """文件夹操作标签页"""
 
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._init_task_state()
         self.init_ui()
 
     def init_ui(self):
@@ -98,21 +99,16 @@ class FolderToolsTab(QWidget):
         self.btn_execute = QPushButton("开始执行")
         self.btn_execute.clicked.connect(self.execute)
         btn_layout.addWidget(self.btn_execute)
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_background_task)
+        btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+        self._register_task_buttons(self.btn_execute, self.btn_browse, self.combo_op)
 
-        # 日志区域
-        log_group = QGroupBox("日志")
-        log_layout = QVBoxLayout()
-
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
-
-        layout.addStretch()
+        layout.addWidget(self._create_progress_group())
+        layout.addWidget(self._create_log_group(), 1)
 
         self.logger = setup_qt_logger('folder_tools', self.log_text, os.path.join(self.log_dir, 'folder_tools.log'))
         self.target_edit.setText(self.config.get('folder_tools', 'target_folder', ''))
@@ -140,18 +136,24 @@ class FolderToolsTab(QWidget):
             return
 
         operation = self.combo_op.currentText()
-        self.logger.info(f"执行操作: {operation}")
-        self.logger.info(f"目标文件夹: {folder}")
 
-        if operation == "删除软链接":
-            deleter = SymlinkDeleter(target_folder=folder, logger=self.logger)
-            _, message = deleter.run()
-            self.logger.info(message)
-        elif operation == "删除所有视频文件":
-            MediaServerClient(logger=self.logger).clear_files_by_type(
-                folder, 'VIDEO', lambda message: self.logger.info(message)
-            )
-        elif operation == "检查刮削数据完整性":
-            MediaServerClient(logger=self.logger).check_metadata_integrity(
-                folder, lambda message: self.logger.info(message)
-            )
+        def task():
+            self.logger.info(f"执行操作: {operation}")
+            self.logger.info(f"目标文件夹: {folder}")
+
+            if operation == "删除软链接":
+                deleter = self._track_worker(SymlinkDeleter(target_folder=folder, logger=self.logger))
+                _, message = deleter.run()
+                self.logger.info(message)
+            elif operation == "删除所有视频文件":
+                client = self._track_worker(MediaServerClient(logger=self.logger))
+                worker_thread = client.clear_files_by_type(folder, 'VIDEO', lambda message: self.logger.info(message))
+                if worker_thread:
+                    worker_thread.join()
+            elif operation == "检查刮削数据完整性":
+                client = self._track_worker(MediaServerClient(logger=self.logger))
+                worker_thread = client.check_metadata_integrity(folder, lambda message: self.logger.info(message))
+                if worker_thread:
+                    worker_thread.join()
+
+        self._start_background_task(operation, task)

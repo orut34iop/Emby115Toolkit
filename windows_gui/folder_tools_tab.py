@@ -70,14 +70,19 @@ class FolderToolsTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        delete_symlinks_btn = ttk.Button(btn_frame, text="删除软链接", command=self.delete_symlinks)
-        delete_symlinks_btn.pack(side='left', padx=5)
+        self.delete_symlinks_btn = ttk.Button(btn_frame, text="删除软链接", command=self.delete_symlinks)
+        self.delete_symlinks_btn.pack(side='left', padx=5)
 
-        delete_videos_btn = ttk.Button(btn_frame, text="删除所有视频文件", command=self.delete_all_videos)
-        delete_videos_btn.pack(side='left', padx=5)
+        self.delete_videos_btn = ttk.Button(btn_frame, text="删除所有视频文件", command=self.delete_all_videos)
+        self.delete_videos_btn.pack(side='left', padx=5)
 
-        check_metadata_btn = ttk.Button(btn_frame, text="检查刮削数据完整性", command=self.check_metadata_integrity)
-        check_metadata_btn.pack(side='left', padx=5)
+        self.check_metadata_btn = ttk.Button(btn_frame, text="检查刮削数据完整性", command=self.check_metadata_integrity)
+        self.check_metadata_btn.pack(side='left', padx=5)
+        self.create_stop_button(btn_frame)
+        self.register_task_buttons(self.delete_symlinks_btn, self.delete_videos_btn, self.check_metadata_btn)
+
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -104,19 +109,13 @@ class FolderToolsTab(BaseTab):
             self.logger.info("提示", "目标文件夹路径为空")
             return
 
-        self.logger.info(f"开始删除软链接: {target_folder}")
+        def task():
+            self.logger.info(f"开始删除软链接: {target_folder}")
+            deleter = self.track_worker(SymlinkDeleter(target_folder=target_folder, logger=self.logger))
+            time_taken, _ = deleter.run()
+            self.logger.info(f"删除软链接完成\n总耗时: {time_taken:.2f} 秒\n")
 
-        deleter = SymlinkDeleter(
-            target_folder=target_folder,
-            logger=self.logger,  # 传递logger
-        )
-
-        # 运行软链接删除
-        time_taken, message = deleter.run()
-
-        # 显示总结信息
-        summary = f"删除软链接完成\n总耗时: {time_taken:.2f} 秒\n"
-        self.logger.info(summary)
+        self.start_background_task("删除软链接", task)
 
     def delete_all_videos(self):
         """删除所有视频文件"""
@@ -126,12 +125,14 @@ class FolderToolsTab(BaseTab):
             self.logger.info("提示: 目标文件夹路径为空")
             return
 
-        self.logger.info(f"开始删除视频文件: {target_folder}")
+        def task():
+            self.logger.info(f"开始删除视频文件: {target_folder}")
+            media_server_client = self.track_worker(MediaServerClient(logger=self.logger))
+            worker_thread = media_server_client.clear_files_by_type(target_folder, 'VIDEO')
+            if worker_thread:
+                worker_thread.join()
 
-        media_server_client = MediaServerClient(
-            logger=self.logger  # 传递logger
-        )
-        media_server_client.clear_files_by_type(target_folder, 'VIDEO')
+        self.start_background_task("删除视频文件", task)
 
     def check_metadata_integrity(self):
         """检查刮削数据完整性"""
@@ -141,9 +142,11 @@ class FolderToolsTab(BaseTab):
             self.logger.info("提示: 目标文件夹路径为空")
             return
 
-        self.logger.info(f"开始检查刮削数据完整性: {target_folder}")
+        def task():
+            self.logger.info(f"开始检查刮削数据完整性: {target_folder}")
+            media_server_client = self.track_worker(MediaServerClient(logger=self.logger))
+            worker_thread = media_server_client.check_metadata_integrity(target_folder)
+            if worker_thread:
+                worker_thread.join()
 
-        media_server_client = MediaServerClient(
-            logger=self.logger  # 传递logger
-        )
-        media_server_client.check_metadata_integrity(target_folder)
+        self.start_background_task("检查刮削数据完整性", task)

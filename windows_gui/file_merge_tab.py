@@ -40,8 +40,13 @@ class FileMergeTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        merge_files_btn = ttk.Button(btn_frame, text="合并文件", command=self.merge_files)
-        merge_files_btn.pack(side='left', padx=5)
+        self.merge_files_btn = ttk.Button(btn_frame, text="合并文件", command=self.merge_files)
+        self.merge_files_btn.pack(side='left', padx=5)
+        self.create_stop_button(btn_frame)
+        self.register_task_buttons(self.merge_files_btn)
+
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -99,5 +104,8 @@ class FileMergeTab(BaseTab):
             self.logger.error(f"没有读取权限: {target_folder}")
             return
 
-        file_merger = FileMerger(metadata_folder, target_folder, self.logger)
-        file_merger.run()
+        def task():
+            file_merger = self.track_worker(FileMerger(metadata_folder, target_folder, logger=self.logger))
+            file_merger.run()
+
+        self.start_background_task("文件合并", task)

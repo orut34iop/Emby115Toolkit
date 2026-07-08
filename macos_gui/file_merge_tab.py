@@ -13,13 +13,13 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from macos_gui.qt_utils import run_with_error_dialog, setup_qt_logger
+from macos_gui.task_helpers import BackgroundTaskMixin
 from services.file_merger import FileMerger
 from utils.config import Config
 
@@ -51,13 +51,14 @@ class DropLineEdit(QLineEdit):
                 break
 
 
-class FileMergeTab(QWidget):
+class FileMergeTab(BackgroundTaskMixin, QWidget):
     """文件合并标签页"""
 
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._init_task_state()
         self.init_ui()
 
     def init_ui(self):
@@ -93,19 +94,16 @@ class FileMergeTab(QWidget):
         self.btn_merge = QPushButton("开始合并")
         self.btn_merge.clicked.connect(self.merge_files)
         btn_layout.addWidget(self.btn_merge)
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_background_task)
+        btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+        self._register_task_buttons(self.btn_merge, self.btn_browse_metadata, self.btn_browse_video)
 
-        # 日志区域
-        log_group = QGroupBox("日志")
-        log_layout = QVBoxLayout()
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
-
-        layout.addStretch()
+        layout.addWidget(self._create_progress_group())
+        layout.addWidget(self._create_log_group(), 1)
 
         self.logger = setup_qt_logger('file_merge', self.log_text, os.path.join(self.log_dir, 'file_merge.log'))
         self.load_config()
@@ -139,6 +137,11 @@ class FileMergeTab(QWidget):
             QMessageBox.warning(self, "警告", "请先选择有效的视频文件夹")
             return
 
-        self.logger.info("开始合并文件...")
-        merger = FileMerger(metadata_folder=metadata_folder, target_folder=video_folder, logger=self.logger)
-        merger.run(lambda message: self.logger.info(message))
+        def task():
+            self.logger.info("开始合并文件...")
+            merger = self._track_worker(
+                FileMerger(metadata_folder=metadata_folder, target_folder=video_folder, logger=self.logger)
+            )
+            merger.run(lambda message: self.logger.info(message))
+
+        self._start_background_task("文件合并", task)

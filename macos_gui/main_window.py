@@ -141,15 +141,17 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """关闭事件"""
-        if (
-            hasattr(self, "symlink_export_tab")
-            and hasattr(self.symlink_export_tab, "is_task_running")
-            and self.symlink_export_tab.is_task_running()
-        ):
+        running_tabs = []
+        for index in range(self.tabs.count()):
+            tab = self.tabs.widget(index)
+            if hasattr(tab, "is_task_running") and tab.is_task_running():
+                running_tabs.append(self.tabs.tabText(index))
+
+        if running_tabs:
             reply = QMessageBox.question(
                 self,
                 "任务正在运行",
-                "导出/全同步任务正在运行，关闭会中断任务，是否继续？",
+                f"{'、'.join(running_tabs)} 任务正在运行，关闭会中断任务，是否继续？",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )

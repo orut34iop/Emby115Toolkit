@@ -106,8 +106,10 @@ class TreeMirrorTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        mirror_tree_btn = ttk.Button(btn_frame, text="创建镜像", command=self.mirror_tree)
-        mirror_tree_btn.pack(side='left', padx=5)
+        self.mirror_tree_btn = ttk.Button(btn_frame, text="创建镜像", command=self.mirror_tree)
+        self.mirror_tree_btn.pack(side='left', padx=5)
+        self.create_stop_button(btn_frame)
+        self.register_task_buttons(self.mirror_tree_btn)
 
         # 添加修复乱码勾选框
         self.fix_garbled_var = tk.BooleanVar(value=False)
@@ -136,6 +138,9 @@ class TreeMirrorTab(BaseTab):
             takefocus=False,
         )
         fix_garbled_check.pack(side='left', padx=5)
+
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -186,13 +191,17 @@ class TreeMirrorTab(BaseTab):
         self.logger.info(f"导出目录: {export_folder}")
         self.logger.info(f"乱码修复功能: {'开启' if fix_garbled else '关闭'}")
 
-        mirror = TreeMirror(
-            tree_file=tree_file, export_folder=export_folder, fix_garbled_text=fix_garbled, logger=self.logger
-        )
+        def task():
+            mirror = self.track_worker(
+                TreeMirror(
+                    tree_file=tree_file,
+                    export_folder=export_folder,
+                    fix_garbled_text=fix_garbled,
+                    logger=self.logger,
+                )
+            )
 
-        # 运行目录树镜像创建
-        mirror.run()
+            mirror.run()
+            self.logger.info("目录树镜像创建完成\n")
 
-        # 显示总结信息
-        summary = "目录树镜像创建完成\n"
-        self.logger.info(summary)
+        self.start_background_task("115目录树镜像", task)

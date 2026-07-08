@@ -21,13 +21,13 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from macos_gui.qt_utils import run_with_error_dialog, setup_qt_logger
+from macos_gui.task_helpers import BackgroundTaskMixin
 from services.metadata_copier import MetadataCopier
 from services.symlink_creator import SymlinkCreator
 from utils.config import Config
@@ -120,20 +120,17 @@ class DropListWidget(QListWidget):
             self.files_dropped.emit(files)
 
 
-class SymlinkExportTab(QWidget):
+class SymlinkExportTab(BackgroundTaskMixin, QWidget):
     """导出软链接标签页"""
-
-    task_finished = pyqtSignal(str)
 
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
-        self._active_task = None
+        self._init_task_state()
         self._loading_config = False
         self.init_ui()
         self.load_config()
-        self.task_finished.connect(self._on_task_finished)
 
     def init_ui(self):
         """初始化界面"""
@@ -257,6 +254,11 @@ class SymlinkExportTab(QWidget):
         self.btn_download_meta.clicked.connect(self.download_metadata)
         btn_layout.addWidget(self.btn_download_meta)
 
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_background_task)
+        btn_layout.addWidget(self.btn_stop)
+
         btn_layout.addStretch()
 
         self.chk_overwrite_meta = QCheckBox("覆盖nfo和图片文件")
@@ -264,17 +266,19 @@ class SymlinkExportTab(QWidget):
         btn_layout.addWidget(self.chk_overwrite_meta)
 
         layout.addLayout(btn_layout)
+        self._register_task_buttons(
+            self.btn_sync_all,
+            self.btn_create_link,
+            self.btn_download_meta,
+            self.btn_add_link,
+            self.btn_clear_link,
+            self.btn_browse_target,
+            self.chk_overwrite_meta,
+        )
 
-        # === 日志区域 ===
-        log_group = QGroupBox("日志")
-        log_layout = QVBoxLayout()
-
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
+        # === 进度和日志区域 ===
+        layout.addWidget(self._create_progress_group())
+        layout.addWidget(self._create_log_group(), 1)
 
         # 创建日志处理器
         self.logger = self.create_logger()
@@ -474,45 +478,10 @@ class SymlinkExportTab(QWidget):
             "overwrite_metadata": self.chk_overwrite_meta.isChecked(),
         }
 
-    def _set_buttons_enabled(self, enabled):
-        self.btn_sync_all.setEnabled(enabled)
-        self.btn_create_link.setEnabled(enabled)
-        self.btn_download_meta.setEnabled(enabled)
-        self.chk_overwrite_meta.setEnabled(enabled)
-        self.btn_add_link.setEnabled(enabled)
-        self.btn_clear_link.setEnabled(enabled)
-        self.btn_browse_target.setEnabled(enabled)
-
-    def _start_background_task(self, task_name, task):
-        if self._active_task and self._active_task.is_alive():
-            self.logger.warning("已有任务正在运行，请等待完成后再试")
-            return
-
-        self._set_buttons_enabled(False)
-        self.logger.info(f"{task_name}已在后台启动，界面可继续响应")
-
-        def run_task():
-            try:
-                task()
-            except Exception as e:
-                self.logger.exception(f"{task_name}执行异常: {e}")
-            finally:
-                self.task_finished.emit(task_name)
-
-        self._active_task = threading.Thread(target=run_task, daemon=True)
-        self._active_task.start()
-
-    def is_task_running(self):
-        return bool(self._active_task and self._active_task.is_alive())
-
-    def _on_task_finished(self, task_name):
-        self._set_buttons_enabled(True)
-        self.logger.info(f"{task_name}后台任务结束")
-
     def _run_symlink_create(self, config):
         self.logger.info("开始创建软链接...")
 
-        creator = SymlinkCreator(
+        creator = self._track_worker(SymlinkCreator(
             link_folders=config["link_folders"],
             target_folder=config["target_folder"],
             allowed_extensions=config["link_extensions"],
@@ -522,12 +491,12 @@ class SymlinkExportTab(QWidget):
             replace_path=config["replace_path"],
             only_tvshow_nfo=config["only_tvshow_nfo"],
             logger=self.logger,
-        )
+        ))
         creator.run()
 
     def _run_metadata_copy(self, config):
         self.logger.info("开始下载元数据...")
-        copier = MetadataCopier(
+        copier = self._track_worker(MetadataCopier(
             source_folders=config["link_folders"],
             target_folder=config["target_folder"],
             allowed_extensions=config["meta_extensions"],
@@ -535,7 +504,7 @@ class SymlinkExportTab(QWidget):
             only_tvshow_nfo=config["only_tvshow_nfo"],
             overwrite_existing=config["overwrite_metadata"],
             logger=self.logger,
-        )
+        ))
         thread = copier.run(lambda message: self.logger.info(message))
         if thread:
             thread.join()

@@ -88,8 +88,13 @@ class VersionMergeTab(BaseTab):
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
 
-        merge_versions_btn = ttk.Button(btn_frame, text="开始合并", command=self.merge_versions)
-        merge_versions_btn.pack(side='left', padx=5)
+        self.merge_versions_btn = ttk.Button(btn_frame, text="开始合并", command=self.merge_versions)
+        self.merge_versions_btn.pack(side='left', padx=5)
+        self.create_stop_button(btn_frame)
+        self.register_task_buttons(self.merge_versions_btn)
+
+        self.progress_frame, self.progress_bar = self.create_progress_frame(self.frame)
+        self.progress_frame.pack(fill='x', padx=5, pady=5)
 
         # 日志区域
         self.log_frame, self.log_text = self.create_log_frame(self.frame)
@@ -108,20 +113,21 @@ class VersionMergeTab(BaseTab):
             self.logger.warning("服务器地址或API密钥为空")
             return
 
-        self.logger.info(f"开始合并版本: 服务器类型={server_type}, URL={server_url}")
+        def task():
+            self.logger.info(f"开始合并版本: 服务器类型={server_type}, URL={server_url}")
+            media_server_client = self.track_worker(
+                MediaServerClient(
+                    server_url=server_url,
+                    api_key=api_key,
+                    server_type=server_type,
+                    logger=self.logger,
+                )
+            )
+            try:
+                worker_thread = media_server_client.merge_versions(lambda message: self.logger.info(message))
+                if worker_thread:
+                    worker_thread.join()
+            except RuntimeError as e:
+                self.logger.error(str(e))
 
-        media_server_client = MediaServerClient(
-            server_url=server_url,
-            api_key=api_key,
-            server_type=server_type,
-            logger=self.logger,  # 传递logger
-        )
-
-        def on_check_complete(message):
-            pass
-            # self.logger.info(message)
-
-        try:
-            media_server_client.merge_versions(on_check_complete)
-        except RuntimeError as e:
-            self.logger.error(str(e))
+        self.start_background_task("合并版本", task)

@@ -14,24 +14,25 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from macos_gui.qt_utils import run_with_error_dialog, setup_qt_logger
+from macos_gui.task_helpers import BackgroundTaskMixin
 from media_server.client import MediaServerClient
 from utils.config import Config
 
 
-class VersionMergeTab(QWidget):
+class VersionMergeTab(BackgroundTaskMixin, QWidget):
     """合并版本标签页"""
 
     def __init__(self, log_dir):
         super().__init__()
         self.log_dir = log_dir
         self.config = Config()
+        self._init_task_state()
         self.init_ui()
 
     def init_ui(self):
@@ -76,19 +77,16 @@ class VersionMergeTab(QWidget):
         self.btn_merge = QPushButton("开始合并版本")
         self.btn_merge.clicked.connect(self.merge_versions)
         btn_layout.addWidget(self.btn_merge)
+        self.btn_stop = QPushButton("停止")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_background_task)
+        btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
+        self._register_task_buttons(self.btn_merge)
 
-        # 日志区域
-        log_group = QGroupBox("日志")
-        log_layout = QVBoxLayout()
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
-
-        layout.addStretch()
+        layout.addWidget(self._create_progress_group())
+        layout.addWidget(self._create_log_group(), 1)
 
         self.logger = setup_qt_logger('version_merge', self.log_text, os.path.join(self.log_dir, 'version_merge.log'))
         self.load_config()
@@ -125,8 +123,13 @@ class VersionMergeTab(QWidget):
             QMessageBox.warning(self, "警告", "请先填写服务器地址和 API Key")
             return
 
-        self.logger.info(f"开始合并版本，服务器类型: {server_type}")
-        operator = MediaServerClient(
-            server_url=server_url, api_key=api_key, logger=self.logger, server_type=server_type
-        )
-        operator.merge_versions(lambda message: self.logger.info(message))
+        def task():
+            self.logger.info(f"开始合并版本，服务器类型: {server_type}")
+            operator = self._track_worker(
+                MediaServerClient(server_url=server_url, api_key=api_key, logger=self.logger, server_type=server_type)
+            )
+            worker_thread = operator.merge_versions(lambda message: self.logger.info(message))
+            if worker_thread:
+                worker_thread.join()
+
+        self._start_background_task("合并版本", task)

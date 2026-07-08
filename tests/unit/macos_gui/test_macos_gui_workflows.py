@@ -50,6 +50,10 @@ def wait_until(qapp, predicate, timeout=3):
     return predicate()
 
 
+def wait_for_tab_idle(qapp, tab, timeout=3):
+    return wait_until(qapp, lambda: not tab.is_task_running(), timeout=timeout)
+
+
 def test_main_window_initializes_all_tabs(qapp, isolated_config):
     from macos_gui.main_window import MainWindow
 
@@ -64,6 +68,17 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
         "更新流派",
         "115目录树镜像",
     ]
+    for tab in [
+        window.symlink_export_tab,
+        window.folder_tools_tab,
+        window.file_merge_tab,
+        window.version_merge_tab,
+        window.genre_update_tab,
+        window.tree_mirror_tab,
+    ]:
+        assert tab.progress_bar is not None
+        assert tab.btn_stop is not None
+        assert tab.log_text is not None
 
     window.close()
 
@@ -299,15 +314,17 @@ def test_folder_tools_tab_operations_do_not_raise(qapp, isolated_config, tmp_pat
 
     tab.combo_op.setCurrentText("删除软链接")
     tab.execute()
+    assert wait_for_tab_idle(qapp, tab)
     assert not os.path.lexists(link_file)
 
     tab.combo_op.setCurrentText("删除所有视频文件")
     tab.execute()
+    assert wait_for_tab_idle(qapp, tab)
     assert wait_until(qapp, lambda: not real_file.exists())
 
     tab.combo_op.setCurrentText("检查刮削数据完整性")
     tab.execute()
-    qapp.processEvents()
+    assert wait_for_tab_idle(qapp, tab)
 
 
 def test_merge_and_tree_mirror_tabs_run_backends(qapp, isolated_config, tmp_path):
@@ -325,6 +342,7 @@ def test_merge_and_tree_mirror_tabs_run_backends(qapp, isolated_config, tmp_path
     file_merge_tab.metadata_edit.setText(str(metadata))
     file_merge_tab.video_edit.setText(str(video))
     file_merge_tab.merge_files()
+    assert wait_for_tab_idle(qapp, file_merge_tab)
     assert (video / "movie.nfo").exists()
 
     tree_file = tmp_path / "tree.txt"
@@ -336,6 +354,7 @@ def test_merge_and_tree_mirror_tabs_run_backends(qapp, isolated_config, tmp_path
     tree_mirror_tab.tree_edit.setText(str(tree_file))
     tree_mirror_tab.export_edit.setText(str(export))
     tree_mirror_tab.start_mirror()
+    assert wait_for_tab_idle(qapp, tree_mirror_tab)
     assert (export / "电影" / "Movie.2024.mp4").exists()
 
 
@@ -363,6 +382,8 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     version_merge_tab.edit_api.setText("api")
     version_merge_tab.radio_jellyfin.setChecked(True)
     version_merge_tab.merge_versions()
+    assert wait_until(qapp, lambda: len(calls) >= 1)
+    assert wait_for_tab_idle(qapp, version_merge_tab)
 
     genre_update_tab = GenreUpdateTab(str(tmp_path / "logs"))
     genre_update_tab.edit_url.setText("http://emby.local")
@@ -370,6 +391,8 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     genre_update_tab.edit_user.setText("user")
     genre_update_tab.radio_emby.setChecked(True)
     genre_update_tab.update_genres()
+    assert wait_until(qapp, lambda: len(calls) >= 2)
+    assert wait_for_tab_idle(qapp, genre_update_tab)
 
     assert calls == [
         ("merge_versions", "http://jellyfin.local", "api", "jellyfin"),
@@ -397,6 +420,7 @@ def test_qt_slot_exception_guard_logs_instead_of_raising(qapp, isolated_config, 
     tab.video_edit.setText(str(video))
 
     tab.merge_files()
+    assert wait_until(qapp, lambda: "boom" in tab.log_text.toPlainText())
     assert "boom" in tab.log_text.toPlainText()
 
 

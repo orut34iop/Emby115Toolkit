@@ -1,4 +1,5 @@
 import os
+import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
@@ -9,6 +10,11 @@ class BaseTab:
     def __init__(self, frame, log_dir):
         self.frame = frame
         self.log_dir = log_dir
+        self._task_thread = None
+        self._active_workers = []
+        self._task_buttons = []
+        self.progress_bar = None
+        self.stop_btn = None
 
     def create_basic_widgets(self, browse_type='directory'):
         """创建基本的UI组件"""
@@ -86,6 +92,89 @@ class BaseTab:
         log_text.bind('<<Modified>>', on_log_change)
 
         return log_frame, log_text
+
+    def create_progress_frame(self, parent, text="进度"):
+        progress_frame = ttk.LabelFrame(parent, text=text, padding=(5, 5, 5, 5))
+        self.progress_bar = ttk.Progressbar(progress_frame, mode='indeterminate')
+        self.progress_bar.pack(fill='x', expand=True, padx=5, pady=5)
+        return progress_frame, self.progress_bar
+
+    def create_stop_button(self, parent):
+        self.stop_btn = ttk.Button(parent, text="停止", command=self.stop_background_task, state=tk.DISABLED)
+        self.stop_btn.pack(side='left', padx=5)
+        return self.stop_btn
+
+    def register_task_buttons(self, *buttons):
+        self._task_buttons.extend(button for button in buttons if button is not None)
+
+    def track_worker(self, worker):
+        if worker is not None:
+            self._active_workers.append(worker)
+        return worker
+
+    def is_task_running(self):
+        return bool(self._task_thread and self._task_thread.is_alive())
+
+    def set_task_running(self, running):
+        for button in self._task_buttons:
+            button.config(state=tk.DISABLED if running else tk.NORMAL)
+        if self.stop_btn is not None:
+            self.stop_btn.config(state=tk.NORMAL if running else tk.DISABLED)
+        if self.progress_bar is not None:
+            if running:
+                self.progress_bar.start(10)
+            else:
+                self.progress_bar.stop()
+                self.progress_bar.config(value=0)
+
+    def start_background_task(self, task_name, task):
+        if self.is_task_running():
+            self.logger.warning("已有任务正在运行，请等待完成后再试")
+            return None
+
+        self._active_workers = []
+        self.set_task_running(True)
+        self.logger.info(f"{task_name}已在后台启动，界面可继续响应")
+
+        def run_task():
+            try:
+                task()
+            except Exception as exc:
+                self.logger.exception(f"{task_name}执行异常: {exc}")
+            finally:
+                self.frame.after(0, lambda: self.finish_background_task(task_name))
+
+        self._task_thread = threading.Thread(target=run_task, daemon=True)
+        self._task_thread.start()
+        return self._task_thread
+
+    def stop_background_task(self):
+        if not self.is_task_running():
+            self.logger.warning("当前没有正在运行的任务")
+            return
+
+        stopped_any = False
+        for worker in list(self._active_workers):
+            if hasattr(worker, "request_stop"):
+                worker.request_stop()
+                stopped_any = True
+            elif hasattr(worker, "stop_flag"):
+                worker.stop_flag.set()
+                stopped_any = True
+
+        if self.stop_btn is not None:
+            self.stop_btn.config(state=tk.DISABLED)
+
+        if stopped_any:
+            self.logger.info("正在停止任务，请等待当前步骤结束...")
+        else:
+            self.logger.info("已请求停止任务，当前步骤可能需要完成后才会结束")
+
+    def finish_background_task(self, task_name):
+        self._task_thread = None
+        self._active_workers = []
+        self.set_task_running(False)
+        self.logger.info(f"{task_name}后台任务结束")
 
     def scan_string(self, input_string):
         """解析拖拽数据中的路径"""

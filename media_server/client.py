@@ -484,6 +484,10 @@ class MediaServerClient:
     def _merge_movie_versions(self, grouped_movies, ids_key, server_label, identity_label="TMDB"):
         merged_movies = []
         for identity_value, movies in grouped_movies.items():
+            if self.stop_flag.is_set():
+                self.logger.info("合并版本操作已停止")
+                break
+
             if len(movies) > 1:
                 name = movies[0]["Name"]
                 self.logger.info("")
@@ -531,6 +535,11 @@ class MediaServerClient:
             self.logger.info(f"已分组影片，共 {len(tmdb_grouped_movies)} 个TMDb ID")
             self.logger.info(f"TMDB 可合并分组：{tmdb_mergeable_count} 组")
             merged_movies = self.merge_movie_versions(tmdb_grouped_movies, "TMDB")
+            if self.stop_flag.is_set():
+                self.logger.info("已停止合并版本")
+                if callback:
+                    callback(merged_movies)
+                return merged_movies
             self.logger.info(f"TMDB 已合并版本，共 {len(merged_movies)} 部影片")
 
             self.logger.info("开始检查 AV 番号版本")
@@ -944,7 +953,15 @@ class MediaServerClient:
             num = 0
             # 要删除的文件后缀
             for root, dirs, files in os.walk(folder_path):
+                if self.stop_flag.is_set():
+                    self.logger.info("删除视频文件操作已停止")
+                    break
+
                 for file in files:
+                    if self.stop_flag.is_set():
+                        self.logger.info("删除视频文件操作已停止")
+                        break
+
                     if any(file.lower().endswith(ext) for ext in VIDEO_EXTENSIONS):
                         file_path = os.path.join(root, file)
                         try:
@@ -956,7 +973,7 @@ class MediaServerClient:
 
             message = (
                 f"\n"
-                f"----------------完成文件删除----------------------------\n"
+                f"----------------{'已停止文件删除' if self.stop_flag.is_set() else '完成文件删除'}----------------------------\n"
                 f"----------------共删除文件数目:  {num}------------------\n"
             )
 
@@ -971,6 +988,12 @@ class MediaServerClient:
     def check_metadata_integrity(self, folder_path, callback=None):
         def run_check_metadata_integrity_check():
             video_check_result = self.check_video_files(folder_path)
+            if self.stop_flag.is_set():
+                self.logger.info("检查刮削数据完整性操作已停止")
+                if callback:
+                    callback("检查刮削数据完整性操作已停止")
+                return
+
             nfo_check_result = self.check_nfo_files(folder_path)
 
             for video in video_check_result['no_nfo_videos']:
@@ -1027,6 +1050,10 @@ class MediaServerClient:
 
         # 使用 glob 递归查找所有的 .nfo 文件
         for nfo_path in Path(folder_path).rglob('*.nfo'):
+            if self.stop_flag.is_set():
+                self.logger.info("NFO 文件检查已停止")
+                break
+
             nfo_str_path = str(nfo_path)
             if os.path.basename(nfo_str_path) in ('tvshow.nfo', 'season.nfo'):
                 continue
@@ -1049,9 +1076,17 @@ class MediaServerClient:
 
         # 遍历指定文件夹及其子文件夹
         for root, _, files in os.walk(folder_path):
+            if self.stop_flag.is_set():
+                self.logger.info("视频文件检查已停止")
+                break
+
             video_files = [f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS]
 
             for video_file in video_files:
+                if self.stop_flag.is_set():
+                    self.logger.info("视频文件检查已停止")
+                    break
+
                 video_full_path = os.path.join(root, video_file)
                 if not os.path.isfile(video_full_path):
                     continue

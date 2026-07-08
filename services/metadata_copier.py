@@ -40,6 +40,11 @@ class MetadataCopier:
         self.overwritten_metadatas = 0
         self.logger = logger or logging.getLogger(__name__)
         self._counter_lock = threading.Lock()  # 线程锁保护计数器
+        self.stop_flag = threading.Event()
+
+    def request_stop(self):
+        self.stop_flag.set()
+        self.logger.info("已请求停止元数据下载")
 
     def copy_metadata(self, source, target_file, thread_name):
         try:
@@ -65,6 +70,9 @@ class MetadataCopier:
 
     def start_to_copy_metadata(self, thread_name):
         while True:
+            if self.stop_flag.is_set():
+                break
+
             item = self.file_queue.get()
             if item is None:
                 break
@@ -84,6 +92,9 @@ class MetadataCopier:
         visited_dirs = set()  # 用于检测循环符号链接
 
         def scan_directory(directory, root_directory=None):
+            if self.stop_flag.is_set():
+                return iter([])
+
             if root_directory is None:
                 self.logger.error("scan_directory root_directory 值未设置")
                 return iter([])
@@ -112,6 +123,8 @@ class MetadataCopier:
 
             # 先处理文件
             for file_entry in files:
+                if self.stop_flag.is_set():
+                    return
                 if self.only_tvshow_nfo and (file_entry.name.lower() == "tvshow.nfo"):
                     self.logger.info(f"发现文件: {file_entry.path}")
                     yield file_entry.path, directory, root_directory
@@ -120,9 +133,15 @@ class MetadataCopier:
                     yield file_entry.path, directory, root_directory
             # 再处理目录
             for dir_entry in directories:
+                if self.stop_flag.is_set():
+                    return
                 yield from scan_directory(dir_entry.path, root_directory)
 
         for source_folder in self.source_folders:
+            if self.stop_flag.is_set():
+                self.logger.info("元数据扫描已停止")
+                return
+
             if not os.path.exists(source_folder):
                 self.logger.warning(f"源文件夹不存在: {source_folder}")
                 continue
@@ -150,6 +169,8 @@ class MetadataCopier:
 
                 # 添加所有源文件到队列
                 for source_file, source_folder, root_directory in self.get_source_files():
+                    if self.stop_flag.is_set():
+                        break
                     self.file_queue.put((source_file, source_folder, root_directory))
 
                 # 添加停止任务
@@ -161,8 +182,9 @@ class MetadataCopier:
 
                 end_time = time.time()
                 total_time = end_time - start_time
+                title = "下载元数据已停止" if self.stop_flag.is_set() else "下载元数据完成"
                 message = (
-                    f"下载元数据完成\n"
+                    f"{title}\n"
                     f"总耗时: {total_time:.2f} 秒\n"
                     f"处理元数据总数: {self.copied_metadatas + self.overwritten_metadatas + self.existing_links}\n"
                     f"新复制元数据数: {self.copied_metadatas}\n"
