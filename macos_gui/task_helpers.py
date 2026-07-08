@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import QGroupBox, QProgressBar, QTextEdit, QVBoxLayout
 
 class _TaskSignals(QObject):
     finished = pyqtSignal(str)
+    progress = pyqtSignal(object)
 
 
 class BackgroundTaskMixin:
@@ -19,6 +20,7 @@ class BackgroundTaskMixin:
         self.btn_stop = None
         self._task_signals = _TaskSignals()
         self._task_signals.finished.connect(self._on_background_task_finished)
+        self._task_signals.progress.connect(self._handle_task_progress)
 
     def _create_progress_group(self):
         progress_group = QGroupBox("进度")
@@ -26,6 +28,8 @@ class BackgroundTaskMixin:
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setTextVisible(True)
         progress_layout.addWidget(self.progress_bar)
         progress_group.setLayout(progress_layout)
         return progress_group
@@ -57,10 +61,31 @@ class BackgroundTaskMixin:
             self.btn_stop.setEnabled(running)
         if self.progress_bar is not None:
             if running:
-                self.progress_bar.setRange(0, 0)
-            else:
                 self.progress_bar.setRange(0, 100)
                 self.progress_bar.setValue(0)
+
+    def _handle_task_progress(self, payload):
+        if self.progress_bar is None:
+            if payload is not None and self.logger is not None:
+                self.logger.info(payload if isinstance(payload, str) else str(payload))
+            return
+
+        message = None
+        if isinstance(payload, dict):
+            current = payload.get("current")
+            total = payload.get("total")
+            message = payload.get("message")
+            if isinstance(current, (int, float)) and isinstance(total, (int, float)) and total > 0:
+                percent = int((float(current) / float(total)) * 100)
+                self.progress_bar.setValue(max(0, min(100, percent)))
+        elif isinstance(payload, str):
+            message = payload
+
+        if message:
+            try:
+                self.logger.info(message)
+            except Exception:
+                pass
 
     def _start_background_task(self, task_name, task):
         if self.is_task_running():
@@ -108,5 +133,7 @@ class BackgroundTaskMixin:
     def _on_background_task_finished(self, task_name):
         self._active_task = None
         self._active_workers = []
+        if self.progress_bar is not None and self.progress_bar.value() == 0:
+            self.progress_bar.setValue(100)
         self._set_task_running(False)
         self.logger.info(f"{task_name}后台任务结束")

@@ -492,7 +492,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
             only_tvshow_nfo=config["only_tvshow_nfo"],
             logger=self.logger,
         ))
-        creator.run()
+        creator.run(lambda payload: self._task_signals.progress.emit(payload))
 
     def _run_metadata_copy(self, config):
         self.logger.info("开始下载元数据...")
@@ -505,7 +505,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
             overwrite_existing=config["overwrite_metadata"],
             logger=self.logger,
         ))
-        thread = copier.run(lambda message: self.logger.info(message))
+        thread = copier.run(lambda payload: self._task_signals.progress.emit(payload))
         if thread:
             thread.join()
 

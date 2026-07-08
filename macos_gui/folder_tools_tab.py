@@ -143,16 +143,23 @@ class FolderToolsTab(BackgroundTaskMixin, QWidget):
 
             if operation == "删除软链接":
                 deleter = self._track_worker(SymlinkDeleter(target_folder=folder, logger=self.logger))
-                _, message = deleter.run()
+                _, message = deleter.run(lambda payload: self._task_signals.progress.emit(payload))
                 self.logger.info(message)
             elif operation == "删除所有视频文件":
                 client = self._track_worker(MediaServerClient(logger=self.logger))
-                worker_thread = client.clear_files_by_type(folder, 'VIDEO', lambda message: self.logger.info(message))
+                worker_thread = client.clear_files_by_type(
+                    folder,
+                    'VIDEO',
+                    lambda payload: self._task_signals.progress.emit(payload),
+                )
                 if worker_thread:
                     worker_thread.join()
             elif operation == "检查刮削数据完整性":
                 client = self._track_worker(MediaServerClient(logger=self.logger))
-                worker_thread = client.check_metadata_integrity(folder, lambda message: self.logger.info(message))
+                worker_thread = client.check_metadata_integrity(
+                    folder,
+                    lambda payload: self._task_signals.progress.emit(payload),
+                )
                 if worker_thread:
                     worker_thread.join()
 

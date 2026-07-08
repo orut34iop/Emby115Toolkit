@@ -41,6 +41,18 @@ class MetadataCopier:
         self.logger = logger or logging.getLogger(__name__)
         self._counter_lock = threading.Lock()  # 线程锁保护计数器
         self.stop_flag = threading.Event()
+        self.progress_callback = None
+        self.total_files = 0
+        self.processed_files = 0
+
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback({'message': message})
 
     def request_stop(self):
         self.stop_flag.set()
@@ -85,6 +97,18 @@ class MetadataCopier:
             # 确保目标文件夹存在，如果不存在则创建
             os.makedirs(os.path.dirname(target_file), exist_ok=True)
             self.copy_metadata(source_file, target_file, thread_name)
+            with self._counter_lock:
+                self.processed_files += 1
+                processed_files = self.processed_files
+                total_files = self.total_files
+                progress_callback = self.progress_callback
+            if progress_callback:
+                self._report_progress(
+                    progress_callback,
+                    processed_files,
+                    total_files,
+                    f"已处理 {processed_files}/{total_files} 文件（线程 {thread_name}）",
+                )
             self.file_queue.task_done()
 
     def get_source_files(self):
@@ -151,7 +175,7 @@ class MetadataCopier:
             root_directory = source_folder
             yield from scan_directory(source_folder, root_directory)
 
-    def run(self, callback):
+    def run(self, callback=None):
         def run_meta_copy_check():
             try:
                 start_time = time.time()
@@ -159,6 +183,19 @@ class MetadataCopier:
 
                 # 确保目标文件夹存在
                 os.makedirs(self.target_folder, exist_ok=True)
+                source_files = list(self.get_source_files())
+                self.total_files = len(source_files)
+                self.processed_files = 0
+                self.progress_callback = callback
+
+                if callback:
+                    self._report_progress(callback, 0, max(self.total_files, 1), f"准备下载元数据，共 {self.total_files} 个文件")
+                if self.total_files == 0:
+                    message = "没有可下载的元数据文件"
+                    self.logger.info(message)
+                    if callback:
+                        callback(message)
+                    return message
 
                 threads = []
                 for i in range(self.thread_count):
@@ -168,7 +205,7 @@ class MetadataCopier:
                     thread.start()
 
                 # 添加所有源文件到队列
-                for source_file, source_folder, root_directory in self.get_source_files():
+                for source_file, source_folder, root_directory in source_files:
                     if self.stop_flag.is_set():
                         break
                     self.file_queue.put((source_file, source_folder, root_directory))
@@ -198,6 +235,8 @@ class MetadataCopier:
                 return message
             except Exception as e:
                 self.logger.exception(f"下载元数据执行异常: {e}")
+            finally:
+                self.progress_callback = None
 
         thread = threading.Thread(target=run_meta_copy_check, daemon=True)
         thread.start()

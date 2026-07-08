@@ -144,7 +144,9 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
                     server_type=server_type,
                 )
             )
-            worker_thread = operator.update_genres(lambda message: self.logger.info(message))
+            worker_thread = operator.update_genres(
+                lambda payload: self._task_signals.progress.emit(payload)
+            )
             if worker_thread:
                 worker_thread.join()
 

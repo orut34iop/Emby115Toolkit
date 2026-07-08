@@ -17,13 +17,23 @@ class SymlinkDeleter:
         self.symlink_name = SYMLINK_NAME_BY_MODE.get("symlink")
         self.stop_flag = threading.Event()
 
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback({'message': message})
+
     def request_stop(self):
         self.stop_flag.set()
         self.logger.info(f"已请求停止删除{self.symlink_name}")
 
-    def run(self):
+    def run(self, callback=None):
         deleted_links = 0
         total_links = 0
+        links = []
         start_time = time.time()
         self.logger.info(f"开始删除{self.symlink_name}...")
 
@@ -41,16 +51,28 @@ class SymlinkDeleter:
                 file_path = os.path.join(root, file)
                 # 检查是否为符号链接
                 if os.path.islink(file_path):
-                    try:
-                        total_links += 1
-                        # 删除符号链接
-                        os.unlink(file_path)
-                        deleted_links += 1
-                        self.logger.info(f"已删除符号链接：{file_path}")
-                    except PermissionError:
-                        self.logger.error(f"错误：无法删除符号链接 {file_path}，权限不足。")
-                    except Exception as e:
-                        self.logger.error(f"错误：删除符号链接 {file_path} 时发生错误：{e}")
+                    links.append(file_path)
+
+        if callback:
+            self._report_progress(callback, 0, len(links), f"开始删除{self.symlink_name}：共 {len(links)} 个")
+
+        for index, file_path in enumerate(links, start=1):
+            if self.stop_flag.is_set():
+                self.logger.info(f"删除{self.symlink_name}操作已停止")
+                break
+
+            try:
+                total_links += 1
+                # 删除符号链接
+                os.unlink(file_path)
+                deleted_links += 1
+                self.logger.info(f"已删除符号链接：{file_path}")
+                if callback:
+                    self._report_progress(callback, index, len(links), f"已删除 {index}/{len(links)}: {file_path}")
+            except PermissionError:
+                self.logger.error(f"错误：无法删除符号链接 {file_path}，权限不足。")
+            except Exception as e:
+                self.logger.error(f"错误：删除符号链接 {file_path} 时发生错误：{e}")
 
         end_time = time.time()
         total_time = end_time - start_time

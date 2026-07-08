@@ -128,7 +128,7 @@ class VersionMergeTab(BackgroundTaskMixin, QWidget):
             operator = self._track_worker(
                 MediaServerClient(server_url=server_url, api_key=api_key, logger=self.logger, server_type=server_type)
             )
-            worker_thread = operator.merge_versions(lambda message: self.logger.info(message))
+            worker_thread = operator.merge_versions(lambda payload: self._task_signals.progress.emit(payload))
             if worker_thread:
                 worker_thread.join()
 

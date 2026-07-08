@@ -172,6 +172,6 @@ class TreeMirrorTab(BackgroundTaskMixin, QWidget):
                     logger=self.logger,
                 )
             )
-            mirror.run(lambda message: self.logger.info(message))
+            mirror.run(lambda payload: self._task_signals.progress.emit(payload))
 
         self._start_background_task("115目录树镜像", task)

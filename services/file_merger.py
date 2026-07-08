@@ -37,7 +37,17 @@ class FileMerger:
         if not os.path.exists(target_folder):
             raise FileNotFoundError(f"文件夹不存在: {target_folder}")
 
-    def scan(self, folder_path: str) -> list:
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback({'message': message})
+
+    def scan(self, folder_path: str, callback=None) -> list:
         """
         扫描文件夹，返回文件列表
         :param folder_path: 要扫描的文件夹路径
@@ -54,6 +64,12 @@ class FileMerger:
                 result.append(
                     {'name': filename, 'path': file_path, 'rel_path': rel_path, 'stem': os.path.splitext(filename)[0]}
                 )
+            self._report_progress(
+                callback,
+                len(result),
+                None,
+                f"扫描 {folder_path}：已找到 {len(result)} 个候选文件",
+            )
         return result
 
     def match(self, metadata_files: list, target_files: list) -> list:
@@ -102,11 +118,17 @@ class FileMerger:
 
         return matches
 
-    def merge(self, matches: list) -> None:
+    def merge(self, matches: list, callback=None) -> None:
         """
         执行文件合并（移动元数据文件到目标文件夹）
         :param matches: 匹配结果列表
         """
+        total = len(matches)
+        if total == 0:
+            self._report_progress(callback, 0, 100, "没有可合并的匹配文件")
+            self.logger.info("没有可合并的匹配文件")
+            return
+
         for metadata_file, target_file in matches:
             if self.stop_flag.is_set():
                 self.logger.info("合并操作已停止")
@@ -120,6 +142,12 @@ class FileMerger:
             if os.path.exists(dest_path):
                 self.logger.warning(f"目标文件已存在，跳过: {dest_path}")
                 self.processed_files += 1
+                self._report_progress(
+                    callback,
+                    self.processed_files,
+                    total,
+                    f"已处理: {self.processed_files}/{total}, 已存在: {dest_path}",
+                )
                 continue
 
             try:
@@ -128,10 +156,22 @@ class FileMerger:
                 self.logger.info(f"已移动: {metadata_file['path']} -> {dest_path}")
                 self.success_count += 1
                 self.processed_files += 1
+                self._report_progress(
+                    callback,
+                    self.processed_files,
+                    total,
+                    f"已处理: {self.processed_files}/{total}, 已移动: {metadata_file['name']}",
+                )
             except Exception as e:
                 self.logger.error(f"移动文件失败: {str(e)}")
                 self.error_count += 1
                 self.processed_files += 1
+                self._report_progress(
+                    callback,
+                    self.processed_files,
+                    total,
+                    f"处理失败: {metadata_file['name']} ({self.processed_files}/{total})",
+                )
 
     def run(self, callback=None):
         """
@@ -149,10 +189,10 @@ class FileMerger:
             return
 
         send_message(f"开始扫描元数据文件夹: {self.metadata_folder}")
-        metadata_files = self.scan(self.metadata_folder)
+        metadata_files = self.scan(self.metadata_folder, callback=callback)
 
         send_message(f"开始扫描目标文件夹: {self.target_folder}")
-        target_files = self.scan(self.target_folder)
+        target_files = self.scan(self.target_folder, callback=callback)
 
         self.total_files = len(metadata_files)
         send_message(f"发现 {len(metadata_files)} 个元数据文件, {len(target_files)} 个目标文件")
@@ -170,6 +210,6 @@ class FileMerger:
             return
 
         send_message("开始合并文件...")
-        self.merge(matches)
+        self.merge(matches, callback=callback)
 
         send_message(f"合并完成: 成功 {self.success_count}, 失败 {self.error_count}, 总计 {self.processed_files}")

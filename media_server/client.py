@@ -442,6 +442,15 @@ class MediaServerClient:
     def _count_mergeable_groups(self, grouped_movies):
         return sum(1 for movies in grouped_movies.values() if len(movies) > 1)
 
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback({'message': message})
+
     # 按照TMDb ID分组
     def group_movies_by_tmdbid(self, movies):
         return self.group_movies_by_provider_id(movies, "tmdb")
@@ -466,23 +475,81 @@ class MediaServerClient:
             self.logger.error(response.text)
 
     # 合并同一个TMDb ID下的不同版本
-    def merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
+    def merge_movie_versions(
+        self,
+        grouped_movies,
+        identity_label="TMDB",
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
         if self.server_type == 'jellyfin':
-            return self.jellyfin_merge_movie_versions(grouped_movies, identity_label)
-        return self.emby_merge_movie_versions(grouped_movies, identity_label)
-
-    def emby_merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
-        return self._merge_movie_versions(
-            grouped_movies, ids_key="Ids", server_label="Emby", identity_label=identity_label
+            return self.jellyfin_merge_movie_versions(
+                grouped_movies,
+                identity_label=identity_label,
+                progress_callback=progress_callback,
+                progress_base=progress_base,
+                progress_total=progress_total,
+            )
+        return self.emby_merge_movie_versions(
+            grouped_movies,
+            identity_label=identity_label,
+            progress_callback=progress_callback,
+            progress_base=progress_base,
+            progress_total=progress_total,
         )
 
-    def jellyfin_merge_movie_versions(self, grouped_movies, identity_label="TMDB"):
+    def emby_merge_movie_versions(
+        self,
+        grouped_movies,
+        identity_label="TMDB",
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
         return self._merge_movie_versions(
-            grouped_movies, ids_key="ids", server_label="Jellyfin", identity_label=identity_label
+            grouped_movies,
+            ids_key="Ids",
+            server_label="Emby",
+            identity_label=identity_label,
+            progress_callback=progress_callback,
+            progress_base=progress_base,
+            progress_total=progress_total,
         )
 
-    def _merge_movie_versions(self, grouped_movies, ids_key, server_label, identity_label="TMDB"):
+    def jellyfin_merge_movie_versions(
+        self,
+        grouped_movies,
+        identity_label="TMDB",
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
+        return self._merge_movie_versions(
+            grouped_movies,
+            ids_key="ids",
+            server_label="Jellyfin",
+            identity_label=identity_label,
+            progress_callback=progress_callback,
+            progress_base=progress_base,
+            progress_total=progress_total,
+        )
+
+    def _merge_movie_versions(
+        self,
+        grouped_movies,
+        ids_key,
+        server_label,
+        identity_label="TMDB",
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
         merged_movies = []
+        if progress_total is None:
+            progress_total = self._count_mergeable_groups(grouped_movies)
+
+        processed = 0
         for identity_value, movies in grouped_movies.items():
             if self.stop_flag.is_set():
                 self.logger.info("合并版本操作已停止")
@@ -506,6 +573,14 @@ class MediaServerClient:
                     self.logger.error(f"{server_label} 合并版本失败:::         {name}")
                     self.logger.error(response.text)
                 merged_movies.append(movies[0])  # 暂时保留第一部影片为合并结果
+                processed += 1
+                if progress_total > 0:
+                    self._report_progress(
+                        progress_callback,
+                        progress_base + processed,
+                        progress_base + progress_total,
+                        f"{identity_label} 已合并: {processed}/{progress_total}（{server_label}）",
+                    )
         return merged_movies
 
     def merge_versions(self, callback):
@@ -534,7 +609,13 @@ class MediaServerClient:
             tmdb_mergeable_count = self._count_mergeable_groups(tmdb_grouped_movies)
             self.logger.info(f"已分组影片，共 {len(tmdb_grouped_movies)} 个TMDb ID")
             self.logger.info(f"TMDB 可合并分组：{tmdb_mergeable_count} 组")
-            merged_movies = self.merge_movie_versions(tmdb_grouped_movies, "TMDB")
+            merged_movies = self.merge_movie_versions(
+                tmdb_grouped_movies,
+                identity_label="TMDB",
+                progress_callback=callback,
+                progress_base=0,
+                progress_total=tmdb_mergeable_count,
+            )
             if self.stop_flag.is_set():
                 self.logger.info("已停止合并版本")
                 if callback:
@@ -550,10 +631,17 @@ class MediaServerClient:
                 av_mergeable_count = self._count_mergeable_groups(av_grouped_movies)
                 self.logger.info(f"已分组影片，共 {len(av_grouped_movies)} 个 AV 番号")
                 self.logger.info(f"AV 番号可合并分组：{av_mergeable_count} 组")
-                av_merged_movies = self.merge_movie_versions(av_grouped_movies, "AV 番号")
+                av_merged_movies = self.merge_movie_versions(
+                    av_grouped_movies,
+                    identity_label="AV 番号",
+                    progress_callback=callback,
+                    progress_base=tmdb_mergeable_count,
+                    progress_total=av_mergeable_count,
+                )
                 self.logger.info(f"AV 番号已合并版本，共 {len(av_merged_movies)} 部影片")
                 merged_movies.extend(av_merged_movies)
 
+            self._report_progress(callback, 1, 1, "合并版本处理完成")
             if callback:
                 callback(merged_movies)
 
@@ -620,7 +708,12 @@ class MediaServerClient:
         self.logger.error(f"Response content: {response.text}")
         return None
 
-    def emby_tv_translate_genres_and_update_whole_item(self):
+    def emby_tv_translate_genres_and_update_whole_item(
+        self,
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
         total_count = 0
         update_count = 0
         updated_series = []
@@ -634,6 +727,8 @@ class MediaServerClient:
         if response.status_code == 200:
             tvs = self._unique_items_by_id(response.json().get('Items', []), "剧集")
             total_items = len(tvs)
+            if progress_total is None:
+                progress_total = total_items
 
             # Use a set to remove duplicate genres
             all_genres = set()
@@ -660,6 +755,13 @@ class MediaServerClient:
                 original_genres = each_tv.get('Genres', [])
                 translated_genres = self._translate_genres(original_genres, genres_map)
                 total_count += 1
+                if progress_total:
+                    self._report_progress(
+                        progress_callback,
+                        progress_base + total_count,
+                        progress_base + progress_total,
+                        f"更新剧集流派进度: {total_count}/{progress_total}，已更新 {update_count} 部",
+                    )
 
                 if original_genres == translated_genres:
                     continue
@@ -723,7 +825,12 @@ class MediaServerClient:
 
         return updated_series
 
-    def emby_movie_translate_genres_and_update_whole_item(self):
+    def emby_movie_translate_genres_and_update_whole_item(
+        self,
+        progress_callback=None,
+        progress_base=0,
+        progress_total=None,
+    ):
         total_count = 0
         update_count = 0
         updated_movies = []
@@ -736,6 +843,8 @@ class MediaServerClient:
         if response.status_code == 200:
             movies = self._unique_items_by_id(response.json().get('Items', []), "影片")
             total_items = len(movies)
+            if progress_total is None:
+                progress_total = total_items
             # Use a set to remove duplicate genres
             all_genres = set()
             all_genreitems = set()
@@ -761,6 +870,13 @@ class MediaServerClient:
                 original_genres = each_movie.get('Genres', [])
                 translated_genres = self._translate_genres(original_genres, genres_map)
                 total_count += 1
+                if progress_total:
+                    self._report_progress(
+                        progress_callback,
+                        progress_base + total_count,
+                        progress_base + progress_total,
+                        f"更新影片流派进度: {total_count}/{progress_total}，已更新 {update_count} 部",
+                    )
                 if original_genres == translated_genres:
                     continue
 
@@ -902,7 +1018,7 @@ class MediaServerClient:
         def run_update_genres_check():
             self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info("开始更新影片流派信息...")
-            updated_movies = self.emby_movie_translate_genres_and_update_whole_item()
+            updated_movies = self.emby_movie_translate_genres_and_update_whole_item(progress_callback=callback)
             stopped = self.stop_flag.is_set()
             if stopped:
                 self.logger.info("已停止更新影片流派信息")
@@ -910,7 +1026,7 @@ class MediaServerClient:
             else:
                 self.logger.info("完成更新影片流派信息")
                 self.logger.info("开始更新剧集流派信息...")
-                updated_series = self.emby_tv_translate_genres_and_update_whole_item()
+                updated_series = self.emby_tv_translate_genres_and_update_whole_item(progress_callback=callback)
                 stopped = self.stop_flag.is_set()
                 if stopped:
                     self.logger.info("已停止更新剧集流派信息")
@@ -950,26 +1066,38 @@ class MediaServerClient:
 
     def clear_files_by_type(self, folder_path, file_type='VIDEO', callback=None):
         def run_clear_files_by_type_check():
-            num = 0
-            # 要删除的文件后缀
-            for root, dirs, files in os.walk(folder_path):
+            video_files = []
+            for root, _, files in os.walk(folder_path):
                 if self.stop_flag.is_set():
                     self.logger.info("删除视频文件操作已停止")
                     break
-
                 for file in files:
                     if self.stop_flag.is_set():
                         self.logger.info("删除视频文件操作已停止")
                         break
 
                     if any(file.lower().endswith(ext) for ext in VIDEO_EXTENSIONS):
-                        file_path = os.path.join(root, file)
-                        try:
-                            os.remove(file_path)
-                            num += 1
-                            self.logger.info(f"删除文件:: {file} 共删除文件数目: {num}")
-                        except Exception as e:
-                            self.logger.error(f"发生错误: 在删除文件 '{file_path}' 时出错，错误信息: {e}")
+                        video_files.append(os.path.join(root, file))
+
+            num = 0
+            total = len(video_files)
+            if callback:
+                self._report_progress(callback, 0, total, f"准备删除视频文件，共 {total} 个")
+
+            for file_path in video_files:
+                if self.stop_flag.is_set():
+                    self.logger.info("删除视频文件操作已停止")
+                    break
+
+                file = os.path.basename(file_path)
+                try:
+                    os.remove(file_path)
+                    num += 1
+                    self.logger.info(f"删除文件:: {file} 共删除文件数目: {num}")
+                    if callback:
+                        self._report_progress(callback, num, total, f"删除文件:: {file}")
+                except Exception as e:
+                    self.logger.error(f"发生错误: 在删除文件 '{file_path}' 时出错，错误信息: {e}")
 
             message = (
                 f"\n"
@@ -987,14 +1115,32 @@ class MediaServerClient:
 
     def check_metadata_integrity(self, folder_path, callback=None):
         def run_check_metadata_integrity_check():
-            video_check_result = self.check_video_files(folder_path)
+            video_check_result = self.check_video_files(
+                folder_path,
+                progress_callback=(
+                    lambda payload: callback(
+                        {'stage': '视频检查', **payload, 'message': f"[视频检查] {payload.get('message', payload)}"}
+                    )
+                    if callback
+                    else None
+                ),
+            )
             if self.stop_flag.is_set():
                 self.logger.info("检查刮削数据完整性操作已停止")
                 if callback:
                     callback("检查刮削数据完整性操作已停止")
                 return
 
-            nfo_check_result = self.check_nfo_files(folder_path)
+            nfo_check_result = self.check_nfo_files(
+                folder_path,
+                progress_callback=(
+                    lambda payload: callback(
+                        {'stage': 'NFO检查', **payload, 'message': f"[NFO检查] {payload.get('message', payload)}"}
+                    )
+                    if callback
+                    else None
+                ),
+            )
 
             for video in video_check_result['no_nfo_videos']:
                 self.logger.info(f"没有找到nfo文件的视频文件: {video}")
@@ -1038,7 +1184,7 @@ class MediaServerClient:
 
         return None
 
-    def check_nfo_files(self, folder_path):
+    def check_nfo_files(self, folder_path, progress_callback=None):
         """
         遍历给定文件夹中的所有 .nfo 文件，并检查对应的同名视频文件。
 
@@ -1048,17 +1194,28 @@ class MediaServerClient:
         # 初始化结果汇总
         results = {'total_nfo': 0, 'no_video_nfo': [], 'found_video_nfo': []}
 
+        nfo_files = [path for path in Path(folder_path).rglob('*.nfo')]
+        filtered_nfo_files = [
+            path
+            for path in nfo_files
+            if os.path.basename(str(path)) not in ('tvshow.nfo', 'season.nfo') and os.path.isfile(str(path))
+        ]
+
+        if progress_callback:
+            self._report_progress(
+                progress_callback,
+                0,
+                len(filtered_nfo_files),
+                f"开始扫描 NFO 文件：共 {len(filtered_nfo_files)} 个",
+            )
+
         # 使用 glob 递归查找所有的 .nfo 文件
-        for nfo_path in Path(folder_path).rglob('*.nfo'):
+        for nfo_path in filtered_nfo_files:
             if self.stop_flag.is_set():
                 self.logger.info("NFO 文件检查已停止")
                 break
 
             nfo_str_path = str(nfo_path)
-            if os.path.basename(nfo_str_path) in ('tvshow.nfo', 'season.nfo'):
-                continue
-            if not os.path.isfile(nfo_str_path):
-                continue
             results['total_nfo'] += 1
 
             video_path = self.find_related_videos(nfo_str_path)
@@ -1067,38 +1224,59 @@ class MediaServerClient:
                 results['found_video_nfo'].append(nfo_str_path)
             else:
                 results['no_video_nfo'].append(nfo_str_path)
+            if progress_callback:
+                self._report_progress(
+                    progress_callback,
+                    results['total_nfo'],
+                    len(filtered_nfo_files),
+                    f"扫描 NFO: {results['total_nfo']}/{len(filtered_nfo_files)}",
+                )
 
         return results
 
-    def check_video_files(self, folder_path):
+    def check_video_files(self, folder_path, progress_callback=None):
         # 初始化结果汇总
         results = {'total_videos': 0, 'no_nfo_videos': [], 'found_nfo_videos': []}
 
-        # 遍历指定文件夹及其子文件夹
+        all_video_files = []
         for root, _, files in os.walk(folder_path):
             if self.stop_flag.is_set():
                 self.logger.info("视频文件检查已停止")
                 break
 
             video_files = [f for f in files if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS]
+            all_video_files.extend([os.path.join(root, video_file) for video_file in video_files if os.path.isfile(os.path.join(root, video_file))])
 
-            for video_file in video_files:
-                if self.stop_flag.is_set():
-                    self.logger.info("视频文件检查已停止")
-                    break
+        if progress_callback:
+            self._report_progress(
+                progress_callback,
+                0,
+                len(all_video_files),
+                f"开始扫描视频文件：共 {len(all_video_files)} 个",
+            )
 
-                video_full_path = os.path.join(root, video_file)
-                if not os.path.isfile(video_full_path):
-                    continue
-                results['total_videos'] += 1
-                base_name, _ = os.path.splitext(video_file)
-                nfo_file = base_name + '.nfo'
+        # 遍历指定文件夹及其子文件夹
+        for video_full_path in all_video_files:
+            if self.stop_flag.is_set():
+                self.logger.info("视频文件检查已停止")
+                break
 
-                nfo_full_path = os.path.join(root, nfo_file)
+            results['total_videos'] += 1
+            base_name, _ = os.path.splitext(os.path.basename(video_full_path))
+            nfo_file = base_name + '.nfo'
+            nfo_full_path = os.path.join(os.path.dirname(video_full_path), nfo_file)
 
-                if not os.path.exists(nfo_full_path):
-                    results['no_nfo_videos'].append(video_full_path)
-                else:
-                    results['found_nfo_videos'].append(video_full_path)
+            if not os.path.exists(nfo_full_path):
+                results['no_nfo_videos'].append(video_full_path)
+            else:
+                results['found_nfo_videos'].append(video_full_path)
+
+            if progress_callback:
+                self._report_progress(
+                    progress_callback,
+                    results['total_videos'],
+                    len(all_video_files),
+                    f"扫描视频: {results['total_videos']}/{len(all_video_files)}",
+                )
 
         return results

@@ -22,6 +22,16 @@ class TreeMirror:
         # 停止标志
         self.stop_flag = threading.Event()
 
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback(message)
+
     def replace_special_chars(self, path: str) -> str:
         """
         替换路径中的特殊字符
@@ -162,6 +172,9 @@ class TreeMirror:
         if tree_data and tree_data[0]['depth'] == 0:
             start_index = 1
 
+        total = max(0, len(tree_data) - start_index)
+        processed = 0
+
         for i, item in enumerate(tree_data):
             if i < start_index:
                 continue
@@ -205,6 +218,14 @@ class TreeMirror:
                     send_message(f"创建文件: {current_path}")
                 else:
                     send_message(f"文件已存在，跳过: {current_path}")
+
+            processed += 1
+            self._report_progress(
+                callback,
+                processed,
+                total,
+                f"已处理结构项 {processed}/{total}: {name}",
+            )
 
     def run(self, callback=None):
         """

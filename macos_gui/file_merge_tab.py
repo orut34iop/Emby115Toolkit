@@ -142,6 +142,6 @@ class FileMergeTab(BackgroundTaskMixin, QWidget):
             merger = self._track_worker(
                 FileMerger(metadata_folder=metadata_folder, target_folder=video_folder, logger=self.logger)
             )
-            merger.run(lambda message: self.logger.info(message))
+            merger.run(lambda payload: self._task_signals.progress.emit(payload))
 
         self._start_background_task("文件合并", task)

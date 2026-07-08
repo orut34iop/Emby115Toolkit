@@ -94,6 +94,15 @@ class SymlinkCreator:
 
         return progress_seconds > 0 and time.monotonic() - last_progress_time >= progress_seconds
 
+    @staticmethod
+    def _report_progress(callback, current, total, message):
+        if callback is None:
+            return
+        if total is not None and total > 0:
+            callback({'current': current, 'total': total, 'message': message})
+        else:
+            callback({'message': message})
+
     def _normalize_extensions(self, extensions):
         if isinstance(extensions, str):
             extensions = [extensions]
@@ -108,7 +117,7 @@ class SymlinkCreator:
             normalized.append(extension)
         return tuple(normalized)
 
-    def scan(self, folder_path: str) -> list:
+    def scan(self, folder_path: str, callback=None) -> list:
         """
         扫描文件夹，返回文件列表
         :param folder_path: 要扫描的文件夹路径
@@ -147,10 +156,16 @@ class SymlinkCreator:
                         f"扫描进度: 已扫描 {scanned_count} 个文件，匹配 {len(result)} 个{self.symlink_name}候选"
                     )
                     last_progress_time = time.monotonic()
+                    self._report_progress(
+                        callback,
+                        scanned_count,
+                        None,
+                        f"扫描进度: 已扫描 {scanned_count} 个文件，匹配 {len(result)} 个{self.symlink_name}候选",
+                    )
         self._last_scan_total_files = scanned_count
         return result
 
-    def create(self, files: list, target_folder: str) -> None:
+    def create(self, files: list, target_folder: str, callback=None) -> None:
         """
         创建符号链接或 strm 文件
         :param files: 源文件列表
@@ -163,6 +178,8 @@ class SymlinkCreator:
 
         self.logger.info(f"待创建{self.symlink_name}候选: {total} 个")
         last_progress_time = time.monotonic()
+        if callback and total > 0:
+            self._report_progress(callback, 0, total, f"开始创建{self.symlink_name}：0/{total}")
 
         for index, file_info in enumerate(files, start=1):
             if self.stop_flag.is_set():
@@ -195,6 +212,12 @@ class SymlinkCreator:
                     f"失败 {self.error_count}"
                 )
                 last_progress_time = time.monotonic()
+                self._report_progress(
+                    callback,
+                    index,
+                    total,
+                    f"创建{self.symlink_name}进度: {index}/{total}，新建 {self.created_links}，已存在 {self.existing_links}，失败 {self.error_count}",
+                )
 
     def _create_symlink(self, src: str, dst: str) -> None:
         """创建符号链接"""
@@ -304,7 +327,7 @@ class SymlinkCreator:
                 continue
 
             send_message(f"扫描源文件夹: {source_folder}")
-            files = self.scan(source_folder)
+            files = self.scan(source_folder, callback=callback)
             scanned_count = self._last_scan_total_files
             self.total_files += len(files)
             self.scanned_files += scanned_count
@@ -316,7 +339,7 @@ class SymlinkCreator:
                 return
 
             send_message("开始创建链接...")
-            self.create(files, self.target_folder)
+            self.create(files, self.target_folder, callback=callback)
             total_created += self.created_links
             total_existing += self.existing_links
 
