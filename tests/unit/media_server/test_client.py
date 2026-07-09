@@ -1068,3 +1068,21 @@ class TestMediaServerClientGenresMap:
         assert MOVIE_GENRE_TRANSLATIONS['エロス'] == '情色'
         assert MOVIE_GENRE_TRANSLATIONS['セクシー'] == '性感'
         assert MOVIE_GENRE_TRANSLATIONS['逆レイプ'] == '逆强奸'
+
+    def test_av_genre_review_csv_is_applied_to_movie_map(self):
+        """测试已审核的 AV 流派表已同步到电影流派映射"""
+        import csv
+        from pathlib import Path
+
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        review_path = Path(__file__).resolve().parents[3] / 'av_genre_translation_review.csv'
+
+        with review_path.open(encoding='utf-8-sig', newline='') as review_file:
+            for row in csv.DictReader(review_file):
+                source = row['原始流派名称'].strip()
+                expected = row['建议合并后简体流派名称'].strip()
+
+                assert operator._resolve_genre_translation(source, MOVIE_GENRE_TRANSLATIONS) == expected
