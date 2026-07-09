@@ -4,8 +4,10 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 
 import requests
@@ -39,6 +41,103 @@ VIDEO_EXTENSIONS = {
     '.mts',
 }
 
+GENRE_NORMALIZATION_TRANSLATION = str.maketrans(
+    {
+        '　': ' ',
+        '・': '·',
+        '･': '·',
+        '•': '·',
+        '／': '/',
+        '，': ',',
+        '（': '(',
+        '）': ')',
+        '獨': '独',
+        '專': '专',
+        '屬': '属',
+        '優': '优',
+        '顔': '颜',
+        '顏': '颜',
+        '騎': '骑',
+        '乗': '乘',
+        '貧': '贫',
+        '觀': '观',
+        '視': '视',
+        '攝': '摄',
+        '內': '内',
+        '陰': '阴',
+        '陽': '阳',
+        '義': '义',
+        '婦': '妇',
+        '處': '处',
+        '処': '处',
+        '劇': '剧',
+        '複': '复',
+        '復': '复',
+        '無': '无',
+        '長': '长',
+        '個': '个',
+        '畫': '画',
+        '質': '质',
+        '體': '体',
+        '驗': '验',
+        '懺': '忏',
+        '係': '系',
+        '統': '统',
+        '國': '国',
+        '進': '进',
+        '業': '业',
+        '餘': '余',
+        '寫': '写',
+        '製': '制',
+        '單': '单',
+        '爐': '炉',
+        '別': '别',
+        '轉': '转',
+        '為': '为',
+        '薦': '荐',
+        '頻': '频',
+        '設': '设',
+        '項': '项',
+        '臉': '脸',
+        '後': '后',
+        '護': '护',
+        '師': '师',
+        '嬌': '娇',
+        '莖': '茎',
+        '戀': '恋',
+        '愛': '爱',
+        '眾': '众',
+        '學': '学',
+        '時': '时',
+        '問': '问',
+        '價': '价',
+        '經': '经',
+        '數': '数',
+        '碼': '码',
+        '錄': '录',
+        '紀': '纪',
+        '風': '风',
+        '孃': '娘',
+        '緊': '紧',
+        '縛': '缚',
+        '親': '亲',
+        '姦': '奸',
+        '職': '职',
+        '場': '场',
+        '與': '与',
+        '馬': '马',
+        '賽': '赛',
+        '異': '异',
+        '導': '导',
+        '醫': '医',
+        '檢': '检',
+        '查': '查',
+        '飲': '饮',
+        '聯': '联',
+        '誼': '谊',
+    }
+)
+
 
 class RequestFailureResponse:
     def __init__(self, error):
@@ -68,6 +167,7 @@ class MediaServerClient:
         self.detected_server_type = None
         self.api_prefix = self._configured_api_prefix()
         self.stop_flag = threading.Event()
+        self._genre_lookup_index_cache = {}
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -254,18 +354,64 @@ class MediaServerClient:
         except requests.exceptions.RequestException as err:
             return RequestFailureResponse(err)
 
+    @staticmethod
+    def _clean_genre_name(genre):
+        text = str(genre or '').strip()
+        return re.sub(r'\s+', ' ', text).strip()
+
+    @staticmethod
+    def _normalize_genre_name(genre):
+        text = MediaServerClient._clean_genre_name(genre)
+        text = text.translate(GENRE_NORMALIZATION_TRANSLATION)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    @staticmethod
+    def _normalize_genre_lookup_name(genre):
+        text = unicodedata.normalize('NFKC', MediaServerClient._clean_genre_name(genre))
+        text = text.translate(GENRE_NORMALIZATION_TRANSLATION)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _genre_lookup_key(self, genre, genres_map, allow_normalized_index=True):
+        if genre in genres_map:
+            return genre
+
+        normalized_genre = self._normalize_genre_lookup_name(genre)
+        if normalized_genre in genres_map:
+            return normalized_genre
+        if not allow_normalized_index:
+            return None
+
+        map_id = id(genres_map)
+        cached_map, cached_index = self._genre_lookup_index_cache.get(map_id, (None, None))
+        if cached_map is not genres_map:
+            cached_index = {}
+            for key in genres_map:
+                cached_index.setdefault(self._normalize_genre_lookup_name(key), key)
+            self._genre_lookup_index_cache[map_id] = (genres_map, cached_index)
+
+        return cached_index.get(normalized_genre)
+
     def _resolve_genre_translation(self, genre, genres_map):
-        current = genre
+        current = self._clean_genre_name(genre)
         seen = set()
-        while current in genres_map:
-            if current in seen:
-                break
-            seen.add(current)
-            translated = genres_map[current]
+        allow_normalized_index = True
+        while True:
+            lookup_key = self._genre_lookup_key(
+                current,
+                genres_map,
+                allow_normalized_index=allow_normalized_index,
+            )
+            if not lookup_key:
+                return self._normalize_genre_name(current)
+            if lookup_key in seen:
+                return self._normalize_genre_name(current)
+
+            seen.add(lookup_key)
+            translated = self._normalize_genre_name(genres_map[lookup_key])
             if translated == current:
-                break
+                return translated
             current = translated
-        return current
+            allow_normalized_index = False
 
     def _translate_genres(self, genres, genres_map):
         translated_genres = []
@@ -292,6 +438,219 @@ class MediaServerClient:
         if duplicate_count:
             self.logger.info(f"{item_label}列表中跳过重复条目 {duplicate_count} 个")
         return unique_items
+
+    @staticmethod
+    def _should_report_progress(current, total, interval=500):
+        if not total:
+            return False
+        if total <= 100:
+            return True
+        return current in {1, total} or current % interval == 0
+
+    @staticmethod
+    def _should_log_item_update(update_count, interval=500):
+        return update_count <= 20 or update_count % interval == 0
+
+    @staticmethod
+    def _format_limited_values(values, max_items=200):
+        sorted_values = sorted(values, key=lambda value: str(value))
+        displayed_values = sorted_values[:max_items]
+        suffix = f" ... 还有 {len(sorted_values) - max_items} 项未列出" if len(sorted_values) > max_items else ""
+        return f"{displayed_values}{suffix}"
+
+    @staticmethod
+    def _format_updated_items_message(item_label, updated_items, max_items=100):
+        if not updated_items:
+            return f"没有需要更新的{item_label}流派信息。\n"
+
+        displayed_items = updated_items[:max_items]
+        updated_items_info = "\n".join(
+            f"{item_label}: {item.get('Name', item.get('Id', ''))}" for item in displayed_items
+        )
+        omitted_count = len(updated_items) - max_items
+        omitted_message = f"\n... 还有 {omitted_count} 个{item_label}已更新，省略写入日志。" if omitted_count > 0 else ""
+        return (
+            f"更新的{item_label}数量: {len(updated_items)}\n"
+            f"更新的{item_label}（最多列出 {max_items} 个）:\n"
+            f"{updated_items_info}{omitted_message}\n"
+        )
+
+    @staticmethod
+    def _build_genre_item_index(items):
+        all_genreitems = set()
+        genre_item_ids = {}
+        all_genres = set()
+
+        for item in items:
+            all_genres.update(item.get('Genres', []))
+            for genre_item in item.get('GenreItems', []):
+                name = genre_item.get('Name')
+                gid = genre_item.get('Id')
+                if name and gid:
+                    all_genreitems.add((name, gid))
+                    genre_item_ids.setdefault(name, gid)
+
+        return all_genres, all_genreitems, genre_item_ids
+
+    @staticmethod
+    def _build_genre_items(translated_genres, genre_item_ids):
+        return [{'Name': genre, 'Id': genre_item_ids.get(genre, '')} for genre in translated_genres]
+
+    def _collect_genre_update_candidates(self, items, genres_map, item_label, progress_callback=None):
+        candidates = []
+        genre_changes = Counter()
+        total_items = len(items)
+        checked_count = 0
+
+        for item in items:
+            if self.stop_flag.is_set():
+                return candidates, genre_changes, checked_count, True
+
+            checked_count += 1
+            original_genres = item.get('Genres', [])
+            translated_genres = self._translate_genres(original_genres, genres_map)
+            if original_genres != translated_genres:
+                candidates.append(item)
+                for genre in original_genres:
+                    translated_genre = self._resolve_genre_translation(genre, genres_map)
+                    if genre != translated_genre:
+                        genre_changes[(genre, translated_genre)] += 1
+                if len(original_genres) != len(translated_genres):
+                    genre_changes[('重复或近似流派', '合并去重后的流派列表')] += 1
+
+            if self._should_report_progress(checked_count, total_items):
+                self._report_progress(
+                    progress_callback,
+                    checked_count,
+                    total_items,
+                    f"扫描{item_label}流派进度: {checked_count}/{total_items}，待更新 {len(candidates)} 部",
+                )
+
+        return candidates, genre_changes, checked_count, False
+
+    def _log_genre_change_summary(self, item_label, genre_changes, max_items=80):
+        if not genre_changes:
+            self.logger.info(f"{item_label}预扫描未发现需要翻译或合并的流派")
+            return
+
+        displayed_changes = [
+            f"{source} -> {target}（{count}）"
+            for (source, target), count in genre_changes.most_common(max_items)
+        ]
+        omitted_count = len(genre_changes) - max_items
+        if omitted_count > 0:
+            displayed_changes.append(f"... 还有 {omitted_count} 个变更项未列出")
+        self.logger.info(f"{item_label}流派变更统计: {'; '.join(displayed_changes)}")
+
+    def _translate_items_genres_and_update(
+        self,
+        item_label,
+        include_item_types,
+        genres_map,
+        progress_callback=None,
+    ):
+        update_count = 0
+        updated_items = []
+        params = {
+            'Recursive': 'true',
+            'IncludeItemTypes': include_item_types,
+            'Fields': 'Genres,GenreItems',
+            'Limit': '1000000',
+        }
+
+        response = self._request('get', '/Items', params=params)
+        if response.status_code != 200:
+            self.logger.error(f"请求失败，状态码: {response.status_code}")
+            self.logger.error(response.text)
+            return updated_items
+
+        items = self._unique_items_by_id(response.json().get('Items', []), item_label)
+        total_items = len(items)
+        all_genres, all_genreitems, genre_item_ids = self._build_genre_item_index(items)
+        self.logger.info(
+            f"{item_label}所有去重后的Genres（{len(all_genres)} 个）: "
+            f"{self._format_limited_values(all_genres)}"
+        )
+        self.logger.info(
+            f"{item_label}所有去重后的GenreItems（{len(all_genreitems)} 个）: "
+            f"{self._format_limited_values(all_genreitems)}"
+        )
+
+        candidates, genre_changes, checked_count, stopped = self._collect_genre_update_candidates(
+            items,
+            genres_map,
+            item_label,
+            progress_callback,
+        )
+        if stopped:
+            self.logger.info(f"{item_label}流派更新已停止，已扫描 {checked_count}/{total_items} 部，已更新 0 部")
+            return updated_items
+
+        self.logger.info(f"{item_label}共 {total_items} 部，预扫描后需要更新 {len(candidates)} 部")
+        self._log_genre_change_summary(item_label, genre_changes)
+
+        if not candidates:
+            self.logger.info(f"没有需要更新的{item_label}流派信息。")
+            return updated_items
+
+        stopped = False
+        for candidate_index, each_item in enumerate(candidates, start=1):
+            if self.stop_flag.is_set():
+                stopped = True
+                break
+
+            item_id = each_item['Id']
+            item = self.get_item_info(item_id)
+            if not item:
+                self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
+                continue
+
+            original_genres = item.get('Genres', [])
+            translated_genres = self._translate_genres(original_genres, genres_map)
+            if original_genres == translated_genres:
+                continue
+
+            if self.stop_flag.is_set():
+                stopped = True
+                break
+
+            item['Genres'] = translated_genres
+            item['GenreItems'] = self._build_genre_items(translated_genres, genre_item_ids)
+
+            update_response = self._post_item_update(item_id, item)
+
+            if update_response.status_code in [200, 204]:
+                update_count += 1
+                updated_items.append(item)
+                if self._should_log_item_update(update_count):
+                    self.logger.info(f"{item_label}: {item['Name']} 流派信息已更新。(Total updates: {update_count})")
+            else:
+                self.logger.error(
+                    f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
+                    f"状态码: {update_response.status_code}(Total updates: {update_count})"
+                )
+                self.logger.error(update_response.text)
+
+            if self._should_report_progress(candidate_index, len(candidates)):
+                self._report_progress(
+                    progress_callback,
+                    candidate_index,
+                    len(candidates),
+                    f"更新{item_label}流派进度: {candidate_index}/{len(candidates)}，已成功 {update_count} 部",
+                )
+
+        if stopped:
+            self.logger.info(
+                f"{item_label}流派更新已停止，候选 {len(candidates)} 部，已处理 {candidate_index - 1} 部，"
+                f"已更新 {update_count} 部"
+            )
+        else:
+            self.logger.info(f"{item_label}共 {total_items} 部，实际更新 {update_count} 部")
+
+        if update_count == 0:
+            self.logger.info(f"没有需要更新的{item_label}流派信息。")
+
+        return updated_items
 
     def check_duplicates(self, target_folder, callback):
         def run_check():
@@ -714,116 +1073,12 @@ class MediaServerClient:
         progress_base=0,
         progress_total=None,
     ):
-        total_count = 0
-        update_count = 0
-        updated_series = []
-
-        genres_map = TV_GENRE_TRANSLATIONS
-
-        params = {'Recursive': 'true', 'IncludeItemTypes': 'Series', 'Fields': 'Genres,GenreItems', 'Limit': '1000000'}
-
-        response = self._request('get', '/Items', params=params)
-
-        if response.status_code == 200:
-            tvs = self._unique_items_by_id(response.json().get('Items', []), "剧集")
-            total_items = len(tvs)
-            if progress_total is None:
-                progress_total = total_items
-
-            # Use a set to remove duplicate genres
-            all_genres = set()
-            all_genreitems = set()
-            for tv in tvs:
-                genres = tv.get('Genres', [])
-                genreitems = tv.get('GenreItems', [])
-                all_genres.update(genres)
-                for genre_item in genreitems:
-                    name = genre_item.get('Name')
-                    gid = genre_item.get('Id')
-                    if name and gid:
-                        all_genreitems.add((name, gid))
-            self.logger.info(f"剧集所有去重后的Genres: {sorted(all_genres)}")
-            self.logger.info(f"剧集所有去重后的GenreItems: {sorted(all_genreitems)}")
-
-            stopped = False
-            for each_tv in tvs:
-                if self.stop_flag.is_set():
-                    stopped = True
-                    break
-
-                tv_id = each_tv['Id']
-                original_genres = each_tv.get('Genres', [])
-                translated_genres = self._translate_genres(original_genres, genres_map)
-                total_count += 1
-                if progress_total:
-                    self._report_progress(
-                        progress_callback,
-                        progress_base + total_count,
-                        progress_base + progress_total,
-                        f"更新剧集流派进度: {total_count}/{progress_total}，已更新 {update_count} 部",
-                    )
-
-                if original_genres == translated_genres:
-                    continue
-
-                tv = self.get_item_info(tv_id)
-                if not tv:
-                    self.logger.error(f"剧集ID '{tv_id}' 的信息读取失败.(Total updates: {update_count})")
-                    continue
-
-                original_genres = tv.get('Genres', [])
-                translated_genres = self._translate_genres(original_genres, genres_map)
-
-                if original_genres != translated_genres:
-                    if self.stop_flag.is_set():
-                        stopped = True
-                        break
-
-                    # 根据 translated_genres，从 all_genreitems 中查找对应的 id
-                    genreitems = []
-                    for genre in translated_genres:
-                        # 在 all_genreitems 中查找名称为 genre 的元组
-                        found = False
-                        for name, gid in all_genreitems:
-                            if name == genre:
-                                genreitems.append({'Name': name, 'Id': gid})
-                                found = True
-                                break
-                        if not found:
-                            # 如果没有找到，Id 可以设为 None 或空字符串，EmbyServer会新分配有效ID
-                            genreitems.append({'Name': genre, 'Id': ''})
-
-                    tv['Genres'] = translated_genres
-                    tv['GenreItems'] = genreitems
-
-                    update_response = self._post_item_update(tv_id, tv)
-
-                    if update_response.status_code in [200, 204]:
-                        update_count += 1
-                        updated_series.append(tv)
-                        self.logger.info(f"剧集: {tv['Name']} 流派信息已更新。(Total updates: {update_count})")
-                    else:
-                        self.logger.error(
-                            f"剧集 '{tv.get('Name', tv_id)}'({tv_id}) 更新失败，"
-                            f"状态码: {update_response.status_code}(Total updates: {update_count})"
-                        )
-                        self.logger.error(update_response.text)
-                else:
-                    self.logger.info(f"剧集 '{tv['Name']}' 的流派信息没有改变.")
-            if stopped:
-                self.logger.info(
-                    f"剧集流派更新已停止，已检查 {total_count}/{total_items} 部，已更新 {update_count} 部"
-                )
-            else:
-                self.logger.info(f"剧集共 {total_count} 部")
-        else:
-            self.logger.info(f"请求失败，状态码: {response.status_code}")
-            self.logger.info(response.text)
-
-        if update_count == 0:
-            self.logger.info("没有需要更新的剧集流派信息。")
-
-        return updated_series
+        return self._translate_items_genres_and_update(
+            "剧集",
+            'Series',
+            TV_GENRE_TRANSLATIONS,
+            progress_callback=progress_callback,
+        )
 
     def emby_movie_translate_genres_and_update_whole_item(
         self,
@@ -831,113 +1086,12 @@ class MediaServerClient:
         progress_base=0,
         progress_total=None,
     ):
-        total_count = 0
-        update_count = 0
-        updated_movies = []
-        genres_map = MOVIE_GENRE_TRANSLATIONS
-
-        params = {'Recursive': 'true', 'IncludeItemTypes': 'Movie', 'Fields': 'Genres,GenreItems', 'Limit': '1000000'}
-
-        response = self._request('get', '/Items', params=params)
-
-        if response.status_code == 200:
-            movies = self._unique_items_by_id(response.json().get('Items', []), "影片")
-            total_items = len(movies)
-            if progress_total is None:
-                progress_total = total_items
-            # Use a set to remove duplicate genres
-            all_genres = set()
-            all_genreitems = set()
-            for movie in movies:
-                genres = movie.get('Genres', [])
-                genreitems = movie.get('GenreItems', [])
-                all_genres.update(genres)
-                for genre_item in genreitems:
-                    name = genre_item.get('Name')
-                    gid = genre_item.get('Id')
-                    if name and gid:
-                        all_genreitems.add((name, gid))
-            self.logger.info(f"影片所有去重后的Genres: {sorted(all_genres)}")
-            self.logger.info(f"影片所有去重后的GenreItems: {sorted(all_genreitems)}")
-
-            stopped = False
-            for each_movie in movies:
-                if self.stop_flag.is_set():
-                    stopped = True
-                    break
-
-                movie_id = each_movie['Id']
-                original_genres = each_movie.get('Genres', [])
-                translated_genres = self._translate_genres(original_genres, genres_map)
-                total_count += 1
-                if progress_total:
-                    self._report_progress(
-                        progress_callback,
-                        progress_base + total_count,
-                        progress_base + progress_total,
-                        f"更新影片流派进度: {total_count}/{progress_total}，已更新 {update_count} 部",
-                    )
-                if original_genres == translated_genres:
-                    continue
-
-                movie = self.get_item_info(movie_id)
-                if not movie:
-                    self.logger.info(f"影片ID '{movie_id}' 的信息读取失败.(Total updates: {update_count})")
-                    continue
-
-                original_genres = movie.get('Genres', [])
-                translated_genres = self._translate_genres(original_genres, genres_map)
-
-                if original_genres != translated_genres:
-                    if self.stop_flag.is_set():
-                        stopped = True
-                        break
-
-                    # 根据 translated_genres，从 all_genreitems 中查找对应的 id
-                    genreitems = []
-                    for genre in translated_genres:
-                        # 在 all_genreitems 中查找名称为 genre 的元组
-                        found = False
-                        for name, gid in all_genreitems:
-                            if name == genre:
-                                genreitems.append({'Name': name, 'Id': gid})
-                                found = True
-                                break
-                        if not found:
-                            # 如果没有找到，Id 可以设为 None 或空字符串，EmbyServer会新分配有效ID
-                            genreitems.append({'Name': genre, 'Id': ''})
-
-                    movie['Genres'] = translated_genres
-                    movie['GenreItems'] = genreitems
-
-                    update_response = self._post_item_update(movie_id, movie)
-
-                    if update_response.status_code in [200, 204]:
-                        update_count += 1
-                        updated_movies.append(movie)
-                        self.logger.info(f"影片: {movie['Name']} 流派信息已更新。(Total updates: {update_count})")
-                    else:
-                        self.logger.error(
-                            f"影片 '{movie.get('Name', movie_id)}'({movie_id}) 更新失败，"
-                            f"状态码: {update_response.status_code}(Total updates: {update_count})"
-                        )
-                        self.logger.error(update_response.text)
-                else:
-                    self.logger.info(f"影片 '{movie['Name']}' 的流派信息没有改变.")
-            if stopped:
-                self.logger.info(
-                    f"影片流派更新已停止，已检查 {total_count}/{total_items} 部，已更新 {update_count} 部"
-                )
-            else:
-                self.logger.info(f"影片共 {total_count} 部")
-        else:
-            self.logger.error(f"请求失败，状态码: {response.status_code}")
-            self.logger.error(response.text)
-
-        if update_count == 0:
-            self.logger.info("没有需要更新的影片流派信息。")
-
-        return updated_movies
+        return self._translate_items_genres_and_update(
+            "影片",
+            'Movie',
+            MOVIE_GENRE_TRANSLATIONS,
+            progress_callback=progress_callback,
+        )
 
     # 列出库中所有的影片流派
     def emby_get_all_movie_genres(self):
@@ -1034,17 +1188,8 @@ class MediaServerClient:
                     self.logger.info("完成更新剧集流派信息")
 
             # 汇总信息
-            if updated_movies:
-                updated_movies_info = "\n".join([f"影片: {movie['Name']}" for movie in updated_movies])
-                movies_message = f"更新的影片数量: {len(updated_movies)}\n更新的影片:\n{updated_movies_info}\n"
-            else:
-                movies_message = "没有需要更新的影片流派信息。\n"
-
-            if updated_series:
-                updated_series_info = "\n".join([f"剧集: {series['Name']}" for series in updated_series])
-                series_message = f"更新的剧集数量: {len(updated_series)}\n更新的剧集:\n{updated_series_info}\n"
-            else:
-                series_message = "没有需要更新的剧集流派信息。\n"
+            movies_message = self._format_updated_items_message("影片", updated_movies)
+            series_message = self._format_updated_items_message("剧集", updated_series)
 
             title = "已停止更新流派" if stopped else "完成更新所有影剧流派"
             message = (

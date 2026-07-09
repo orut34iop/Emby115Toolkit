@@ -429,6 +429,33 @@ class TestMediaServerClientServerType:
             '动作',
         ]
 
+    def test_genre_translation_normalizes_traditional_variants(self):
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_genres(
+            ['DMM獨家', 'DMM專屬', '給女性觀眾', '業餘'],
+            MOVIE_GENRE_TRANSLATIONS,
+        ) == [
+            'DMM独家',
+            '给女性观众',
+            '素人',
+        ]
+
+    def test_tv_genre_translation_handles_old_chinese_names(self):
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import TV_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_genres(['浪漫', '真人秀电视', '纪录'], TV_GENRE_TRANSLATIONS) == [
+            '爱情',
+            '真人秀',
+            '纪录片',
+        ]
+
     def test_movie_genre_update_resolves_chained_mapping_before_post(self, monkeypatch):
         from media_server.client import MediaServerClient
 
@@ -536,6 +563,51 @@ class TestMediaServerClientServerType:
 
         assert updated_movies == []
         assert updates == []
+
+    def test_movie_genre_update_prescans_candidates_and_throttles_progress(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        movies = [
+            {'Id': f'unchanged-{index}', 'Name': f'Unchanged {index}', 'Genres': ['动作'], 'GenreItems': []}
+            for index in range(1000)
+        ]
+        movies.append(
+            {
+                'Id': 'movie-action',
+                'Name': 'Needs Update',
+                'Genres': ['Action'],
+                'GenreItems': [{'Name': 'Action', 'Id': 'genre-action'}],
+            }
+        )
+
+        monkeypatch.setattr(
+            operator,
+            '_request',
+            lambda method, path, params=None: FakeResponse(payload={'Items': movies}),
+        )
+        detail_calls = []
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: detail_calls.append(item_id)
+            or {'Id': item_id, 'Name': 'Needs Update', 'Genres': ['Action'], 'GenreItems': []},
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+        progress_events = []
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item(progress_callback=progress_events.append)
+
+        assert [movie['Id'] for movie in updated_movies] == ['movie-action']
+        assert detail_calls == ['movie-action']
+        assert [update[0] for update in updates] == ['movie-action']
+        assert len(progress_events) < 10
+        assert any('扫描影片流派进度' in event['message'] for event in progress_events)
 
 
 class TestMediaServerClientExtractTmdbid:
@@ -1079,10 +1151,13 @@ class TestMediaServerClientGenresMap:
 
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
         review_path = Path(__file__).resolve().parents[3] / 'av_genre_translation_review.csv'
+        manual_overrides = {
+            '恋乳癖': '恋乳癖',
+        }
 
         with review_path.open(encoding='utf-8-sig', newline='') as review_file:
             for row in csv.DictReader(review_file):
                 source = row['原始流派名称'].strip()
-                expected = row['建议合并后简体流派名称'].strip()
+                expected = manual_overrides.get(source, row['建议合并后简体流派名称'].strip())
 
                 assert operator._resolve_genre_translation(source, MOVIE_GENRE_TRANSLATIONS) == expected
