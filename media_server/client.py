@@ -345,9 +345,9 @@ class MediaServerClient:
                 path,
                 params=params,
                 json_body=payload,
-                timeout=(10, 120),
-                retries=2,
-                retry_delay=2,
+                timeout=(5, 45),
+                retries=1,
+                retry_delay=1,
                 retry_status_codes={408, 429, 500, 502, 503, 504},
                 retry_label=f"更新条目 {item.get('Name', item_id)}({item_id})",
             )
@@ -448,7 +448,7 @@ class MediaServerClient:
         return current in {1, total} or current % interval == 0
 
     @staticmethod
-    def _should_log_item_update(update_count, interval=500):
+    def _should_log_item_update(update_count, interval=100):
         return update_count <= 20 or update_count % interval == 0
 
     @staticmethod
@@ -501,6 +501,7 @@ class MediaServerClient:
         genre_changes = Counter()
         total_items = len(items)
         checked_count = 0
+        scan_progress_total = max(total_items * 2, 1)
 
         for item in items:
             if self.stop_flag.is_set():
@@ -522,7 +523,7 @@ class MediaServerClient:
                 self._report_progress(
                     progress_callback,
                     checked_count,
-                    total_items,
+                    scan_progress_total,
                     f"扫描{item_label}流派进度: {checked_count}/{total_items}，待更新 {len(candidates)} 部",
                 )
 
@@ -590,16 +591,46 @@ class MediaServerClient:
         self._log_genre_change_summary(item_label, genre_changes)
 
         if not candidates:
+            self._report_progress(progress_callback, 1, 1, f"{item_label}流派预扫描完成，没有需要更新的条目")
             self.logger.info(f"没有需要更新的{item_label}流派信息。")
             return updated_items
 
         stopped = False
+        update_progress_total = total_items + len(candidates)
+        last_update_heartbeat = 0
+        self._report_progress(
+            progress_callback,
+            total_items,
+            update_progress_total,
+            f"开始更新{item_label}流派，候选 {len(candidates)} 部",
+        )
         for candidate_index, each_item in enumerate(candidates, start=1):
             if self.stop_flag.is_set():
                 stopped = True
                 break
 
             item_id = each_item['Id']
+            item_name = each_item.get('Name', item_id)
+            now = time.monotonic()
+            should_log_heartbeat = (
+                candidate_index <= 50
+                or candidate_index % 100 == 0
+                or now - last_update_heartbeat >= 30
+            )
+            if should_log_heartbeat:
+                heartbeat_message = (
+                    f"正在更新{item_label}流派: {candidate_index}/{len(candidates)}，"
+                    f"已成功 {update_count} 部，当前: {item_name}"
+                )
+                self.logger.info(heartbeat_message)
+                self._report_progress(
+                    progress_callback,
+                    total_items + candidate_index - 1,
+                    update_progress_total,
+                    heartbeat_message,
+                )
+                last_update_heartbeat = now
+
             item = self.get_item_info(item_id)
             if not item:
                 self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
@@ -634,8 +665,8 @@ class MediaServerClient:
             if self._should_report_progress(candidate_index, len(candidates)):
                 self._report_progress(
                     progress_callback,
-                    candidate_index,
-                    len(candidates),
+                    total_items + candidate_index,
+                    update_progress_total,
                     f"更新{item_label}流派进度: {candidate_index}/{len(candidates)}，已成功 {update_count} 部",
                 )
 
@@ -1024,7 +1055,7 @@ class MediaServerClient:
         detail_item_endpoint = self._api_url(
             f"/Users/{self.user_id}/Items/{urllib.parse.quote(str(movie_id), safe='')}", ''
         )
-        detail_item_response = requests.get(detail_item_endpoint, headers=headers)
+        detail_item_response = requests.get(detail_item_endpoint, headers=headers, timeout=(5, 30))
 
         if detail_item_response.status_code == 200:
             return detail_item_response.json()
@@ -1050,9 +1081,9 @@ class MediaServerClient:
                 'get',
                 path,
                 params={"api_key": self.api_key},
-                timeout=(10, 60),
+                timeout=(5, 30),
                 retries=1,
-                retry_delay=2,
+                retry_delay=1,
                 retry_status_codes={408, 429, 500, 502, 503, 504},
                 retry_label=f"读取条目详情 {movie_id}",
             )

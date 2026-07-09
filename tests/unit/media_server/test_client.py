@@ -283,7 +283,7 @@ class TestMediaServerClientServerType:
 
         assert response.status_code == 204
         assert len(requests_made) == 2
-        assert requests_made[0][2]['timeout'] == (10, 120)
+        assert requests_made[0][2]['timeout'] == (5, 45)
 
     def test_item_update_timeout_returns_failure_response(self, monkeypatch):
         from media_server.client import MediaServerClient
@@ -303,7 +303,7 @@ class TestMediaServerClientServerType:
 
         assert response.status_code == 0
         assert 'slow update' in response.text
-        assert len(requests_made) == 3
+        assert len(requests_made) == 2
 
     def test_jellyfin_user_lookup_uses_users_endpoint(self, monkeypatch):
         from media_server.client import MediaServerClient
@@ -608,6 +608,11 @@ class TestMediaServerClientServerType:
         assert [update[0] for update in updates] == ['movie-action']
         assert len(progress_events) < 10
         assert any('扫描影片流派进度' in event['message'] for event in progress_events)
+        scan_finished_event = next(
+            event for event in progress_events if event['message'].startswith('扫描影片流派进度: 1001/1001')
+        )
+        assert scan_finished_event['current'] < scan_finished_event['total']
+        assert any('开始更新影片流派' in event['message'] for event in progress_events)
 
 
 class TestMediaServerClientExtractTmdbid:
