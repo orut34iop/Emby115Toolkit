@@ -614,6 +614,44 @@ class TestMediaServerClientServerType:
         assert scan_finished_event['current'] < scan_finished_event['total']
         assert any('开始更新影片流派' in event['message'] for event in progress_events)
 
+    def test_movie_genre_update_rescans_stale_candidates(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        stale_movies = [
+            {'Id': f'movie-{index}', 'Name': f'Movie {index}', 'Genres': ['Action'], 'GenreItems': []}
+            for index in range(200)
+        ]
+        fresh_movies = [
+            {'Id': f'movie-{index}', 'Name': f'Movie {index}', 'Genres': ['动作'], 'GenreItems': []}
+            for index in range(200)
+        ]
+        request_calls = []
+
+        def fake_request(method, path, params=None):
+            request_calls.append((method, path, params))
+            payload = {'Items': stale_movies if len(request_calls) == 1 else fresh_movies}
+            return FakeResponse(payload=payload)
+
+        monkeypatch.setattr(operator, '_request', fake_request)
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: {'Id': item_id, 'Name': item_id, 'Genres': ['动作'], 'GenreItems': []},
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert updated_movies == []
+        assert updates == []
+        assert len(request_calls) == 2
+
 
 class TestMediaServerClientExtractTmdbid:
     """测试 extract_tmdbid_from_nfo 方法"""

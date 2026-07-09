@@ -549,6 +549,7 @@ class MediaServerClient:
         include_item_types,
         genres_map,
         progress_callback=None,
+        rescan_attempts=0,
     ):
         update_count = 0
         updated_items = []
@@ -598,6 +599,7 @@ class MediaServerClient:
         stopped = False
         update_progress_total = total_items + len(candidates)
         last_update_heartbeat = 0
+        unchanged_detail_count = 0
         self._report_progress(
             progress_callback,
             total_items,
@@ -622,7 +624,6 @@ class MediaServerClient:
                     f"正在更新{item_label}流派: {candidate_index}/{len(candidates)}，"
                     f"已成功 {update_count} 部，当前: {item_name}"
                 )
-                self.logger.info(heartbeat_message)
                 self._report_progress(
                     progress_callback,
                     total_items + candidate_index - 1,
@@ -639,7 +640,29 @@ class MediaServerClient:
             original_genres = item.get('Genres', [])
             translated_genres = self._translate_genres(original_genres, genres_map)
             if original_genres == translated_genres:
+                unchanged_detail_count += 1
+                if unchanged_detail_count in {50, 100, 200} or unchanged_detail_count % 500 == 0:
+                    self.logger.info(
+                        f"{item_label}候选详情已无需更新 {unchanged_detail_count} 部，"
+                        f"已成功 {update_count} 部"
+                    )
+                if update_count == 0 and unchanged_detail_count >= 200:
+                    self.logger.warning(
+                        f"{item_label}候选快照疑似已过期：连续 {unchanged_detail_count} 个候选详情均无需更新。"
+                    )
+                    if rescan_attempts < 1 and not self.stop_flag.is_set():
+                        self.logger.info(f"重新扫描{item_label}流派候选后继续")
+                        return self._translate_items_genres_and_update(
+                            item_label,
+                            include_item_types,
+                            genres_map,
+                            progress_callback=progress_callback,
+                            rescan_attempts=rescan_attempts + 1,
+                        )
+                    self.logger.warning(f"{item_label}流派更新停止：重扫后仍未发现可提交的更新")
+                    break
                 continue
+            unchanged_detail_count = 0
 
             if self.stop_flag.is_set():
                 stopped = True
