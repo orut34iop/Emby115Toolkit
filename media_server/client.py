@@ -496,12 +496,23 @@ class MediaServerClient:
     def _build_genre_items(translated_genres, genre_item_ids):
         return [{'Name': genre, 'Id': genre_item_ids.get(genre, '')} for genre in translated_genres]
 
+    def _get_genre_update_items_response(self, include_item_types, params):
+        if self.server_type != 'jellyfin':
+            return self._request('get', '/Items', params=params)
+
+        self.user_id = self.user_id or self.emby_get_user_id()
+        if not self.user_id:
+            self.logger.error("Failed to retrieve user ID.")
+            return None
+
+        path = f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/Items"
+        return self._request('get', path, params=params)
+
     def _collect_genre_update_candidates(self, items, genres_map, item_label, progress_callback=None):
         candidates = []
         genre_changes = Counter()
         total_items = len(items)
         checked_count = 0
-        scan_progress_total = max(total_items * 2, 1)
 
         for item in items:
             if self.stop_flag.is_set():
@@ -523,8 +534,9 @@ class MediaServerClient:
                 self._report_progress(
                     progress_callback,
                     checked_count,
-                    scan_progress_total,
+                    total_items,
                     f"扫描{item_label}流派进度: {checked_count}/{total_items}，待更新 {len(candidates)} 部",
+                    percent=self._progress_percent(checked_count, total_items, 0, 50),
                 )
 
         return candidates, genre_changes, checked_count, False
@@ -560,7 +572,9 @@ class MediaServerClient:
             'Limit': '1000000',
         }
 
-        response = self._request('get', '/Items', params=params)
+        response = self._get_genre_update_items_response(include_item_types, params)
+        if response is None:
+            return updated_items
         if response.status_code != 200:
             self.logger.error(f"请求失败，状态码: {response.status_code}")
             self.logger.error(response.text)
@@ -592,19 +606,25 @@ class MediaServerClient:
         self._log_genre_change_summary(item_label, genre_changes)
 
         if not candidates:
-            self._report_progress(progress_callback, 1, 1, f"{item_label}流派预扫描完成，没有需要更新的条目")
+            self._report_progress(
+                progress_callback,
+                1,
+                1,
+                f"{item_label}流派预扫描完成，没有需要更新的条目",
+                percent=100,
+            )
             self.logger.info(f"没有需要更新的{item_label}流派信息。")
             return updated_items
 
         stopped = False
-        update_progress_total = total_items + len(candidates)
         last_update_heartbeat = 0
         unchanged_detail_count = 0
         self._report_progress(
             progress_callback,
-            total_items,
-            update_progress_total,
+            0,
+            len(candidates),
             f"开始更新{item_label}流派，候选 {len(candidates)} 部",
+            percent=50,
         )
         for candidate_index, each_item in enumerate(candidates, start=1):
             if self.stop_flag.is_set():
@@ -626,9 +646,10 @@ class MediaServerClient:
                 )
                 self._report_progress(
                     progress_callback,
-                    total_items + candidate_index - 1,
-                    update_progress_total,
+                    candidate_index - 1,
+                    len(candidates),
                     heartbeat_message,
+                    percent=self._progress_percent(candidate_index - 1, len(candidates), 50, 50),
                 )
                 last_update_heartbeat = now
 
@@ -688,9 +709,10 @@ class MediaServerClient:
             if self._should_report_progress(candidate_index, len(candidates)):
                 self._report_progress(
                     progress_callback,
-                    total_items + candidate_index,
-                    update_progress_total,
+                    candidate_index,
+                    len(candidates),
                     f"更新{item_label}流派进度: {candidate_index}/{len(candidates)}，已成功 {update_count} 部",
+                    percent=self._progress_percent(candidate_index, len(candidates), 50, 50),
                 )
 
         if stopped:
@@ -856,13 +878,57 @@ class MediaServerClient:
         return sum(1 for movies in grouped_movies.values() if len(movies) > 1)
 
     @staticmethod
-    def _report_progress(callback, current, total, message):
+    def _progress_percent(current, total, start_percent=0, span_percent=100):
+        if not total:
+            return start_percent
+        return start_percent + (float(current) / float(total)) * span_percent
+
+    @staticmethod
+    def _scale_progress_callback(callback, start_percent, span_percent):
+        if callback is None:
+            return None
+
+        def scaled_callback(payload):
+            if not isinstance(payload, dict):
+                callback(payload)
+                return
+
+            scaled_payload = dict(payload)
+            percent = payload.get('percent')
+            current = payload.get('current')
+            total = payload.get('total')
+            if isinstance(percent, (int, float)):
+                scaled_payload['percent'] = MediaServerClient._progress_percent(
+                    percent,
+                    100,
+                    start_percent,
+                    span_percent,
+                )
+            elif isinstance(current, (int, float)) and isinstance(total, (int, float)) and total > 0:
+                scaled_payload['percent'] = MediaServerClient._progress_percent(
+                    current,
+                    total,
+                    start_percent,
+                    span_percent,
+                )
+            callback(scaled_payload)
+
+        return scaled_callback
+
+    @staticmethod
+    def _report_progress(callback, current, total, message, percent=None):
         if callback is None:
             return
+        payload = {'message': message}
+        if percent is not None:
+            payload['percent'] = percent
         if total is not None and total > 0:
-            callback({'current': current, 'total': total, 'message': message})
+            payload['current'] = current
+            payload['total'] = total
         else:
-            callback({'message': message})
+            payload['current'] = current
+            payload['total'] = total
+        callback(payload)
 
     # 按照TMDb ID分组
     def group_movies_by_tmdbid(self, movies):
@@ -1226,7 +1292,10 @@ class MediaServerClient:
         def run_update_genres_check():
             self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info("开始更新影片流派信息...")
-            updated_movies = self.emby_movie_translate_genres_and_update_whole_item(progress_callback=callback)
+            movie_callback = self._scale_progress_callback(callback, 0, 50)
+            series_callback = self._scale_progress_callback(callback, 50, 50)
+
+            updated_movies = self.emby_movie_translate_genres_and_update_whole_item(progress_callback=movie_callback)
             stopped = self.stop_flag.is_set()
             if stopped:
                 self.logger.info("已停止更新影片流派信息")
@@ -1234,7 +1303,7 @@ class MediaServerClient:
             else:
                 self.logger.info("完成更新影片流派信息")
                 self.logger.info("开始更新剧集流派信息...")
-                updated_series = self.emby_tv_translate_genres_and_update_whole_item(progress_callback=callback)
+                updated_series = self.emby_tv_translate_genres_and_update_whole_item(progress_callback=series_callback)
                 stopped = self.stop_flag.is_set()
                 if stopped:
                     self.logger.info("已停止更新剧集流派信息")
@@ -1256,8 +1325,7 @@ class MediaServerClient:
             )
 
             self.logger.info(message)
-            if callback:
-                callback(message)
+            self._report_progress(callback, 1, 1, title, percent=100)
 
             return message
 

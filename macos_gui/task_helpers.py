@@ -75,7 +75,10 @@ class BackgroundTaskMixin:
             current = payload.get("current")
             total = payload.get("total")
             message = payload.get("message")
-            if isinstance(current, (int, float)) and isinstance(total, (int, float)) and total > 0:
+            percent_value = payload.get("percent")
+            if isinstance(percent_value, (int, float)):
+                self.progress_bar.setValue(max(0, min(100, int(percent_value))))
+            elif isinstance(current, (int, float)) and isinstance(total, (int, float)) and total > 0:
                 percent = int((float(current) / float(total)) * 100)
                 self.progress_bar.setValue(max(0, min(100, percent)))
         elif isinstance(payload, str):

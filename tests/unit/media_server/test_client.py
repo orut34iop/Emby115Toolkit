@@ -372,10 +372,11 @@ class TestMediaServerClientServerType:
         operator = MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
         )
+        operator.user_id = 'user1'
 
         def fake_request(method, url, **kwargs):
             assert method == 'get'
-            assert url == 'http://localhost:8096/Items'
+            assert url == 'http://localhost:8096/Users/user1/Items'
             return FakeResponse(
                 payload={
                     'Items': [
@@ -611,8 +612,35 @@ class TestMediaServerClientServerType:
         scan_finished_event = next(
             event for event in progress_events if event['message'].startswith('扫描影片流派进度: 1001/1001')
         )
-        assert scan_finished_event['current'] < scan_finished_event['total']
+        assert scan_finished_event['percent'] == 50
         assert any('开始更新影片流派' in event['message'] for event in progress_events)
+
+    def test_update_genres_scales_movie_and_series_progress(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+
+        def fake_update_movies(progress_callback=None):
+            progress_callback({'message': '影片阶段完成', 'current': 1, 'total': 1, 'percent': 100})
+            return []
+
+        def fake_update_series(progress_callback=None):
+            progress_callback({'message': '剧集阶段开始', 'current': 0, 'total': 1, 'percent': 0})
+            progress_callback({'message': '剧集阶段完成', 'current': 1, 'total': 1, 'percent': 100})
+            return []
+
+        monkeypatch.setattr(operator, 'emby_movie_translate_genres_and_update_whole_item', fake_update_movies)
+        monkeypatch.setattr(operator, 'emby_tv_translate_genres_and_update_whole_item', fake_update_series)
+        progress_events = []
+
+        thread = operator.update_genres(callback=progress_events.append)
+        thread.join(timeout=1)
+
+        assert not thread.is_alive()
+        assert next(event for event in progress_events if event['message'] == '影片阶段完成')['percent'] == 50
+        assert next(event for event in progress_events if event['message'] == '剧集阶段开始')['percent'] == 50
+        assert next(event for event in progress_events if event['message'] == '剧集阶段完成')['percent'] == 100
 
     def test_movie_genre_update_rescans_stale_candidates(self, monkeypatch):
         from media_server.client import MediaServerClient
