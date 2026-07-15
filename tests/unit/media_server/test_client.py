@@ -443,7 +443,7 @@ class TestMediaServerClientServerType:
         operator.user_id = 'user1'
         item_requests = []
 
-        def fake_request(method, path, params=None):
+        def fake_request(method, path, params=None, **_kwargs):
             assert method == 'get'
             if path == '/Users/user1/Views':
                 return FakeResponse(
@@ -547,7 +547,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_request',
-            lambda method, path, params=None: FakeResponse(
+            lambda method, path, params=None, **_kwargs: FakeResponse(
                 payload={
                     'Items': [
                         {
@@ -590,7 +590,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_request',
-            lambda method, path, params=None: FakeResponse(
+            lambda method, path, params=None, **_kwargs: FakeResponse(
                 payload={
                     'Items': [
                         {'Id': 'movie1', 'Name': 'Movie', 'Genres': ['Action'], 'GenreItems': []},
@@ -627,7 +627,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_request',
-            lambda method, path, params=None: FakeResponse(
+            lambda method, path, params=None, **_kwargs: FakeResponse(
                 payload={
                     'Items': [
                         {'Id': 'movie1', 'Name': 'Movie', 'Genres': ['Action'], 'GenreItems': []},
@@ -667,7 +667,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_request',
-            lambda method, path, params=None: FakeResponse(payload={'Items': movies}),
+            lambda method, path, params=None, **_kwargs: FakeResponse(payload={'Items': movies}),
         )
         detail_calls = []
         monkeypatch.setattr(
@@ -738,7 +738,7 @@ class TestMediaServerClientServerType:
         ]
         request_calls = []
 
-        def fake_request(method, path, params=None):
+        def fake_request(method, path, params=None, **_kwargs):
             request_calls.append((method, path, params))
             payload = {'Items': stale_movies if len(request_calls) == 1 else fresh_movies}
             return FakeResponse(payload=payload)
@@ -829,7 +829,7 @@ class TestMediaServerClientServerType:
         operator.user_id = 'user1'
         item_requests = []
 
-        def fake_request(method, path, params=None):
+        def fake_request(method, path, params=None, **_kwargs):
             assert method == 'get'
             if path == '/Users/user1/Views':
                 return FakeResponse(
@@ -868,6 +868,54 @@ class TestMediaServerClientServerType:
         assert [params['ParentId'] for params in item_requests] == ['movies1']
         assert [item['Id'] for item in updated_movies] == ['movie1']
         assert updates[0][1]['ProductionLocations'] == ['日本']
+
+    def test_jellyfin_library_listing_retries_read_timeout(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
+        )
+        operator.user_id = 'user1'
+        item_attempts = []
+
+        def fake_request(method, path, params=None, timeout=None, **_kwargs):
+            assert method == 'get'
+            if path == '/Users/user1/Views':
+                return FakeResponse(
+                    payload={
+                        'Items': [
+                            {'Id': 'movies1', 'Name': 'Large Movies', 'CollectionType': 'movies'},
+                        ]
+                    }
+                )
+
+            assert path == '/Users/user1/Items'
+            item_attempts.append(timeout)
+            if len(item_attempts) == 1:
+                raise requests.exceptions.ReadTimeout('slow library')
+            return FakeResponse(
+                payload={
+                    'Items': [
+                        {'Id': 'movie1', 'Name': 'Movie', 'ProductionLocations': ['Japan']},
+                    ]
+                }
+            )
+
+        monkeypatch.setattr(operator, '_request', fake_request)
+        monkeypatch.setattr('media_server.client.time.sleep', lambda _seconds: None)
+
+        items = operator._get_genre_update_items(
+            'Movie',
+            {
+                'Recursive': 'true',
+                'IncludeItemTypes': 'Movie',
+                'Fields': 'ProductionLocations',
+                'Limit': '1000000',
+            },
+        )
+
+        assert [item['Id'] for item in items] == ['movie1']
+        assert item_attempts == [(5, 120), (5, 120)]
 
     def test_update_countries_scales_movie_and_series_progress(self, monkeypatch):
         from media_server.client import MediaServerClient

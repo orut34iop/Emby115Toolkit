@@ -551,7 +551,20 @@ class MediaServerClient:
 
     def _get_genre_update_items(self, include_item_types, params):
         if self.server_type != 'jellyfin':
-            response = self._request('get', '/Items', params=params)
+            try:
+                response = self._request_with_retries(
+                    'get',
+                    '/Items',
+                    params=params,
+                    timeout=(5, 120),
+                    retries=2,
+                    retry_delay=1,
+                    retry_status_codes={408, 429, 500, 502, 503, 504},
+                    retry_label=f"读取 Emby {include_item_types} 条目列表",
+                )
+            except requests.exceptions.RequestException as err:
+                self.logger.error(f"读取 Emby {include_item_types} 条目列表失败: {err}")
+                return None
             if response.status_code != 200:
                 self.logger.error(f"请求失败，状态码: {response.status_code}")
                 self.logger.error(response.text)
@@ -565,7 +578,20 @@ class MediaServerClient:
 
         quoted_user_id = urllib.parse.quote(str(self.user_id), safe='')
         views_path = f"/Users/{quoted_user_id}/Views"
-        views_response = self._request('get', views_path, params={'api_key': self.api_key})
+        try:
+            views_response = self._request_with_retries(
+                'get',
+                views_path,
+                params={'api_key': self.api_key},
+                timeout=(5, 45),
+                retries=2,
+                retry_delay=1,
+                retry_status_codes={408, 429, 500, 502, 503, 504},
+                retry_label="读取 Jellyfin 用户媒体库",
+            )
+        except requests.exceptions.RequestException as err:
+            self.logger.error(f"读取 Jellyfin 用户媒体库失败: {err}")
+            return None
         if views_response.status_code != 200:
             self.logger.error(f"读取 Jellyfin 用户媒体库失败，状态码: {views_response.status_code}")
             self.logger.error(views_response.text)
@@ -597,9 +623,22 @@ class MediaServerClient:
 
             library_params = dict(params)
             library_params['ParentId'] = view['Id']
-            response = self._request('get', path, params=library_params)
+            library_name = view.get('Name', view['Id'])
+            try:
+                response = self._request_with_retries(
+                    'get',
+                    path,
+                    params=library_params,
+                    timeout=(5, 120),
+                    retries=2,
+                    retry_delay=1,
+                    retry_status_codes={408, 429, 500, 502, 503, 504},
+                    retry_label=f"读取 Jellyfin 媒体库“{library_name}”",
+                )
+            except requests.exceptions.RequestException as err:
+                self.logger.error(f"读取 Jellyfin 媒体库“{library_name}”失败: {err}")
+                return None
             if response.status_code != 200:
-                library_name = view.get('Name', view['Id'])
                 self.logger.error(
                     f"读取 Jellyfin 媒体库“{library_name}”失败，状态码: {response.status_code}"
                 )
