@@ -78,6 +78,20 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
         server_group.setLayout(server_layout)
         layout.addWidget(server_group)
 
+        mode_group = QGroupBox("扫描模式")
+        mode_layout = QHBoxLayout()
+        self.radio_incremental = QRadioButton("快速增量（推荐）")
+        self.radio_full_scan = QRadioButton("完整扫描修复")
+        self.radio_incremental.setChecked(True)
+        self.scan_mode_group = QButtonGroup(self)
+        self.scan_mode_group.addButton(self.radio_incremental)
+        self.scan_mode_group.addButton(self.radio_full_scan)
+        mode_layout.addWidget(self.radio_incremental)
+        mode_layout.addWidget(self.radio_full_scan)
+        mode_layout.addStretch()
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
         # 执行按钮
         btn_layout = QHBoxLayout()
         self.btn_update = QPushButton("开始更新流派")
@@ -101,6 +115,8 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
         self.edit_user.textChanged.connect(self.save_config)
         self.radio_emby.toggled.connect(self.save_config)
         self.radio_jellyfin.toggled.connect(self.save_config)
+        self.radio_incremental.toggled.connect(self.save_config)
+        self.radio_full_scan.toggled.connect(self.save_config)
 
     def load_config(self):
         self.edit_url.setText(self.config.get('genre_update', 'server_url', ''))
@@ -109,12 +125,20 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
         server_type = self.config.get('genre_update', 'server_type', 'emby')
         self.radio_jellyfin.setChecked(server_type == 'jellyfin')
         self.radio_emby.setChecked(server_type != 'jellyfin')
+        scan_mode = self.config.get('genre_update', 'scan_mode', 'incremental')
+        self.radio_full_scan.setChecked(scan_mode == 'full')
+        self.radio_incremental.setChecked(scan_mode != 'full')
 
     def save_config(self):
         self.config.set('genre_update', 'server_url', self.edit_url.text().strip())
         self.config.set('genre_update', 'api_key', self.edit_api.text().strip())
         self.config.set('genre_update', 'username', self.edit_user.text().strip())
         self.config.set('genre_update', 'server_type', self.selected_server_type())
+        self.config.set('genre_update', 'scan_mode', 'full' if self.radio_full_scan.isChecked() else 'incremental')
+        self.config.save()
+
+    def save_sync_state(self, state):
+        self.config.set('genre_update', 'sync_state', state)
         self.config.save()
 
     def selected_server_type(self):
@@ -128,6 +152,8 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
         api_key = self.edit_api.text().strip()
         username = self.edit_user.text().strip()
         server_type = self.selected_server_type()
+        full_scan = self.radio_full_scan.isChecked()
+        sync_state = self.config.get('genre_update', 'sync_state', {})
 
         if not server_url or not api_key or not username:
             QMessageBox.warning(self, "警告", "请先填写服务器地址、API Key 和用户名")
@@ -145,7 +171,10 @@ class GenreUpdateTab(BackgroundTaskMixin, QWidget):
                 )
             )
             worker_thread = operator.update_genres(
-                lambda payload: self._task_signals.progress.emit(payload)
+                lambda payload: self._task_signals.progress.emit(payload),
+                full_scan=full_scan,
+                sync_state=sync_state,
+                state_callback=self.save_sync_state,
             )
             if worker_thread:
                 worker_thread.join()

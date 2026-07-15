@@ -69,6 +69,13 @@ class VersionMergeTab(BackgroundTaskMixin, QWidget):
         api_layout.addWidget(self.edit_api)
         server_layout.addLayout(api_layout)
 
+        user_layout = QHBoxLayout()
+        user_layout.addWidget(QLabel("用户名："))
+        self.edit_user = QLineEdit()
+        self.edit_user.setPlaceholderText("Jellyfin 合并版本需要可访问全部媒体库的用户")
+        user_layout.addWidget(self.edit_user)
+        server_layout.addLayout(user_layout)
+
         server_group.setLayout(server_layout)
         layout.addWidget(server_group)
 
@@ -92,12 +99,17 @@ class VersionMergeTab(BackgroundTaskMixin, QWidget):
         self.load_config()
         self.edit_url.textChanged.connect(self.save_config)
         self.edit_api.textChanged.connect(self.save_config)
+        self.edit_user.textChanged.connect(self.save_config)
         self.radio_emby.toggled.connect(self.save_config)
         self.radio_jellyfin.toggled.connect(self.save_config)
 
     def load_config(self):
         self.edit_url.setText(self.config.get('version_merge', 'server_url', ''))
         self.edit_api.setText(self.config.get('version_merge', 'api_key', ''))
+        username = self.config.get('version_merge', 'username', '')
+        if not username:
+            username = self.config.get('genre_update', 'username', '')
+        self.edit_user.setText(username)
         server_type = self.config.get('version_merge', 'server_type', 'emby')
         self.radio_jellyfin.setChecked(server_type == 'jellyfin')
         self.radio_emby.setChecked(server_type != 'jellyfin')
@@ -105,6 +117,7 @@ class VersionMergeTab(BackgroundTaskMixin, QWidget):
     def save_config(self):
         self.config.set('version_merge', 'server_url', self.edit_url.text().strip())
         self.config.set('version_merge', 'api_key', self.edit_api.text().strip())
+        self.config.set('version_merge', 'username', self.edit_user.text().strip())
         self.config.set('version_merge', 'server_type', self.selected_server_type())
         self.config.save()
 
@@ -117,16 +130,23 @@ class VersionMergeTab(BackgroundTaskMixin, QWidget):
     def _merge_versions(self):
         server_url = self.edit_url.text().strip()
         api_key = self.edit_api.text().strip()
+        username = self.edit_user.text().strip()
         server_type = self.selected_server_type()
 
-        if not server_url or not api_key:
-            QMessageBox.warning(self, "警告", "请先填写服务器地址和 API Key")
+        if not server_url or not api_key or (server_type == 'jellyfin' and not username):
+            QMessageBox.warning(self, "警告", "请先填写服务器地址、API Key 和 Jellyfin 用户名")
             return
 
         def task():
             self.logger.info(f"开始合并版本，服务器类型: {server_type}")
             operator = self._track_worker(
-                MediaServerClient(server_url=server_url, api_key=api_key, logger=self.logger, server_type=server_type)
+                MediaServerClient(
+                    server_url=server_url,
+                    api_key=api_key,
+                    username=username,
+                    logger=self.logger,
+                    server_type=server_type,
+                )
             )
             worker_thread = operator.merge_versions(lambda payload: self._task_signals.progress.emit(payload))
             if worker_thread:

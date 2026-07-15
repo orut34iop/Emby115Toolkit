@@ -33,12 +33,14 @@ class CountryUpdateTab(BaseTab):
         self.api_key_entry.insert(0, config.get('api_key', ''))
         self.username_entry.delete(0, tk.END)
         self.username_entry.insert(0, config.get('username', ''))
+        self.scan_mode_var.set(config.get('scan_mode', 'incremental'))
 
     def save_config(self):
         self.config.set('country_update', 'server_url', self.server_url_entry.get().strip())
         self.config.set('country_update', 'api_key', self.api_key_entry.get().strip())
         self.config.set('country_update', 'username', self.username_entry.get().strip())
         self.config.set('country_update', 'server_type', self.server_type_var.get())
+        self.config.set('country_update', 'scan_mode', self.scan_mode_var.get())
         self.config.save()
 
     def init_ui(self):
@@ -81,6 +83,24 @@ class CountryUpdateTab(BaseTab):
         self.username_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         self.username_entry.bind('<FocusOut>', lambda _event: self.save_config())
 
+        scan_mode_frame = ttk.LabelFrame(self.frame, text="扫描模式", padding=(5, 5, 5, 5))
+        scan_mode_frame.pack(fill='x', padx=5, pady=5)
+        self.scan_mode_var = tk.StringVar(value='incremental')
+        ttk.Radiobutton(
+            scan_mode_frame,
+            text="快速增量（推荐）",
+            variable=self.scan_mode_var,
+            value="incremental",
+            command=self.save_config,
+        ).pack(side='left', padx=5)
+        ttk.Radiobutton(
+            scan_mode_frame,
+            text="完整扫描修复",
+            variable=self.scan_mode_var,
+            value="full",
+            command=self.save_config,
+        ).pack(side='left', padx=5)
+
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
         self.update_countries_btn = ttk.Button(
@@ -116,6 +136,8 @@ class CountryUpdateTab(BaseTab):
         api_key = self.api_key_entry.get().strip()
         username = self.username_entry.get().strip()
         server_type = self.server_type_var.get()
+        full_scan = self.scan_mode_var.get() == 'full'
+        sync_state = self.config.get('country_update', 'sync_state', {})
         if not server_url or not api_key or not username:
             self.logger.warning("服务器地址、用户名或API密钥为空")
             return
@@ -130,7 +152,11 @@ class CountryUpdateTab(BaseTab):
         )
 
         try:
-            task = media_server_client.update_countries()
+            task = media_server_client.update_countries(
+                full_scan=full_scan,
+                sync_state=sync_state,
+                state_callback=self.save_sync_state,
+            )
         except RuntimeError as error:
             self.logger.error(str(error))
             return
@@ -148,6 +174,10 @@ class CountryUpdateTab(BaseTab):
             self.logger.info("正在停止地区更新，请等待当前请求结束...")
         else:
             self.logger.warning("当前没有正在运行的地区更新任务")
+
+    def save_sync_state(self, state):
+        self.config.set('country_update', 'sync_state', state)
+        self.config.save()
 
     def _set_running(self, running):
         self.update_countries_btn.config(state=tk.DISABLED if running else tk.NORMAL)

@@ -388,15 +388,15 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     calls = []
 
     def fake_merge_versions(self, callback):
-        calls.append(("merge_versions", self.server_url, self.api_key, self.server_type))
+        calls.append(("merge_versions", self.server_url, self.api_key, self.username, self.server_type))
         callback("merge done")
 
-    def fake_update_genres(self, callback=None):
+    def fake_update_genres(self, callback=None, **_kwargs):
         calls.append(("update_genres", self.server_url, self.api_key, self.username, self.server_type))
         if callback:
             callback("genres done")
 
-    def fake_update_countries(self, callback=None):
+    def fake_update_countries(self, callback=None, **_kwargs):
         calls.append(("update_countries", self.server_url, self.api_key, self.username, self.server_type))
         if callback:
             callback("countries done")
@@ -408,6 +408,7 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     version_merge_tab = VersionMergeTab(str(tmp_path / "logs"))
     version_merge_tab.edit_url.setText("http://jellyfin.local")
     version_merge_tab.edit_api.setText("api")
+    version_merge_tab.edit_user.setText("wiz")
     version_merge_tab.radio_jellyfin.setChecked(True)
     version_merge_tab.merge_versions()
     assert wait_until(qapp, lambda: len(calls) >= 1)
@@ -432,7 +433,7 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     assert wait_for_tab_idle(qapp, country_update_tab)
 
     assert calls == [
-        ("merge_versions", "http://jellyfin.local", "api", "jellyfin"),
+        ("merge_versions", "http://jellyfin.local", "api", "wiz", "jellyfin"),
         ("update_genres", "http://emby.local", "api", "user", "emby"),
         ("update_countries", "http://jellyfin.local", "country-api", "wiz", "jellyfin"),
     ]

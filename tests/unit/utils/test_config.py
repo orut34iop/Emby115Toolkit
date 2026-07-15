@@ -52,8 +52,12 @@ class TestConfigSingleton:
         assert config.get('symlink_export', 'enable_replace_path') == False
         assert config.get('symlink_delete', 'target_folder') == ''
         assert config.get('version_merge', 'server_url') == ''
+        assert config.get('version_merge', 'username') == ''
         assert config.get('country_update', 'server_url') == ''
         assert config.get('country_update', 'server_type') == 'emby'
+        assert config.get('genre_update', 'scan_mode') == 'incremental'
+        assert config.get('genre_update', 'sync_state') == {}
+        assert config.get('country_update', 'scan_mode') == 'incremental'
 
 
 class TestConfigGetSet:

@@ -187,6 +187,55 @@ class TestMediaServerClientServerType:
         assert [movie['Id'] for movie in result] == ['tmdb-1']
         assert '未发现 AV 番号数据，跳过 AV 合并' in caplog.text
 
+    def test_jellyfin_merge_skips_historical_groups_and_deduplicates_tmdb_and_num(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        operator.validate_server_type = lambda: True
+        operator._start_background_task = lambda target, task_name: target()
+        operator.get_movie_media = lambda: [
+            {
+                'Id': 'historical-1',
+                'Name': 'Historical',
+                'ProviderIds': {'Tmdb': '100', 'Num': 'OLD-100'},
+                'MediaSourceCount': 2,
+            },
+            {
+                'Id': 'historical-2',
+                'Name': 'Historical 4K',
+                'ProviderIds': {'Tmdb': '100', 'Num': 'OLD-100'},
+                'MediaSourceCount': 2,
+            },
+            {
+                'Id': 'anchor',
+                'Name': 'New Duplicate',
+                'ProviderIds': {'Tmdb': '200', 'Num': 'NEW-200'},
+                'MediaSourceCount': 2,
+            },
+            {
+                'Id': 'new-single',
+                'Name': 'New Duplicate 4K',
+                'ProviderIds': {'Tmdb': '200', 'Num': 'NEW-200'},
+            },
+        ]
+        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+
+        result = operator.merge_versions(lambda _message: None)
+
+        assert [request[2]['params']['ids'] for request in requests_made] == ['anchor,new-single']
+        assert [movie['Id'] for movie in result] == ['anchor']
+
     def test_item_update_path_follows_selected_server_type(self, monkeypatch):
         from media_server.client import MediaServerClient
 
@@ -304,6 +353,33 @@ class TestMediaServerClientServerType:
         assert response.status_code == 0
         assert 'slow update' in response.text
         assert len(requests_made) == 2
+
+    def test_item_update_timeout_uses_readback_before_retry(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        post_calls = []
+
+        def fake_request(method, path, **_kwargs):
+            post_calls.append((method, path))
+            raise requests.exceptions.ReadTimeout('slow update')
+
+        monkeypatch.setattr(operator, '_request', fake_request)
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda _item_id: {'Id': 'item1', 'Genres': ['动作']},
+        )
+
+        response = operator._post_item_update('item1', {'Name': 'Movie', 'Genres': ['动作']})
+
+        assert response.status_code == 204
+        assert post_calls == [('post', '/Items/item1')]
 
     def test_jellyfin_user_lookup_uses_users_endpoint(self, monkeypatch):
         from media_server.client import MediaServerClient
@@ -724,6 +800,95 @@ class TestMediaServerClientServerType:
         assert next(event for event in progress_events if event['message'] == '剧集阶段开始')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集阶段完成')['percent'] == 100
 
+    def test_update_genres_uses_incremental_timestamp_and_persists_new_baseline(self, monkeypatch):
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS, TV_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+        requested_params = []
+        monkeypatch.setattr(
+            operator,
+            '_get_genre_update_items',
+            lambda _item_type, params: requested_params.append(params.copy()) or [],
+        )
+        saved_states = []
+        sync_state = {
+            'server_key': operator._sync_server_key(),
+            'map_hash': operator._stable_mapping_hash(
+                {'movies': MOVIE_GENRE_TRANSLATIONS, 'series': TV_GENRE_TRANSLATIONS}
+            ),
+            'last_scan_utc': '2026-07-15T10:00:00Z',
+        }
+
+        thread = operator.update_genres(sync_state=sync_state, state_callback=saved_states.append)
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert len(requested_params) == 2
+        assert {params['MinDateLastSaved'] for params in requested_params} == {'2026-07-15T09:55:00Z'}
+        assert len(saved_states) == 1
+        assert saved_states[0]['server_key'] == operator._sync_server_key()
+        assert saved_states[0]['map_hash'] == sync_state['map_hash']
+
+    def test_update_genres_map_change_forces_full_scan(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+        requested_params = []
+        monkeypatch.setattr(
+            operator,
+            '_get_genre_update_items',
+            lambda _item_type, params: requested_params.append(params.copy()) or [],
+        )
+        sync_state = {
+            'server_key': operator._sync_server_key(),
+            'map_hash': 'outdated-map',
+            'last_scan_utc': '2026-07-15T10:00:00Z',
+        }
+
+        thread = operator.update_genres(sync_state=sync_state)
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert len(requested_params) == 2
+        assert all('MinDateLastSaved' not in params for params in requested_params)
+
+    def test_update_genres_does_not_advance_baseline_after_error(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+
+        def fake_update_movies(progress_callback=None):
+            operator._mark_sync_error()
+            return []
+
+        monkeypatch.setattr(operator, 'emby_movie_translate_genres_and_update_whole_item', fake_update_movies)
+        monkeypatch.setattr(
+            operator,
+            'emby_tv_translate_genres_and_update_whole_item',
+            lambda progress_callback=None: [],
+        )
+        saved_states = []
+
+        thread = operator.update_genres(state_callback=saved_states.append)
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert saved_states == []
+
     def test_movie_genre_update_rescans_stale_candidates(self, monkeypatch):
         from media_server.client import MediaServerClient
 
@@ -943,6 +1108,36 @@ class TestMediaServerClientServerType:
         assert next(event for event in progress_events if event['message'] == '影片地区完成')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集地区开始')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集地区完成')['percent'] == 100
+
+    def test_update_countries_uses_incremental_timestamp(self, monkeypatch):
+        from media_server.client import MediaServerClient
+        from media_server.country_maps import COUNTRY_TRANSLATIONS
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+        requested_params = []
+        monkeypatch.setattr(
+            operator,
+            '_get_genre_update_items',
+            lambda _item_type, params: requested_params.append(params.copy()) or [],
+        )
+        sync_state = {
+            'server_key': operator._sync_server_key(),
+            'map_hash': operator._stable_mapping_hash(COUNTRY_TRANSLATIONS),
+            'last_scan_utc': '2026-07-15T12:00:00Z',
+        }
+
+        thread = operator.update_countries(sync_state=sync_state)
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert len(requested_params) == 2
+        assert {params['MinDateLastSaved'] for params in requested_params} == {'2026-07-15T11:55:00Z'}
 
 
 class TestMediaServerClientExtractTmdbid:

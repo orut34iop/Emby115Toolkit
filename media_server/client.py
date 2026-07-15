@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import os
 import re
@@ -8,6 +10,7 @@ import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -141,8 +144,8 @@ GENRE_NORMALIZATION_TRANSLATION = str.maketrans(
 
 
 class RequestFailureResponse:
-    def __init__(self, error):
-        self.status_code = 0
+    def __init__(self, error, status_code=0):
+        self.status_code = status_code
         self.text = f"请求异常: {error}"
 
 
@@ -173,6 +176,10 @@ class MediaServerClient:
             self._normalize_country_lookup_name(source): target
             for source, target in COUNTRY_TRANSLATIONS.items()
         }
+        self._sync_min_date_last_saved = None
+        self._sync_started_at = None
+        self._sync_map_hash = None
+        self._sync_had_errors = False
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -180,6 +187,89 @@ class MediaServerClient:
 
     def _configured_api_prefix(self):
         return '' if self.server_type == 'jellyfin' else '/emby'
+
+    @staticmethod
+    def _stable_mapping_hash(mapping):
+        serialized = json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+    def _sync_server_key(self):
+        identity = '|'.join(
+            [
+                self.server_type,
+                self.server_url.rstrip('/').lower(),
+                str(self.username or '').strip().lower(),
+            ]
+        )
+        return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def _iso_utc_now():
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+    @staticmethod
+    def _incremental_since(last_scan_utc, overlap_minutes=5):
+        if not last_scan_utc:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(last_scan_utc).replace('Z', '+00:00'))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return (parsed.astimezone(timezone.utc) - timedelta(minutes=overlap_minutes)).isoformat().replace(
+            '+00:00', 'Z'
+        )
+
+    def _begin_metadata_sync(self, mapping, full_scan=False, sync_state=None):
+        self._sync_started_at = self._iso_utc_now()
+        self._sync_map_hash = self._stable_mapping_hash(mapping)
+        self._sync_min_date_last_saved = None
+        self._sync_had_errors = False
+        sync_state = sync_state if isinstance(sync_state, dict) else {}
+
+        if full_scan:
+            self.logger.info("扫描模式：完整扫描")
+            return
+        if self.server_type != 'jellyfin':
+            self.logger.info("当前服务器不是 Jellyfin，快速增量模式自动改为完整扫描")
+            return
+        if sync_state.get('server_key') != self._sync_server_key():
+            self.logger.info("未找到当前服务器的增量基线，本次执行完整扫描")
+            return
+        if sync_state.get('map_hash') != self._sync_map_hash:
+            self.logger.info("翻译表已发生变化，本次自动执行完整扫描")
+            return
+
+        incremental_since = self._incremental_since(sync_state.get('last_scan_utc'))
+        if not incremental_since:
+            self.logger.info("增量时间无效或不存在，本次执行完整扫描")
+            return
+
+        self._sync_min_date_last_saved = incremental_since
+        self.logger.info(f"扫描模式：快速增量，从 {incremental_since} 起读取变更条目")
+
+    def _finish_metadata_sync(self, state_callback=None):
+        if self.stop_flag.is_set():
+            self.logger.info("任务已停止，不更新增量扫描基线")
+            return
+        if self._sync_had_errors:
+            self.logger.warning("任务存在读取或写入失败，不更新增量扫描基线，下次将继续补偿处理")
+            return
+        if not self._sync_started_at or not self._sync_map_hash:
+            return
+
+        state = {
+            'server_key': self._sync_server_key(),
+            'map_hash': self._sync_map_hash,
+            'last_scan_utc': self._sync_started_at,
+        }
+        if state_callback:
+            state_callback(state)
+        self.logger.info(f"增量扫描基线已更新至 {self._sync_started_at}")
+
+    def _mark_sync_error(self):
+        self._sync_had_errors = True
 
     def request_stop(self):
         self.stop_flag.set()
@@ -340,24 +430,53 @@ class MediaServerClient:
             payload.pop('GenreItems', None)
         return payload
 
+    def _item_update_was_applied(self, item_id, expected_item):
+        fields = [field for field in ('Genres', 'ProductionLocations') if field in expected_item]
+        if not fields:
+            return False
+
+        actual_item = self.get_item_info(item_id)
+        if not actual_item:
+            return False
+        return all(actual_item.get(field, []) == expected_item.get(field, []) for field in fields)
+
     def _post_item_update(self, item_id, item):
         params = {"api_key": self.api_key}
         payload = self._prepare_item_update_payload(item)
         path = f"/Items/{urllib.parse.quote(str(item_id), safe='')}"
-        try:
-            return self._request_with_retries(
-                'post',
-                path,
-                params=params,
-                json_body=payload,
-                timeout=(5, 45),
-                retries=1,
-                retry_delay=1,
-                retry_status_codes={408, 429, 500, 502, 503, 504},
-                retry_label=f"更新条目 {item.get('Name', item_id)}({item_id})",
-            )
-        except requests.exceptions.RequestException as err:
-            return RequestFailureResponse(err)
+        retry_status_codes = {408, 429, 500, 502, 503, 504}
+        last_error = None
+
+        for attempt in range(2):
+            try:
+                response = self._request(
+                    'post',
+                    path,
+                    params=params,
+                    json_body=payload,
+                    timeout=(5, 45),
+                )
+                if response.status_code not in retry_status_codes:
+                    return response
+                last_error = RuntimeError(f"HTTP {response.status_code}: {response.text}")
+            except requests.exceptions.RequestException as err:
+                last_error = err
+
+            if self._item_update_was_applied(item_id, payload):
+                self.logger.info(
+                    f"更新条目 {item.get('Name', item_id)}({item_id}) 响应异常，"
+                    "但回读确认服务器已保存"
+                )
+                return RequestFailureResponse(last_error, status_code=204)
+
+            if attempt == 0:
+                self.logger.warning(
+                    f"更新条目 {item.get('Name', item_id)}({item_id}) 请求异常，"
+                    f"1 秒后重试 1/1: {last_error}"
+                )
+                time.sleep(1)
+
+        return RequestFailureResponse(last_error)
 
     @staticmethod
     def _clean_genre_name(genre):
@@ -564,16 +683,19 @@ class MediaServerClient:
                 )
             except requests.exceptions.RequestException as err:
                 self.logger.error(f"读取 Emby {include_item_types} 条目列表失败: {err}")
+                self._mark_sync_error()
                 return None
             if response.status_code != 200:
                 self.logger.error(f"请求失败，状态码: {response.status_code}")
                 self.logger.error(response.text)
+                self._mark_sync_error()
                 return None
             return response.json().get('Items', [])
 
         self.user_id = self.user_id or self.emby_get_user_id()
         if not self.user_id:
             self.logger.error("Failed to retrieve user ID.")
+            self._mark_sync_error()
             return None
 
         quoted_user_id = urllib.parse.quote(str(self.user_id), safe='')
@@ -591,10 +713,12 @@ class MediaServerClient:
             )
         except requests.exceptions.RequestException as err:
             self.logger.error(f"读取 Jellyfin 用户媒体库失败: {err}")
+            self._mark_sync_error()
             return None
         if views_response.status_code != 200:
             self.logger.error(f"读取 Jellyfin 用户媒体库失败，状态码: {views_response.status_code}")
             self.logger.error(views_response.text)
+            self._mark_sync_error()
             return None
 
         expected_collection_types = {
@@ -637,12 +761,14 @@ class MediaServerClient:
                 )
             except requests.exceptions.RequestException as err:
                 self.logger.error(f"读取 Jellyfin 媒体库“{library_name}”失败: {err}")
+                self._mark_sync_error()
                 return None
             if response.status_code != 200:
                 self.logger.error(
                     f"读取 Jellyfin 媒体库“{library_name}”失败，状态码: {response.status_code}"
                 )
                 self.logger.error(response.text)
+                self._mark_sync_error()
                 return None
 
             library_items = response.json().get('Items', [])
@@ -706,9 +832,11 @@ class MediaServerClient:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': include_item_types,
-            'Fields': 'ProductionLocations',
+            'Fields': 'ProductionLocations,DateLastSaved',
             'Limit': '1000000',
         }
+        if self._sync_min_date_last_saved:
+            params['MinDateLastSaved'] = self._sync_min_date_last_saved
 
         items = self._get_genre_update_items(include_item_types, params)
         if items is None:
@@ -789,6 +917,7 @@ class MediaServerClient:
             processed_count = candidate_index
             if not item:
                 self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
+                self._mark_sync_error()
                 continue
 
             original_locations = self._production_locations_list(item.get('ProductionLocations'))
@@ -808,6 +937,7 @@ class MediaServerClient:
                 if self._should_log_item_update(update_count):
                     self.logger.info(f"{item_label}: {item['Name']} 地区信息已更新。(Total updates: {update_count})")
             else:
+                self._mark_sync_error()
                 self.logger.error(
                     f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
                     f"状态码: {update_response.status_code}(Total updates: {update_count})"
@@ -892,9 +1022,11 @@ class MediaServerClient:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': include_item_types,
-            'Fields': 'Genres,GenreItems',
+            'Fields': 'Genres,GenreItems,DateLastSaved',
             'Limit': '1000000',
         }
+        if self._sync_min_date_last_saved:
+            params['MinDateLastSaved'] = self._sync_min_date_last_saved
 
         items = self._get_genre_update_items(include_item_types, params)
         if items is None:
@@ -976,6 +1108,7 @@ class MediaServerClient:
             item = self.get_item_info(item_id)
             if not item:
                 self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
+                self._mark_sync_error()
                 continue
 
             original_genres = item.get('Genres', [])
@@ -1020,6 +1153,7 @@ class MediaServerClient:
                 if self._should_log_item_update(update_count):
                     self.logger.info(f"{item_label}: {item['Name']} 流派信息已更新。(Total updates: {update_count})")
             else:
+                self._mark_sync_error()
                 self.logger.error(
                     f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
                     f"状态码: {update_response.status_code}(Total updates: {update_count})"
@@ -1120,7 +1254,21 @@ class MediaServerClient:
 
     # 获取所有影剧的信息
     def get_movie_media(self):
-        return self._get_items("Movie", "ProviderIds,Path")
+        fields = "ProviderIds,Path,MediaSourceCount"
+        if self.server_type == 'jellyfin' and self.username:
+            items = self._get_genre_update_items(
+                'Movie',
+                {
+                    'Recursive': 'true',
+                    'IncludeItemTypes': 'Movie',
+                    'Fields': fields,
+                    'Limit': '1000000',
+                },
+            )
+            return self._unique_items_by_id(items or [], '影片')
+        if self.server_type == 'jellyfin':
+            self.logger.warning("未配置 Jellyfin 用户名，合并版本只能使用全局条目列表")
+        return self._get_items("Movie", fields)
 
     # 查询TMDb ID
     def query_movies_by_tmdbid(self, movies, tmdb_value):
@@ -1196,6 +1344,36 @@ class MediaServerClient:
 
     def _count_mergeable_groups(self, grouped_movies):
         return sum(1 for movies in grouped_movies.values() if len(movies) > 1)
+
+    @staticmethod
+    def _is_single_source_movie(movie):
+        media_source_count = movie.get('MediaSourceCount')
+        return media_source_count in (None, 0, 1, '0', '1')
+
+    def _select_actionable_merge_groups(self, grouped_movies, successfully_merged_ids=None):
+        successfully_merged_ids = successfully_merged_ids or set()
+        actionable_groups = {}
+
+        for identity_value, movies in grouped_movies.items():
+            if len(movies) <= 1:
+                continue
+
+            movie_ids = {movie.get('Id') for movie in movies if movie.get('Id')}
+            if self.server_type != 'jellyfin':
+                if not movie_ids or movie_ids.issubset(successfully_merged_ids):
+                    continue
+                actionable_groups[identity_value] = movies
+                continue
+
+            single_source_ids = {
+                movie.get('Id')
+                for movie in movies
+                if movie.get('Id') and self._is_single_source_movie(movie)
+            }
+            if single_source_ids - successfully_merged_ids:
+                actionable_groups[identity_value] = movies
+
+        return actionable_groups
 
     @staticmethod
     def _progress_percent(current, total, start_percent=0, span_percent=100):
@@ -1281,6 +1459,7 @@ class MediaServerClient:
         progress_callback=None,
         progress_base=0,
         progress_total=None,
+        successfully_merged_ids=None,
     ):
         if self.server_type == 'jellyfin':
             return self.jellyfin_merge_movie_versions(
@@ -1289,6 +1468,7 @@ class MediaServerClient:
                 progress_callback=progress_callback,
                 progress_base=progress_base,
                 progress_total=progress_total,
+                successfully_merged_ids=successfully_merged_ids,
             )
         return self.emby_merge_movie_versions(
             grouped_movies,
@@ -1296,6 +1476,7 @@ class MediaServerClient:
             progress_callback=progress_callback,
             progress_base=progress_base,
             progress_total=progress_total,
+            successfully_merged_ids=successfully_merged_ids,
         )
 
     def emby_merge_movie_versions(
@@ -1305,6 +1486,7 @@ class MediaServerClient:
         progress_callback=None,
         progress_base=0,
         progress_total=None,
+        successfully_merged_ids=None,
     ):
         return self._merge_movie_versions(
             grouped_movies,
@@ -1314,6 +1496,7 @@ class MediaServerClient:
             progress_callback=progress_callback,
             progress_base=progress_base,
             progress_total=progress_total,
+            successfully_merged_ids=successfully_merged_ids,
         )
 
     def jellyfin_merge_movie_versions(
@@ -1323,6 +1506,7 @@ class MediaServerClient:
         progress_callback=None,
         progress_base=0,
         progress_total=None,
+        successfully_merged_ids=None,
     ):
         return self._merge_movie_versions(
             grouped_movies,
@@ -1332,6 +1516,7 @@ class MediaServerClient:
             progress_callback=progress_callback,
             progress_base=progress_base,
             progress_total=progress_total,
+            successfully_merged_ids=successfully_merged_ids,
         )
 
     def _merge_movie_versions(
@@ -1343,6 +1528,7 @@ class MediaServerClient:
         progress_callback=None,
         progress_base=0,
         progress_total=None,
+        successfully_merged_ids=None,
     ):
         merged_movies = []
         if progress_total is None:
@@ -1368,10 +1554,14 @@ class MediaServerClient:
                 response = self._request('post', '/Videos/MergeVersions', params=payload)
                 if response.status_code == 204:
                     self.logger.info(f"{server_label} 合并版本成功:::         {name}")
+                    merged_movies.append(movies[0])
+                    if successfully_merged_ids is not None:
+                        successfully_merged_ids.update(
+                            movie.get('Id') for movie in movies if movie.get('Id')
+                        )
                 else:
                     self.logger.error(f"{server_label} 合并版本失败:::         {name}")
                     self.logger.error(response.text)
-                merged_movies.append(movies[0])  # 暂时保留第一部影片为合并结果
                 processed += 1
                 if progress_total > 0:
                     self._report_progress(
@@ -1404,16 +1594,23 @@ class MediaServerClient:
             self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影片")
 
             self.logger.info("开始按 TMDB 合并标准影片版本")
-            tmdb_grouped_movies = self.group_movies_by_tmdbid(all_movies)
+            all_tmdb_groups = self.group_movies_by_tmdbid(all_movies)
+            tmdb_repeated_count = self._count_mergeable_groups(all_tmdb_groups)
+            successfully_merged_ids = set()
+            tmdb_grouped_movies = self._select_actionable_merge_groups(all_tmdb_groups)
             tmdb_mergeable_count = self._count_mergeable_groups(tmdb_grouped_movies)
-            self.logger.info(f"已分组影片，共 {len(tmdb_grouped_movies)} 个TMDb ID")
-            self.logger.info(f"TMDB 可合并分组：{tmdb_mergeable_count} 组")
+            self.logger.info(f"已分组影片，共 {len(all_tmdb_groups)} 个TMDb ID")
+            self.logger.info(
+                f"TMDB 重复分组：{tmdb_repeated_count} 组，"
+                f"排除已合并历史组后待处理：{tmdb_mergeable_count} 组"
+            )
             merged_movies = self.merge_movie_versions(
                 tmdb_grouped_movies,
                 identity_label="TMDB",
                 progress_callback=callback,
                 progress_base=0,
                 progress_total=tmdb_mergeable_count,
+                successfully_merged_ids=successfully_merged_ids,
             )
             if self.stop_flag.is_set():
                 self.logger.info("已停止合并版本")
@@ -1423,19 +1620,28 @@ class MediaServerClient:
             self.logger.info(f"TMDB 已合并版本，共 {len(merged_movies)} 部影片")
 
             self.logger.info("开始检查 AV 番号版本")
-            av_grouped_movies = self.group_movies_by_provider_id(all_movies, "num")
-            if not av_grouped_movies:
+            all_av_groups = self.group_movies_by_provider_id(all_movies, "num")
+            if not all_av_groups:
                 self.logger.info("未发现 AV 番号数据，跳过 AV 合并")
             else:
+                av_repeated_count = self._count_mergeable_groups(all_av_groups)
+                av_grouped_movies = self._select_actionable_merge_groups(
+                    all_av_groups,
+                    successfully_merged_ids=successfully_merged_ids,
+                )
                 av_mergeable_count = self._count_mergeable_groups(av_grouped_movies)
-                self.logger.info(f"已分组影片，共 {len(av_grouped_movies)} 个 AV 番号")
-                self.logger.info(f"AV 番号可合并分组：{av_mergeable_count} 组")
+                self.logger.info(f"已分组影片，共 {len(all_av_groups)} 个 AV 番号")
+                self.logger.info(
+                    f"AV 番号重复分组：{av_repeated_count} 组，"
+                    f"排除已合并历史组和本轮已处理条目后待处理：{av_mergeable_count} 组"
+                )
                 av_merged_movies = self.merge_movie_versions(
                     av_grouped_movies,
                     identity_label="AV 番号",
                     progress_callback=callback,
                     progress_base=tmdb_mergeable_count,
                     progress_total=av_mergeable_count,
+                    successfully_merged_ids=successfully_merged_ids,
                 )
                 self.logger.info(f"AV 番号已合并版本，共 {len(av_merged_movies)} 部影片")
                 merged_movies.extend(av_merged_movies)
@@ -1620,10 +1826,18 @@ class MediaServerClient:
             self.logger.error(f"Request failed, status code: {response.status_code}")
             self.logger.error(response.text)
 
-    def update_genres(self, callback=None):
+    def update_genres(self, callback=None, full_scan=False, sync_state=None, state_callback=None):
         self.validate_server_type()
 
         def run_update_genres_check():
+            self._begin_metadata_sync(
+                {
+                    'movies': MOVIE_GENRE_TRANSLATIONS,
+                    'series': TV_GENRE_TRANSLATIONS,
+                },
+                full_scan=full_scan,
+                sync_state=sync_state,
+            )
             self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info("开始更新影片流派信息...")
             movie_callback = self._scale_progress_callback(callback, 0, 50)
@@ -1660,15 +1874,21 @@ class MediaServerClient:
 
             self.logger.info(message)
             self._report_progress(callback, 1, 1, title, percent=100)
+            self._finish_metadata_sync(state_callback)
 
             return message
 
         return self._start_background_task(run_update_genres_check, "更新流派")
 
-    def update_countries(self, callback=None):
+    def update_countries(self, callback=None, full_scan=False, sync_state=None, state_callback=None):
         self.validate_server_type()
 
         def run_update_countries_check():
+            self._begin_metadata_sync(
+                COUNTRY_TRANSLATIONS,
+                full_scan=full_scan,
+                sync_state=sync_state,
+            )
             self.logger.info(f"开始使用 {self._server_label()} 流程更新地区")
             self.logger.info("开始更新影片地区信息...")
             movie_callback = self._scale_progress_callback(callback, 0, 50)
@@ -1706,6 +1926,7 @@ class MediaServerClient:
             )
             self.logger.info(message)
             self._report_progress(callback, 1, 1, title, percent=100)
+            self._finish_metadata_sync(state_callback)
             return message
 
         return self._start_background_task(run_update_countries_check, "更新地区")

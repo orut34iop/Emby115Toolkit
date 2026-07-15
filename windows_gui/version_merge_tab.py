@@ -36,11 +36,16 @@ class VersionMergeTab(BaseTab):
                 self.api_key_entry.insert(0, config['api_key'])
                 self.logger.info(f"加载 API: {config['api_key']}")
 
+            username = config.get('username') or self.config.get('genre_update', 'username', '')
+            self.username_entry.delete(0, tk.END)
+            self.username_entry.insert(0, username)
+
     def save_config(self):
         """保存当前设置到配置文件"""
         # 更新配置
         self.config.set('version_merge', 'server_url', self.server_url_entry.get().strip())
         self.config.set('version_merge', 'api_key', self.api_key_entry.get().strip())
+        self.config.set('version_merge', 'username', self.username_entry.get().strip())
         self.config.set('version_merge', 'server_type', self.server_type_var.get())
 
         # 保存到文件
@@ -84,6 +89,12 @@ class VersionMergeTab(BaseTab):
         self.api_key_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
         self.api_key_entry.bind('<FocusOut>', lambda e: self.save_config())
 
+        username_frame = ttk.LabelFrame(self.frame, text="用户名", padding=(5, 5, 5, 5))
+        username_frame.pack(fill='x', padx=5, pady=5)
+        self.username_entry = ttk.Entry(username_frame)
+        self.username_entry.pack(side='left', fill='x', expand=True, padx=(5, 5))
+        self.username_entry.bind('<FocusOut>', lambda e: self.save_config())
+
         # 操作按钮组
         btn_frame = ttk.LabelFrame(self.frame, text="操作", padding=(5, 5, 5, 5))
         btn_frame.pack(fill='x', padx=5, pady=5)
@@ -107,10 +118,11 @@ class VersionMergeTab(BaseTab):
     def merge_versions(self):
         server_url = self.server_url_entry.get().strip()
         api_key = self.api_key_entry.get().strip()
+        username = self.username_entry.get().strip()
         server_type = self.server_type_var.get()
 
-        if not server_url or not api_key:
-            self.logger.warning("服务器地址或API密钥为空")
+        if not server_url or not api_key or (server_type == 'jellyfin' and not username):
+            self.logger.warning("服务器地址、API密钥或 Jellyfin 用户名为空")
             return
 
         def task():
@@ -119,6 +131,7 @@ class VersionMergeTab(BaseTab):
                 MediaServerClient(
                     server_url=server_url,
                     api_key=api_key,
+                    username=username,
                     server_type=server_type,
                     logger=self.logger,
                 )
