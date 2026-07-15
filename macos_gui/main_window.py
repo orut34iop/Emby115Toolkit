@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
 
     def init_tabs(self):
         """初始化标签页"""
+        from .country_update_tab import CountryUpdateTab
         from .file_merge_tab import FileMergeTab
         from .folder_tools_tab import FolderToolsTab
         from .genre_update_tab import GenreUpdateTab
@@ -129,6 +130,10 @@ class MainWindow(QMainWindow):
         # 更新流派
         self.genre_update_tab = GenreUpdateTab(self.log_dir)
         self.tabs.addTab(self.genre_update_tab, "更新流派")
+
+        # 更新地区
+        self.country_update_tab = CountryUpdateTab(self.log_dir)
+        self.tabs.addTab(self.country_update_tab, "更新地区")
 
         # 115目录树镜像
         self.tree_mirror_tab = TreeMirrorTab(self.log_dir)

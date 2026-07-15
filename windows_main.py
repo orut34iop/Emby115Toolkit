@@ -18,6 +18,7 @@ if sys.platform == 'win32':
     from utils.config import Config
     from utils.logger import setup_logger
     from windows_gui import (
+        CountryUpdateTab,
         FileMergeTab,
         FolderToolsTab,
         GenreUpdateTab,
@@ -51,6 +52,7 @@ class EmbyToolkit:
             "文件合并": ttk.Frame(self.notebook),
             "合并版本": ttk.Frame(self.notebook),
             "更新流派": ttk.Frame(self.notebook),
+            "更新地区": ttk.Frame(self.notebook),
             "115目录树镜像": ttk.Frame(self.notebook),  # 添加新的tab页
         }
 
@@ -82,6 +84,7 @@ class EmbyToolkit:
         FileMergeTab(self.tabs["文件合并"], self.log_dir)
         VersionMergeTab(self.tabs["合并版本"], self.log_dir)
         GenreUpdateTab(self.tabs["更新流派"], self.log_dir)
+        CountryUpdateTab(self.tabs["更新地区"], self.log_dir)
         TreeMirrorTab(self.tabs["115目录树镜像"], self.log_dir)  # 添加新的tab页初始化
         self.logger.info("所有选项卡初始化完成")
 

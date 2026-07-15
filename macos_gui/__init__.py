@@ -3,6 +3,7 @@ macOS PyQt5 GUI 模块。
 为 macOS 提供原生拖拽支持。
 """
 
+from .country_update_tab import CountryUpdateTab
 from .file_merge_tab import FileMergeTab
 from .folder_tools_tab import FolderToolsTab
 from .genre_update_tab import GenreUpdateTab
@@ -18,5 +19,6 @@ __all__ = [
     'FileMergeTab',
     'VersionMergeTab',
     'GenreUpdateTab',
+    'CountryUpdateTab',
     'TreeMirrorTab',
 ]

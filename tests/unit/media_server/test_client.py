@@ -762,6 +762,140 @@ class TestMediaServerClientServerType:
         assert updates == []
         assert len(request_calls) == 2
 
+    def test_country_translation_normalizes_aliases_and_deduplicates(self):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_production_locations(
+            [
+                'Japan',
+                'jpn',
+                '日本',
+                'Hong Kong',
+                '中国香港特别行政区',
+                'US',
+                'usa',
+                'Soviet Union',
+                ' ',
+            ]
+        ) == ['日本', '中国香港', '美国', '苏联']
+
+    def test_country_translation_is_case_insensitive_and_preserves_historical_regions(self):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_production_locations(
+            ['USA', 'united kingdom', 'Czechoslovakia', 'West Germany', 'Serbia and Montenegro']
+        ) == ['美国', '英国', '捷克斯洛伐克', '西德', '塞尔维亚和黑山']
+
+    def test_movie_country_update_changes_only_production_locations(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        snapshot = {
+            'Id': 'movie1',
+            'Name': 'Movie',
+            'Genres': ['剧情'],
+            'ProductionLocations': ['Japan', 'jpn', '日本', 'usa'],
+        }
+        monkeypatch.setattr(
+            operator,
+            '_get_genre_update_items',
+            lambda include_item_types, params: [snapshot.copy()],
+        )
+        monkeypatch.setattr(operator, 'get_item_info', lambda item_id: snapshot.copy())
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_countries_and_update_whole_item()
+
+        assert [item['Id'] for item in updated_movies] == ['movie1']
+        assert updates[0][0] == 'movie1'
+        assert updates[0][1]['ProductionLocations'] == ['日本', '美国']
+        assert updates[0][1]['Genres'] == ['剧情']
+
+    def test_country_update_uses_jellyfin_library_enumeration(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
+        )
+        operator.user_id = 'user1'
+        item_requests = []
+
+        def fake_request(method, path, params=None):
+            assert method == 'get'
+            if path == '/Users/user1/Views':
+                return FakeResponse(
+                    payload={
+                        'Items': [
+                            {'Id': 'movies1', 'Name': 'Movies', 'CollectionType': 'movies'},
+                            {'Id': 'series1', 'Name': 'Series', 'CollectionType': 'tvshows'},
+                        ]
+                    }
+                )
+            assert path == '/Users/user1/Items'
+            item_requests.append(params.copy())
+            return FakeResponse(
+                payload={
+                    'Items': [
+                        {'Id': 'movie1', 'Name': 'Movie', 'ProductionLocations': ['Japan']},
+                    ]
+                }
+            )
+
+        monkeypatch.setattr(operator, '_request', fake_request)
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: {'Id': item_id, 'Name': 'Movie', 'ProductionLocations': ['Japan']},
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_countries_and_update_whole_item()
+
+        assert [params['ParentId'] for params in item_requests] == ['movies1']
+        assert [item['Id'] for item in updated_movies] == ['movie1']
+        assert updates[0][1]['ProductionLocations'] == ['日本']
+
+    def test_update_countries_scales_movie_and_series_progress(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
+
+        def fake_update_movies(progress_callback=None):
+            progress_callback({'message': '影片地区完成', 'current': 1, 'total': 1, 'percent': 100})
+            return []
+
+        def fake_update_series(progress_callback=None):
+            progress_callback({'message': '剧集地区开始', 'current': 0, 'total': 1, 'percent': 0})
+            progress_callback({'message': '剧集地区完成', 'current': 1, 'total': 1, 'percent': 100})
+            return []
+
+        monkeypatch.setattr(operator, 'emby_movie_translate_countries_and_update_whole_item', fake_update_movies)
+        monkeypatch.setattr(operator, 'emby_tv_translate_countries_and_update_whole_item', fake_update_series)
+        progress_events = []
+
+        thread = operator.update_countries(callback=progress_events.append)
+        thread.join(timeout=1)
+
+        assert not thread.is_alive()
+        assert next(event for event in progress_events if event['message'] == '影片地区完成')['percent'] == 50
+        assert next(event for event in progress_events if event['message'] == '剧集地区开始')['percent'] == 50
+        assert next(event for event in progress_events if event['message'] == '剧集地区完成')['percent'] == 100
+
 
 class TestMediaServerClientExtractTmdbid:
     """测试 extract_tmdbid_from_nfo 方法"""

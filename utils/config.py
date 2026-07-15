@@ -114,6 +114,7 @@ class Config:
             },
             'version_merge': {'server_url': '', 'api_key': '', 'server_type': 'emby'},
             'genre_update': {'server_url': '', 'api_key': '', 'username': '', 'server_type': 'emby'},
+            'country_update': {'server_url': '', 'api_key': '', 'username': '', 'server_type': 'emby'},
             'tree_mirror': {'tree_file': '', 'export_folder': '', 'fix_garbled_text': False},
             'ui_state': {'selected_tab_index': 0},
         }

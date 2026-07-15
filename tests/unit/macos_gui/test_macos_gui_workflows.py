@@ -59,13 +59,14 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
 
     window = MainWindow()
 
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 7
     assert [window.tabs.tabText(i) for i in range(window.tabs.count())] == [
         "导出软链接",
         "文件夹操作",
         "文件合并",
         "合并版本",
         "更新流派",
+        "更新地区",
         "115目录树镜像",
     ]
     for tab in [
@@ -74,6 +75,7 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
         window.file_merge_tab,
         window.version_merge_tab,
         window.genre_update_tab,
+        window.country_update_tab,
         window.tree_mirror_tab,
     ]:
         assert tab.progress_bar is not None
@@ -81,6 +83,25 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
         assert tab.log_text is not None
 
     window.close()
+
+
+def test_country_update_tab_uses_genre_server_settings_as_initial_default(qapp, isolated_config, tmp_path):
+    from macos_gui.country_update_tab import CountryUpdateTab
+    from utils.config import Config
+
+    config = Config()
+    config.set('genre_update', 'server_url', 'http://jellyfin.local')
+    config.set('genre_update', 'api_key', 'genre-api')
+    config.set('genre_update', 'username', 'wiz')
+    config.set('genre_update', 'server_type', 'jellyfin')
+    config.save()
+
+    tab = CountryUpdateTab(str(tmp_path / "logs"))
+
+    assert tab.edit_url.text() == 'http://jellyfin.local'
+    assert tab.edit_api.text() == 'genre-api'
+    assert tab.edit_user.text() == 'wiz'
+    assert tab.radio_jellyfin.isChecked()
 
 
 def test_symlink_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, tmp_path):
@@ -359,6 +380,7 @@ def test_merge_and_tree_mirror_tabs_run_backends(qapp, isolated_config, tmp_path
 
 
 def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkeypatch):
+    from macos_gui.country_update_tab import CountryUpdateTab
     from macos_gui.genre_update_tab import GenreUpdateTab
     from macos_gui.version_merge_tab import VersionMergeTab
     from media_server.client import MediaServerClient
@@ -374,8 +396,14 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
         if callback:
             callback("genres done")
 
+    def fake_update_countries(self, callback=None):
+        calls.append(("update_countries", self.server_url, self.api_key, self.username, self.server_type))
+        if callback:
+            callback("countries done")
+
     monkeypatch.setattr(MediaServerClient, "merge_versions", fake_merge_versions)
     monkeypatch.setattr(MediaServerClient, "update_genres", fake_update_genres)
+    monkeypatch.setattr(MediaServerClient, "update_countries", fake_update_countries)
 
     version_merge_tab = VersionMergeTab(str(tmp_path / "logs"))
     version_merge_tab.edit_url.setText("http://jellyfin.local")
@@ -394,9 +422,19 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     assert wait_until(qapp, lambda: len(calls) >= 2)
     assert wait_for_tab_idle(qapp, genre_update_tab)
 
+    country_update_tab = CountryUpdateTab(str(tmp_path / "logs"))
+    country_update_tab.edit_url.setText("http://jellyfin.local")
+    country_update_tab.edit_api.setText("country-api")
+    country_update_tab.edit_user.setText("wiz")
+    country_update_tab.radio_jellyfin.setChecked(True)
+    country_update_tab.update_countries()
+    assert wait_until(qapp, lambda: len(calls) >= 3)
+    assert wait_for_tab_idle(qapp, country_update_tab)
+
     assert calls == [
         ("merge_versions", "http://jellyfin.local", "api", "jellyfin"),
         ("update_genres", "http://emby.local", "api", "user", "emby"),
+        ("update_countries", "http://jellyfin.local", "country-api", "wiz", "jellyfin"),
     ]
 
 

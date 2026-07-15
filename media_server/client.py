@@ -12,6 +12,7 @@ from pathlib import Path
 
 import requests
 
+from media_server.country_maps import COUNTRY_TRANSLATIONS
 from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS, TV_GENRE_TRANSLATIONS
 
 # 定义视频文件扩展名
@@ -168,6 +169,10 @@ class MediaServerClient:
         self.api_prefix = self._configured_api_prefix()
         self.stop_flag = threading.Event()
         self._genre_lookup_index_cache = {}
+        self._country_lookup_index = {
+            self._normalize_country_lookup_name(source): target
+            for source, target in COUNTRY_TRANSLATIONS.items()
+        }
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -423,6 +428,37 @@ class MediaServerClient:
                 seen.add(translated)
         return translated_genres
 
+    @staticmethod
+    def _normalize_country_lookup_name(country):
+        text = unicodedata.normalize('NFKC', str(country or '').strip())
+        return re.sub(r'\s+', ' ', text).strip().casefold()
+
+    def _resolve_country_translation(self, country):
+        text = unicodedata.normalize('NFKC', str(country or '').strip())
+        text = re.sub(r'\s+', ' ', text).strip()
+        return self._country_lookup_index.get(self._normalize_country_lookup_name(text), text)
+
+    def _translate_production_locations(self, locations):
+        locations = self._production_locations_list(locations)
+
+        translated_locations = []
+        seen = set()
+        for location in locations or []:
+            translated = self._resolve_country_translation(location)
+            if not translated:
+                continue
+            key = self._normalize_country_lookup_name(translated)
+            if key not in seen:
+                translated_locations.append(translated)
+                seen.add(key)
+        return translated_locations
+
+    @staticmethod
+    def _production_locations_list(locations):
+        if isinstance(locations, str):
+            return [locations]
+        return list(locations or [])
+
     def _unique_items_by_id(self, items, item_label):
         unique_items = []
         seen_ids = set()
@@ -472,6 +508,23 @@ class MediaServerClient:
         return (
             f"更新的{item_label}数量: {len(updated_items)}\n"
             f"更新的{item_label}（最多列出 {max_items} 个）:\n"
+            f"{updated_items_info}{omitted_message}\n"
+        )
+
+    @staticmethod
+    def _format_updated_country_items_message(item_label, updated_items, max_items=100):
+        if not updated_items:
+            return f"没有需要更新的{item_label}地区信息。\n"
+
+        displayed_items = updated_items[:max_items]
+        updated_items_info = "\n".join(
+            f"{item_label}: {item.get('Name', item.get('Id', ''))}" for item in displayed_items
+        )
+        omitted_count = len(updated_items) - max_items
+        omitted_message = f"\n... 还有 {omitted_count} 个{item_label}已更新，省略写入日志。" if omitted_count > 0 else ""
+        return (
+            f"更新的{item_label}数量: {len(updated_items)}\n"
+            f"更新地区的{item_label}（最多列出 {max_items} 个）:\n"
             f"{updated_items_info}{omitted_message}\n"
         )
 
@@ -561,6 +614,184 @@ class MediaServerClient:
             )
 
         return all_items
+
+    def _collect_country_update_candidates(self, items, item_label, progress_callback=None):
+        candidates = []
+        country_changes = Counter()
+        total_items = len(items)
+        checked_count = 0
+
+        for item in items:
+            if self.stop_flag.is_set():
+                return candidates, country_changes, checked_count, True
+
+            checked_count += 1
+            original_locations = self._production_locations_list(item.get('ProductionLocations'))
+            translated_locations = self._translate_production_locations(original_locations)
+            if original_locations != translated_locations:
+                candidates.append(item)
+                for location in original_locations:
+                    translated = self._resolve_country_translation(location)
+                    if location != translated:
+                        country_changes[(location, translated)] += 1
+                if len(original_locations) != len(translated_locations):
+                    country_changes[('重复或空白地区', '合并去重后的地区列表')] += 1
+
+            if self._should_report_progress(checked_count, total_items):
+                self._report_progress(
+                    progress_callback,
+                    checked_count,
+                    total_items,
+                    f"扫描{item_label}地区进度: {checked_count}/{total_items}，待更新 {len(candidates)} 部",
+                    percent=self._progress_percent(checked_count, total_items, 0, 50),
+                )
+
+        return candidates, country_changes, checked_count, False
+
+    def _log_country_change_summary(self, item_label, country_changes, max_items=80):
+        if not country_changes:
+            self.logger.info(f"{item_label}预扫描未发现需要翻译或合并的地区")
+            return
+
+        displayed_changes = [
+            f"{source} -> {target}（{count}）"
+            for (source, target), count in country_changes.most_common(max_items)
+        ]
+        omitted_count = len(country_changes) - max_items
+        if omitted_count > 0:
+            displayed_changes.append(f"... 还有 {omitted_count} 个变更项未列出")
+        self.logger.info(f"{item_label}地区变更统计: {'; '.join(displayed_changes)}")
+
+    def _translate_items_countries_and_update(self, item_label, include_item_types, progress_callback=None):
+        updated_items = []
+        params = {
+            'Recursive': 'true',
+            'IncludeItemTypes': include_item_types,
+            'Fields': 'ProductionLocations',
+            'Limit': '1000000',
+        }
+
+        items = self._get_genre_update_items(include_item_types, params)
+        if items is None:
+            return updated_items
+
+        items = self._unique_items_by_id(items, item_label)
+        total_items = len(items)
+        all_locations = {
+            str(location).strip()
+            for item in items
+            for location in self._production_locations_list(item.get('ProductionLocations'))
+            if str(location).strip()
+        }
+        self.logger.info(
+            f"{item_label}所有去重后的ProductionLocations（{len(all_locations)} 个）: "
+            f"{self._format_limited_values(all_locations)}"
+        )
+
+        candidates, country_changes, checked_count, stopped = self._collect_country_update_candidates(
+            items,
+            item_label,
+            progress_callback,
+        )
+        if stopped:
+            self.logger.info(f"{item_label}地区更新已停止，已扫描 {checked_count}/{total_items} 部，已更新 0 部")
+            return updated_items
+
+        self.logger.info(f"{item_label}共 {total_items} 部，预扫描后需要更新 {len(candidates)} 部")
+        self._log_country_change_summary(item_label, country_changes)
+        if not candidates:
+            self._report_progress(
+                progress_callback,
+                1,
+                1,
+                f"{item_label}地区预扫描完成，没有需要更新的条目",
+                percent=100,
+            )
+            self.logger.info(f"没有需要更新的{item_label}地区信息。")
+            return updated_items
+
+        update_count = 0
+        processed_count = 0
+        stopped = False
+        last_update_heartbeat = 0
+        self._report_progress(
+            progress_callback,
+            0,
+            len(candidates),
+            f"开始更新{item_label}地区，候选 {len(candidates)} 部",
+            percent=50,
+        )
+
+        for candidate_index, candidate in enumerate(candidates, start=1):
+            if self.stop_flag.is_set():
+                stopped = True
+                break
+
+            item_id = candidate['Id']
+            item_name = candidate.get('Name', item_id)
+            now = time.monotonic()
+            should_log_heartbeat = (
+                candidate_index <= 50
+                or candidate_index % 100 == 0
+                or now - last_update_heartbeat >= 30
+            )
+            if should_log_heartbeat:
+                self._report_progress(
+                    progress_callback,
+                    candidate_index - 1,
+                    len(candidates),
+                    f"正在更新{item_label}地区: {candidate_index}/{len(candidates)}，"
+                    f"已成功 {update_count} 部，当前: {item_name}",
+                    percent=self._progress_percent(candidate_index - 1, len(candidates), 50, 50),
+                )
+                last_update_heartbeat = now
+
+            item = self.get_item_info(item_id)
+            processed_count = candidate_index
+            if not item:
+                self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
+                continue
+
+            original_locations = self._production_locations_list(item.get('ProductionLocations'))
+            translated_locations = self._translate_production_locations(original_locations)
+            if original_locations == translated_locations:
+                continue
+
+            if self.stop_flag.is_set():
+                stopped = True
+                break
+
+            item['ProductionLocations'] = translated_locations
+            update_response = self._post_item_update(item_id, item)
+            if update_response.status_code in [200, 204]:
+                update_count += 1
+                updated_items.append(item)
+                if self._should_log_item_update(update_count):
+                    self.logger.info(f"{item_label}: {item['Name']} 地区信息已更新。(Total updates: {update_count})")
+            else:
+                self.logger.error(
+                    f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
+                    f"状态码: {update_response.status_code}(Total updates: {update_count})"
+                )
+                self.logger.error(update_response.text)
+
+            if self._should_report_progress(candidate_index, len(candidates)):
+                self._report_progress(
+                    progress_callback,
+                    candidate_index,
+                    len(candidates),
+                    f"更新{item_label}地区进度: {candidate_index}/{len(candidates)}，已成功 {update_count} 部",
+                    percent=self._progress_percent(candidate_index, len(candidates), 50, 50),
+                )
+
+        if stopped:
+            self.logger.info(
+                f"{item_label}地区更新已停止，候选 {len(candidates)} 部，"
+                f"已处理 {processed_count} 部，已成功 {update_count} 部"
+            )
+        else:
+            self.logger.info(f"{item_label}地区更新完成，候选 {len(candidates)} 部，已成功 {update_count} 部")
+        return updated_items
 
     def _collect_genre_update_candidates(self, items, genres_map, item_label, progress_callback=None):
         candidates = []
@@ -1263,6 +1494,20 @@ class MediaServerClient:
             progress_callback=progress_callback,
         )
 
+    def emby_tv_translate_countries_and_update_whole_item(self, progress_callback=None):
+        return self._translate_items_countries_and_update(
+            "剧集",
+            'Series',
+            progress_callback=progress_callback,
+        )
+
+    def emby_movie_translate_countries_and_update_whole_item(self, progress_callback=None):
+        return self._translate_items_countries_and_update(
+            "影片",
+            'Movie',
+            progress_callback=progress_callback,
+        )
+
     # 列出库中所有的影片流派
     def emby_get_all_movie_genres(self):
         # Set query parameters
@@ -1380,6 +1625,51 @@ class MediaServerClient:
             return message
 
         return self._start_background_task(run_update_genres_check, "更新流派")
+
+    def update_countries(self, callback=None):
+        self.validate_server_type()
+
+        def run_update_countries_check():
+            self.logger.info(f"开始使用 {self._server_label()} 流程更新地区")
+            self.logger.info("开始更新影片地区信息...")
+            movie_callback = self._scale_progress_callback(callback, 0, 50)
+            series_callback = self._scale_progress_callback(callback, 50, 50)
+
+            updated_movies = self.emby_movie_translate_countries_and_update_whole_item(
+                progress_callback=movie_callback
+            )
+            stopped = self.stop_flag.is_set()
+            if stopped:
+                self.logger.info("已停止更新影片地区信息")
+                updated_series = []
+            else:
+                self.logger.info("完成更新影片地区信息")
+                self.logger.info("开始更新剧集地区信息...")
+                updated_series = self.emby_tv_translate_countries_and_update_whole_item(
+                    progress_callback=series_callback
+                )
+                stopped = self.stop_flag.is_set()
+                if stopped:
+                    self.logger.info("已停止更新剧集地区信息")
+                else:
+                    self.logger.info("完成更新剧集地区信息")
+
+            movies_message = self._format_updated_country_items_message("影片", updated_movies)
+            series_message = self._format_updated_country_items_message("剧集", updated_series)
+            title = "已停止更新地区" if stopped else "完成更新所有影剧地区"
+            message = (
+                f"\n"
+                f"----------------------------------------\n"
+                f"{title}\n"
+                f"{movies_message}"
+                f"{series_message}"
+                f"----------------------------------------\n"
+            )
+            self.logger.info(message)
+            self._report_progress(callback, 1, 1, title, percent=100)
+            return message
+
+        return self._start_background_task(run_update_countries_check, "更新地区")
 
     def clear_files_by_type(self, folder_path, file_type='VIDEO', callback=None):
         def run_clear_files_by_type_check():

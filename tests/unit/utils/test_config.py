@@ -52,6 +52,8 @@ class TestConfigSingleton:
         assert config.get('symlink_export', 'enable_replace_path') == False
         assert config.get('symlink_delete', 'target_folder') == ''
         assert config.get('version_merge', 'server_url') == ''
+        assert config.get('country_update', 'server_url') == ''
+        assert config.get('country_update', 'server_type') == 'emby'
 
 
 class TestConfigGetSet:
