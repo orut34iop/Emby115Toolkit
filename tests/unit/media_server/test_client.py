@@ -373,10 +373,21 @@ class TestMediaServerClientServerType:
             server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
         )
         operator.user_id = 'user1'
+        requests_made = []
 
         def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
             assert method == 'get'
+            if url == 'http://localhost:8096/Users/user1/Views':
+                return FakeResponse(
+                    payload={
+                        'Items': [
+                            {'Id': 'library1', 'Name': 'Movies', 'CollectionType': 'movies'},
+                        ]
+                    }
+                )
             assert url == 'http://localhost:8096/Users/user1/Items'
+            assert kwargs['params']['ParentId'] == 'library1'
             return FakeResponse(
                 payload={
                     'Items': [
@@ -418,6 +429,77 @@ class TestMediaServerClientServerType:
         assert len(updated_movies) == 1
         assert updates[0][0] == 'movie1'
         assert updates[0][1]['Genres'] == ['动作']
+        assert [request[1] for request in requests_made] == [
+            'http://localhost:8096/Users/user1/Views',
+            'http://localhost:8096/Users/user1/Items',
+        ]
+
+    def test_jellyfin_genre_update_enumerates_movie_views_and_deduplicates_items(self, monkeypatch):
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
+        )
+        operator.user_id = 'user1'
+        item_requests = []
+
+        def fake_request(method, path, params=None):
+            assert method == 'get'
+            if path == '/Users/user1/Views':
+                return FakeResponse(
+                    payload={
+                        'Items': [
+                            {'Id': 'movies1', 'Name': 'Movies 1', 'CollectionType': 'movies'},
+                            {'Id': 'series1', 'Name': 'Series', 'CollectionType': 'tvshows'},
+                            {'Id': 'movies2', 'Name': 'Movies 2', 'CollectionType': 'movies'},
+                        ]
+                    }
+                )
+
+            assert path == '/Users/user1/Items'
+            item_requests.append(params.copy())
+            if params['ParentId'] == 'movies1':
+                return FakeResponse(
+                    payload={
+                        'Items': [
+                            {'Id': 'movie1', 'Name': 'Movie 1', 'Genres': ['Action'], 'GenreItems': []},
+                        ]
+                    }
+                )
+            assert params['ParentId'] == 'movies2'
+            return FakeResponse(
+                payload={
+                    'Items': [
+                        {'Id': 'movie1', 'Name': 'Movie 1 duplicate', 'Genres': ['Action'], 'GenreItems': []},
+                        {'Id': 'movie2', 'Name': 'Movie 2', 'Genres': ['Suspense'], 'GenreItems': []},
+                    ]
+                }
+            )
+
+        monkeypatch.setattr(operator, '_request', fake_request)
+        monkeypatch.setattr(
+            operator,
+            'get_item_info',
+            lambda item_id: {
+                'Id': item_id,
+                'Name': item_id,
+                'Genres': ['Action'] if item_id == 'movie1' else ['Suspense'],
+                'GenreItems': [],
+            },
+        )
+        updates = []
+        monkeypatch.setattr(
+            operator,
+            '_post_item_update',
+            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+        )
+
+        updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
+
+        assert [params['ParentId'] for params in item_requests] == ['movies1', 'movies2']
+        assert [movie['Id'] for movie in updated_movies] == ['movie1', 'movie2']
+        assert [item_id for item_id, _ in updates] == ['movie1', 'movie2']
+        assert [item['Genres'] for _, item in updates] == [['动作'], ['悬疑']]
 
     def test_genre_translation_resolves_chained_mapping(self):
         from media_server.client import MediaServerClient
@@ -442,7 +524,7 @@ class TestMediaServerClientServerType:
         ) == [
             'DMM独家',
             '给女性观众',
-            '素人',
+            '业余',
         ]
 
     def test_tv_genre_translation_handles_old_chinese_names(self):
@@ -1212,8 +1294,8 @@ class TestMediaServerClientGenresMap:
         assert MOVIE_GENRE_TRANSLATIONS['セクシー'] == '性感'
         assert MOVIE_GENRE_TRANSLATIONS['逆レイプ'] == '逆强奸'
 
-    def test_av_genre_review_csv_is_applied_to_movie_map(self):
-        """测试已审核的 AV 流派表已同步到电影流派映射"""
+    def test_reviewed_av_genre_suggestions_are_applied_to_movie_map(self):
+        """测试 2026-07-14 审核版 AV 流派表已同步到电影流派映射"""
         import csv
         from pathlib import Path
 
@@ -1221,14 +1303,14 @@ class TestMediaServerClientGenresMap:
         from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS
 
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
-        review_path = Path(__file__).resolve().parents[3] / 'av_genre_translation_review.csv'
-        manual_overrides = {
-            '恋乳癖': '恋乳癖',
-        }
+        review_path = (
+            Path(__file__).resolve().parents[3]
+            / 'av_genre_translation_suggestions_2026-07-14.csv'
+        )
 
         with review_path.open(encoding='utf-8-sig', newline='') as review_file:
             for row in csv.DictReader(review_file):
                 source = row['原始流派名称'].strip()
-                expected = manual_overrides.get(source, row['建议合并后简体流派名称'].strip())
+                expected = row['建议合并后简体流派名称'].strip()
 
                 assert operator._resolve_genre_translation(source, MOVIE_GENRE_TRANSLATIONS) == expected

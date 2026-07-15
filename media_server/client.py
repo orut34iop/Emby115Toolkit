@@ -496,17 +496,71 @@ class MediaServerClient:
     def _build_genre_items(translated_genres, genre_item_ids):
         return [{'Name': genre, 'Id': genre_item_ids.get(genre, '')} for genre in translated_genres]
 
-    def _get_genre_update_items_response(self, include_item_types, params):
+    def _get_genre_update_items(self, include_item_types, params):
         if self.server_type != 'jellyfin':
-            return self._request('get', '/Items', params=params)
+            response = self._request('get', '/Items', params=params)
+            if response.status_code != 200:
+                self.logger.error(f"请求失败，状态码: {response.status_code}")
+                self.logger.error(response.text)
+                return None
+            return response.json().get('Items', [])
 
         self.user_id = self.user_id or self.emby_get_user_id()
         if not self.user_id:
             self.logger.error("Failed to retrieve user ID.")
             return None
 
-        path = f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/Items"
-        return self._request('get', path, params=params)
+        quoted_user_id = urllib.parse.quote(str(self.user_id), safe='')
+        views_path = f"/Users/{quoted_user_id}/Views"
+        views_response = self._request('get', views_path, params={'api_key': self.api_key})
+        if views_response.status_code != 200:
+            self.logger.error(f"读取 Jellyfin 用户媒体库失败，状态码: {views_response.status_code}")
+            self.logger.error(views_response.text)
+            return None
+
+        expected_collection_types = {
+            'Movie': {'movies', 'mixed'},
+            'Series': {'tvshows', 'mixed'},
+        }.get(include_item_types, set())
+        views = []
+        for view in views_response.json().get('Items', []):
+            view_id = view.get('Id')
+            collection_type = str(view.get('CollectionType') or '').strip().lower()
+            if not view_id:
+                continue
+            if expected_collection_types and collection_type and collection_type not in expected_collection_types:
+                continue
+            views.append(view)
+
+        if not views:
+            self.logger.warning(f"Jellyfin 用户视图中没有找到 {include_item_types} 类型的媒体库")
+            return []
+
+        path = f"/Users/{quoted_user_id}/Items"
+        all_items = []
+        for view in views:
+            if self.stop_flag.is_set():
+                break
+
+            library_params = dict(params)
+            library_params['ParentId'] = view['Id']
+            response = self._request('get', path, params=library_params)
+            if response.status_code != 200:
+                library_name = view.get('Name', view['Id'])
+                self.logger.error(
+                    f"读取 Jellyfin 媒体库“{library_name}”失败，状态码: {response.status_code}"
+                )
+                self.logger.error(response.text)
+                return None
+
+            library_items = response.json().get('Items', [])
+            all_items.extend(library_items)
+            self.logger.info(
+                f"Jellyfin 媒体库“{view.get('Name', view['Id'])}”读取到 "
+                f"{len(library_items)} 个 {include_item_types} 条目"
+            )
+
+        return all_items
 
     def _collect_genre_update_candidates(self, items, genres_map, item_label, progress_callback=None):
         candidates = []
@@ -572,15 +626,11 @@ class MediaServerClient:
             'Limit': '1000000',
         }
 
-        response = self._get_genre_update_items_response(include_item_types, params)
-        if response is None:
-            return updated_items
-        if response.status_code != 200:
-            self.logger.error(f"请求失败，状态码: {response.status_code}")
-            self.logger.error(response.text)
+        items = self._get_genre_update_items(include_item_types, params)
+        if items is None:
             return updated_items
 
-        items = self._unique_items_by_id(response.json().get('Items', []), item_label)
+        items = self._unique_items_by_id(items, item_label)
         total_items = len(items)
         all_genres, all_genreitems, genre_item_ids = self._build_genre_item_index(items)
         self.logger.info(

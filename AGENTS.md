@@ -80,3 +80,4 @@ Use `thread_count` for service thread parameters. `num_threads` is only read as 
 - Prefer small, reviewable changes.
 - Keep shared defaults in `.claw.json`; reserve `.claw/settings.local.json` for machine-local overrides.
 - Do not overwrite existing `AGENTS.md` content automatically; update it intentionally when repo workflows change.
+- After every code, configuration, or documentation change passes verification, immediately commit the intended files and push the commit to the configured remote. Do not leave verified work only in the working tree unless the user explicitly requests otherwise.
