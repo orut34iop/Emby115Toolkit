@@ -293,6 +293,35 @@ class TestSymlinkCreatorCreate:
         assert os.path.islink(os.path.join(target_folder, 'Season 1', 'episode01.mp4'))
         assert os.path.islink(os.path.join(target_folder, 'Season 2', 'episode01.mp4'))
 
+    def test_run_preserves_each_source_folder_name_for_multiple_sources(
+        self, temp_dir, create_test_file_structure
+    ):
+        """多个影片目录分别输入时，目标中应保留每个影片目录名。"""
+        from services.symlink_creator import SymlinkCreator
+
+        structure = {
+            'movies/谜印女子 (2026)/movie.mp4': 'video1',
+            'movies/蕾切尔·尼克尔谋杀案 (2026)/movie.mp4': 'video2',
+        }
+        create_test_file_structure(structure)
+
+        source_folders = [
+            os.path.join(temp_dir, 'movies', '谜印女子 (2026)'),
+            os.path.join(temp_dir, 'movies', '蕾切尔·尼克尔谋杀案 (2026)'),
+        ]
+        target_folder = os.path.join(temp_dir, 'target')
+        creator = SymlinkCreator(
+            link_folders=source_folders,
+            target_folder=target_folder,
+            symlink_mode='symlink',
+        )
+
+        creator.run()
+
+        assert os.path.islink(os.path.join(target_folder, '谜印女子 (2026)', 'movie.mp4'))
+        assert os.path.islink(os.path.join(target_folder, '蕾切尔·尼克尔谋杀案 (2026)', 'movie.mp4'))
+        assert not os.path.lexists(os.path.join(target_folder, 'movie.mp4'))
+
 
 class TestSymlinkCreatorOnlyTvshowNfo:
     """测试 only_tvshow_nfo 选项"""

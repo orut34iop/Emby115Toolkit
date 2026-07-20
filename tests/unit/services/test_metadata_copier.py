@@ -234,6 +234,37 @@ class TestMetadataCopierRun:
         assert os.path.exists(os.path.join(target_folder, 'Movie1.jpg'))
         assert os.path.exists(os.path.join(target_folder, 'Movie2.nfo'))
 
+    def test_run_preserves_each_source_folder_name_for_multiple_sources(
+        self, temp_dir, create_test_file_structure
+    ):
+        """多源元数据复制应与软链接使用相同的影片目录结构。"""
+        from services.metadata_copier import MetadataCopier
+
+        structure = {
+            'movies/谜印女子 (2026)/movie.nfo': 'nfo1',
+            'movies/蕾切尔·尼克尔谋杀案 (2026)/movie.nfo': 'nfo2',
+        }
+        create_test_file_structure(structure)
+
+        source_folders = [
+            os.path.join(temp_dir, 'movies', '谜印女子 (2026)'),
+            os.path.join(temp_dir, 'movies', '蕾切尔·尼克尔谋杀案 (2026)'),
+        ]
+        target_folder = os.path.join(temp_dir, 'target')
+        copier = MetadataCopier(
+            source_folders=source_folders,
+            target_folder=target_folder,
+            allowed_extensions=('.nfo',),
+            thread_count=1,
+        )
+
+        thread = copier.run()
+        thread.join()
+
+        assert os.path.exists(os.path.join(target_folder, '谜印女子 (2026)', 'movie.nfo'))
+        assert os.path.exists(os.path.join(target_folder, '蕾切尔·尼克尔谋杀案 (2026)', 'movie.nfo'))
+        assert not os.path.exists(os.path.join(target_folder, 'movie.nfo'))
+
     def test_run_counters(self, temp_dir, create_test_file_structure):
         """测试计数器"""
         import time

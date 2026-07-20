@@ -318,6 +318,37 @@ def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp
     assert wait_until(qapp, tab.btn_sync_all.isEnabled)
 
 
+def test_export_sync_all_preserves_multiline_source_folder_names(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+
+    movies = tmp_path / "movies"
+    first_source = movies / "谜印女子 (2026)"
+    second_source = movies / "蕾切尔·尼克尔谋杀案 (2026)"
+    target = tmp_path / "target"
+    first_source.mkdir(parents=True)
+    second_source.mkdir(parents=True)
+    target.mkdir()
+    (first_source / "movie.mp4").write_text("video1", encoding="utf-8")
+    (first_source / "movie.nfo").write_text("nfo1", encoding="utf-8")
+    (second_source / "movie.mp4").write_text("video2", encoding="utf-8")
+    (second_source / "movie.nfo").write_text("nfo2", encoding="utf-8")
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.setPlainText(f"{first_source}\n{second_source}")
+    tab.target_edit.setText(str(target))
+    tab.chk_tvshow.setChecked(False)
+
+    tab.sync_all()
+
+    for source in (first_source, second_source):
+        output_folder = target / source.name
+        assert wait_until(qapp, lambda path=output_folder / "movie.mp4": os.path.islink(path))
+        assert wait_until(qapp, lambda path=output_folder / "movie.nfo": path.exists())
+    assert not os.path.lexists(target / "movie.mp4")
+    assert not (target / "movie.nfo").exists()
+    assert wait_until(qapp, tab.btn_sync_all.isEnabled)
+
+
 def test_export_metadata_overwrite_checkbox_controls_existing_files(qapp, isolated_config, tmp_path):
     from macos_gui.symlink_export_tab import SymlinkExportTab
 

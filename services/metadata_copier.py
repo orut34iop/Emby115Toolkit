@@ -58,6 +58,17 @@ class MetadataCopier:
         self.stop_flag.set()
         self.logger.info("已请求停止元数据下载")
 
+    def _relative_target_path(self, source_file, root_directory):
+        """计算目标相对路径，多源导出时保留源文件夹名称。"""
+        relative_path = os.path.relpath(source_file, root_directory)
+        if len(self.source_folders) <= 1:
+            return relative_path
+
+        source_name = os.path.basename(os.path.normpath(root_directory))
+        if not source_name:
+            return relative_path
+        return os.path.join(source_name, relative_path)
+
     def copy_metadata(self, source, target_file, thread_name):
         try:
             if os.path.exists(target_file):
@@ -90,8 +101,7 @@ class MetadataCopier:
                 break
 
             source_file, source_folder, root_directory = item
-            # 与 SymlinkCreator 保持一致：目标路径相对源目录本身计算。
-            relative_path = os.path.relpath(source_file, root_directory)
+            relative_path = self._relative_target_path(source_file, root_directory)
             target_file = os.path.join(self.target_folder, relative_path)
 
             # 确保目标文件夹存在，如果不存在则创建

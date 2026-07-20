@@ -219,6 +219,16 @@ class SymlinkCreator:
                     f"创建{self.symlink_name}进度: {index}/{total}，新建 {self.created_links}，已存在 {self.existing_links}，失败 {self.error_count}",
                 )
 
+    def _target_folder_for_source(self, source_folder: str) -> str:
+        """多源导出时保留每个源文件夹名，避免内容平铺和重名冲突。"""
+        if len(self.link_folders) <= 1:
+            return self.target_folder
+
+        source_name = os.path.basename(os.path.normpath(source_folder))
+        if not source_name:
+            return self.target_folder
+        return os.path.join(self.target_folder, source_name)
+
     def _create_symlink(self, src: str, dst: str) -> None:
         """创建符号链接"""
         try:
@@ -339,7 +349,8 @@ class SymlinkCreator:
                 return
 
             send_message("开始创建链接...")
-            self.create(files, self.target_folder, callback=callback)
+            source_target_folder = self._target_folder_for_source(source_folder)
+            self.create(files, source_target_folder, callback=callback)
             total_created += self.created_links
             total_existing += self.existing_links
 
