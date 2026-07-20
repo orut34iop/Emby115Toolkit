@@ -39,6 +39,26 @@ def temp_dir():
 
 
 @pytest.fixture
+def isolated_config(temp_dir, monkeypatch):
+    """让配置集成测试只读写临时目录，不接触项目的真实 config.yaml。"""
+    from utils.config import Config
+
+    def initialize(self):
+        self.config_dir = temp_dir
+        self.config_file = os.path.join(temp_dir, 'config.yaml')
+        if not os.path.exists(self.config_file):
+            self._create_default_config()
+        self._load_config()
+
+    Config._instance = None
+    Config._config = None
+    monkeypatch.setattr(Config, '_initialize', initialize)
+    yield Config
+    Config._instance = None
+    Config._config = None
+
+
+@pytest.fixture
 def sample_nfo_content():
     """返回示例 NFO 文件内容"""
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

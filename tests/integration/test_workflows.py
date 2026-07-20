@@ -255,16 +255,15 @@ class TestTreeMirrorWorkflow:
 class TestConfigIntegration:
     """测试配置模块集成"""
 
-    def test_config_with_symlink_creator(self, temp_dir, monkeypatch):
+    def test_config_with_symlink_creator(self, temp_dir, isolated_config):
         """测试配置与 SymlinkCreator 集成"""
-        monkeypatch.chdir(temp_dir)
-
         from services.symlink_creator import SymlinkCreator
         from utils.config import Config
 
         Config._instance = None
 
         config = Config()
+        assert config.config_file == os.path.join(temp_dir, 'config.yaml')
 
         # 设置配置值
         config.set('symlink_export', 'target_folder', '/test/target')
@@ -289,16 +288,15 @@ class TestConfigIntegration:
         assert creator.thread_count == 8
         assert creator.only_tvshow_nfo == False
 
-    def test_config_with_emby_operator(self, temp_dir, monkeypatch):
+    def test_config_with_emby_operator(self, temp_dir, isolated_config):
         """测试配置与 MediaServerClient 集成"""
-        monkeypatch.chdir(temp_dir)
-
         from media_server.client import MediaServerClient
         from utils.config import Config
 
         Config._instance = None
 
         config = Config()
+        assert config.config_file == os.path.join(temp_dir, 'config.yaml')
 
         # 设置 Emby 配置
         config.set('version_merge', 'server_url', 'http://emby-server:8096')
