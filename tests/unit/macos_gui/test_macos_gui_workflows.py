@@ -116,7 +116,7 @@ def test_symlink_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_c
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.clear()
-    tab.link_list.addItem(str(source))
+    tab.link_list.setPlainText(str(source))
     tab.target_edit.setText(str(target))
     tab.chk_tvshow.setChecked(False)
     tab.create_symlink()
@@ -147,7 +147,7 @@ def test_symlink_export_tab_load_preserves_saved_config(qapp, isolated_config, t
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
 
-    assert tab.link_list.item(0).text() == '/saved/source'
+    assert tab.link_list.toPlainText() == '/saved/source'
     assert tab.target_edit.text() == '/saved/target'
     assert tab.spin_threads.value() == 9
     assert tab.chk_replace.isChecked()
@@ -179,13 +179,41 @@ def test_symlink_export_tab_path_edits_persist_to_config(qapp, isolated_config, 
     assert reloaded['symlink_export']['target_folder'] == '/manual/target'
 
 
+def test_symlink_export_tab_accepts_multiline_folder_paths(qapp, isolated_config, tmp_path):
+    from macos_gui.symlink_export_tab import SymlinkExportTab
+    from utils.config import Config
+
+    tab = SymlinkExportTab(str(tmp_path / "logs"))
+    tab.link_list.setPlainText(
+        "  /media/movies/谜印女子 (2026)  \n"
+        "\n"
+        "/media/movies/蕾切尔·尼克尔谋杀案 (2026)\n"
+        "/media/movies/追杀51号 (2025)"
+    )
+    tab.target_edit.setText('/manual/target')
+    qapp.processEvents()
+
+    expected_folders = [
+        '/media/movies/谜印女子 (2026)',
+        '/media/movies/蕾切尔·尼克尔谋杀案 (2026)',
+        '/media/movies/追杀51号 (2025)',
+    ]
+    assert tab.link_list.folders() == expected_folders
+    assert tab._collect_export_config('link')['link_folders'] == expected_folders
+
+    saved_config = Config()
+    with open(saved_config.config_file, 'r', encoding='utf-8') as f:
+        reloaded = yaml.safe_load(f)
+    assert reloaded['symlink_export']['link_folders'] == expected_folders
+
+
 def test_symlink_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_config, tmp_path):
     from macos_gui.symlink_export_tab import SymlinkExportTab
     from utils.config import Config
 
     first_tab = SymlinkExportTab(str(tmp_path / "logs"))
     first_tab.link_list.clear()
-    first_tab.link_list.addItem('/runtime/source')
+    first_tab.link_list.setPlainText('/runtime/source')
     first_tab.target_edit.setText('/runtime/target')
     first_tab.spin_threads.setValue(7)
     first_tab.chk_tvshow.setChecked(False)
@@ -197,7 +225,7 @@ def test_symlink_export_tab_rerun_loads_previous_runtime_config(qapp, isolated_c
 
     second_tab = SymlinkExportTab(str(tmp_path / "logs"))
 
-    assert second_tab.link_list.item(0).text() == '/runtime/source'
+    assert second_tab.link_list.toPlainText() == '/runtime/source'
     assert second_tab.target_edit.text() == '/runtime/target'
     assert second_tab.spin_threads.value() == 7
     assert not second_tab.chk_tvshow.isChecked()
@@ -217,7 +245,7 @@ def test_export_create_symlink_shows_progress_logs(qapp, isolated_config, tmp_pa
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.clear()
-    tab.link_list.addItem(str(source))
+    tab.link_list.setPlainText(str(source))
     tab.target_edit.setText(str(target))
 
     tab.create_symlink()
@@ -246,7 +274,7 @@ def test_export_sync_all_runs_in_background(qapp, isolated_config, tmp_path, mon
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.clear()
-    tab.link_list.addItem(str(source))
+    tab.link_list.setPlainText(str(source))
     tab.target_edit.setText(str(target))
 
     def slow_metadata(config):
@@ -279,7 +307,7 @@ def test_export_sync_all_creates_symlink_and_metadata(qapp, isolated_config, tmp
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.clear()
-    tab.link_list.addItem(str(source))
+    tab.link_list.setPlainText(str(source))
     tab.target_edit.setText(str(target))
     tab.chk_tvshow.setChecked(False)
 
@@ -303,7 +331,7 @@ def test_export_metadata_overwrite_checkbox_controls_existing_files(qapp, isolat
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.clear()
-    tab.link_list.addItem(str(source))
+    tab.link_list.setPlainText(str(source))
     tab.target_edit.setText(str(target))
     tab.chk_tvshow.setChecked(False)
 

@@ -16,9 +16,8 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -71,19 +70,32 @@ class DropLineEdit(QLineEdit):
             self.files_dropped.emit(files)
 
 
-class DropListWidget(QListWidget):
-    """支持拖拽的列表框 - 支持多个文件夹拖拽"""
+class DropFolderTextEdit(QPlainTextEdit):
+    """支持输入多行路径和拖拽多个文件夹的文本框。"""
 
     files_dropped = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 启用拖拽接收
         self.setAcceptDrops(True)
-        # 设置拖拽模式为只接收（不启用内部拖拽）
-        self.setDragDropMode(QListWidget.DropOnly)
-        # 设置选择模式为多选
-        self.setSelectionMode(QListWidget.ExtendedSelection)
+        self.setPlaceholderText("每行输入一个文件夹路径，也可拖拽或点击添加")
+
+    def folders(self):
+        """返回文本框中的非空文件夹路径。"""
+        return [line.strip() for line in self.toPlainText().splitlines() if line.strip()]
+
+    def set_folders(self, folders):
+        """使用文件夹路径列表替换文本内容。"""
+        self.setPlainText("\n".join(str(folder).strip() for folder in folders if str(folder).strip()))
+
+    def add_folders(self, folders):
+        """将文件夹路径追加到文本中，避免重复。"""
+        current_folders = self.folders()
+        for folder in folders:
+            folder = str(folder).strip()
+            if folder and folder not in current_folders:
+                current_folders.append(folder)
+        self.set_folders(current_folders)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         """拖拽进入 - 接受 URL 拖拽"""
@@ -114,9 +126,7 @@ class DropListWidget(QListWidget):
                 files.append(path)
 
         if files:
-            for f in files:
-                item = QListWidgetItem(f)
-                self.addItem(item)
+            self.add_folders(files)
             self.files_dropped.emit(files)
 
 
@@ -142,12 +152,13 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
         folder_layout = QVBoxLayout()
 
         # 链接文件夹
-        link_label = QLabel("链接文件夹（拖拽或点击添加）：")
+        link_label = QLabel("链接文件夹（每行一个路径，可粘贴、拖拽或点击添加）：")
         folder_layout.addWidget(link_label)
 
-        self.link_list = DropListWidget()
+        self.link_list = DropFolderTextEdit()
         self.link_list.setMaximumHeight(100)
         self.link_list.files_dropped.connect(self.on_link_folders_dropped)
+        self.link_list.textChanged.connect(self.save_config)
         folder_layout.addWidget(self.link_list)
 
         link_btn_layout = QHBoxLayout()
@@ -303,9 +314,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
         """浏览链接文件夹"""
         folder = QFileDialog.getExistingDirectory(self, "选择链接文件夹")
         if folder:
-            item = QListWidgetItem(folder)
-            self.link_list.addItem(item)
-            self.save_config()
+            self.link_list.add_folders([folder])
 
     def browse_target_folder(self):
         """浏览目标文件夹"""
@@ -325,10 +334,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
         try:
             # 加载链接文件夹
             link_folders = self.config.get('symlink_export', 'link_folders', [])
-            self.link_list.clear()
-            for folder in link_folders:
-                if folder:
-                    self.link_list.addItem(QListWidgetItem(folder))
+            self.link_list.set_folders(link_folders)
 
             # 加载目标文件夹
             target = self.config.get('symlink_export', 'target_folder', '')
@@ -362,12 +368,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
         if self._loading_config:
             return
 
-        # 获取链接文件夹列表
-        link_folders = []
-        for i in range(self.link_list.count()):
-            item = self.link_list.item(i)
-            if item:
-                link_folders.append(item.text())
+        link_folders = self.link_list.folders()
 
         self.config.set('symlink_export', 'link_folders', link_folders)
         self.config.set('symlink_export', 'target_folder', self.target_edit.text())
@@ -438,11 +439,7 @@ class SymlinkExportTab(BackgroundTaskMixin, QWidget):
         self._start_background_task("全同步", task)
 
     def _collect_export_config(self, mode):
-        link_folders = []
-        for i in range(self.link_list.count()):
-            item = self.link_list.item(i)
-            if item:
-                link_folders.append(item.text())
+        link_folders = self.link_list.folders()
 
         target_folder = self.target_edit.text()
 
