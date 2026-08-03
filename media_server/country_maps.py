@@ -16,6 +16,7 @@ COUNTRY_TRANSLATIONS = {
     'Canada': '加拿大',
     'che': '瑞士',
     'Chile': '智利',
+    'CN': '中国',
     'China': '中国',
     'chn': '中国',
     'Colombia': '哥伦比亚',

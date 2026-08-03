@@ -937,6 +937,9 @@ class TestMediaServerClientServerType:
                 'Japan',
                 'jpn',
                 '日本',
+                'CN',
+                'China',
+                '中国',
                 'Hong Kong',
                 '中国香港特别行政区',
                 'US',
@@ -944,7 +947,7 @@ class TestMediaServerClientServerType:
                 'Soviet Union',
                 ' ',
             ]
-        ) == ['日本', '中国香港', '美国', '苏联']
+        ) == ['日本', '中国', '中国香港', '美国', '苏联']
 
     def test_country_translation_is_case_insensitive_and_preserves_historical_regions(self):
         from media_server.client import MediaServerClient
