@@ -45,6 +45,16 @@ VIDEO_EXTENSIONS = {
     '.mts',
 }
 
+AV_PROVIDER_KEYS = (
+    'num',
+    'javbus',
+    'javdb',
+    'javlibrary',
+    'dmm',
+    'mgstage',
+    'cid',
+)
+
 GENRE_NORMALIZATION_TRANSLATION = str.maketrans(
     {
         '　': ' ',
@@ -1342,6 +1352,44 @@ class MediaServerClient:
                 grouped_movies[provider_value].append(movie)
         return grouped_movies
 
+    @staticmethod
+    def _normalize_av_identity(provider_value, provider_key=''):
+        value = unicodedata.normalize('NFKC', str(provider_value or '')).strip().upper()
+        value = re.sub(r'\s+', '', value).replace('_', '-')
+        value = re.sub(r'[‐‑‒–—―]+', '-', value)
+        if not value:
+            return ''
+
+        compact_match = re.fullmatch(r'([A-Z]+)-?0*(\d+)', value)
+        if compact_match:
+            prefix, number = compact_match.groups()
+            return f"{prefix}-{str(int(number)).zfill(3)}"
+
+        if str(provider_key or '').casefold() == 'cid':
+            return value
+        return value
+
+    def _get_av_identity(self, movie):
+        provider_ids = movie.get('ProviderIds', {}) or {}
+        normalized_provider_ids = {
+            str(key).casefold(): value
+            for key, value in provider_ids.items()
+            if value
+        }
+        for provider_key in AV_PROVIDER_KEYS:
+            provider_value = normalized_provider_ids.get(provider_key)
+            if provider_value:
+                return self._normalize_av_identity(provider_value, provider_key)
+        return ''
+
+    def group_movies_by_av_identity(self, movies):
+        grouped_movies = {}
+        for movie in movies:
+            identity = self._get_av_identity(movie)
+            if identity:
+                grouped_movies.setdefault(identity, []).append(movie)
+        return grouped_movies
+
     def _count_mergeable_groups(self, grouped_movies):
         return sum(1 for movies in grouped_movies.values() if len(movies) > 1)
 
@@ -1620,7 +1668,7 @@ class MediaServerClient:
             self.logger.info(f"TMDB 已合并版本，共 {len(merged_movies)} 部影片")
 
             self.logger.info("开始检查 AV 番号版本")
-            all_av_groups = self.group_movies_by_provider_id(all_movies, "num")
+            all_av_groups = self.group_movies_by_av_identity(all_movies)
             if not all_av_groups:
                 self.logger.info("未发现 AV 番号数据，跳过 AV 合并")
             else:

@@ -132,7 +132,7 @@ class TestMediaServerClientServerType:
         assert requests_made[0][2]['params']['Ids'] == '1,2'
         assert 'ids' not in requests_made[0][2]['params']
 
-    def test_merge_versions_runs_tmdb_then_av_num(self, monkeypatch):
+    def test_merge_versions_runs_tmdb_then_av_identity(self, monkeypatch):
         from media_server.client import MediaServerClient
 
         requests_made = []
@@ -148,7 +148,12 @@ class TestMediaServerClientServerType:
             {'Id': 'tmdb-1', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-1080p.mkv'},
             {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
             {'Id': 'av-1', 'Name': 'AARM-009', 'ProviderIds': {'num': 'AARM-009'}, 'Path': '/path/AARM-009.mp4'},
-            {'Id': 'av-2', 'Name': 'AARM-009-C', 'ProviderIds': {'Num': 'AARM-009'}, 'Path': '/path/AARM-009-C.mp4'},
+            {
+                'Id': 'av-2',
+                'Name': 'AARM-009-C',
+                'ProviderIds': {'javbus': 'AARM-009'},
+                'Path': '/path/AARM-009-C.mp4',
+            },
             {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
         ]
         monkeypatch.setattr('media_server.client.requests.request', fake_request)
@@ -1329,6 +1334,64 @@ class TestMediaServerClientGroupMovies:
 
         assert list(result.keys()) == ['AARM-009']
         assert [movie['Id'] for movie in result['AARM-009']] == ['1', '2']
+
+    def test_group_movies_by_av_identity_unifies_num_javbus_and_cid(self):
+        """不同 NFO provider 类型中的同一 AV 番号应进入同一版本组。"""
+        from media_server.client import MediaServerClient
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+        movies = [
+            {'Id': '1', 'Name': 'AARM-009', 'ProviderIds': {'Num': 'AARM-009'}},
+            {'Id': '2', 'Name': 'AARM-009-C', 'ProviderIds': {'javbus': 'aarm-009'}},
+            {'Id': '3', 'Name': 'AARM-009 Other', 'ProviderIds': {'cid': 'aarm00009'}},
+            {'Id': '4', 'Name': 'Standard Movie', 'ProviderIds': {'Tmdb': '9', 'Imdb': 'tt0000009'}},
+        ]
+
+        result = operator.group_movies_by_av_identity(movies)
+
+        assert list(result.keys()) == ['AARM-009']
+        assert [movie['Id'] for movie in result['AARM-009']] == ['1', '2', '3']
+
+    def test_jellyfin_av_identity_merges_existing_versions_with_javbus_single(self, monkeypatch):
+        """已有多版本 Num 条目遇到单版本 javbus 条目时仍应继续合并。"""
+        from media_server.client import MediaServerClient
+
+        requests_made = []
+
+        def fake_request(method, url, **kwargs):
+            requests_made.append((method, url, kwargs))
+            return FakeResponse(status_code=204)
+
+        operator = MediaServerClient(
+            server_url='http://localhost:8096',
+            api_key='test-api-key',
+            username='wiz',
+            server_type='jellyfin',
+        )
+        operator.validate_server_type = lambda: True
+        operator._start_background_task = lambda target, task_name: target()
+        operator.get_movie_media = lambda: [
+            {
+                'Id': 'merged-num',
+                'Name': 'AARM-009',
+                'ProviderIds': {'Num': 'AARM-009', 'cid': 'aarm00009'},
+                'MediaSourceCount': 3,
+            },
+            {
+                'Id': 'single-javbus',
+                'Name': 'AARM-009',
+                'ProviderIds': {'javbus': 'AARM-009'},
+                'MediaSourceCount': 1,
+            },
+        ]
+        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+
+        result = operator.merge_versions(lambda _message: None)
+
+        assert [request[2]['params']['ids'] for request in requests_made] == [
+            'merged-num,single-javbus'
+        ]
+        assert [movie['Id'] for movie in result] == ['merged-num']
 
 
 class TestMediaServerClientFindRelatedVideos:
