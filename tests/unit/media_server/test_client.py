@@ -620,6 +620,15 @@ class TestMediaServerClientServerType:
             '纪录片',
         ]
 
+    def test_kids_genre_translation_is_shared_by_movies_and_series(self):
+        from media_server.client import MediaServerClient
+        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS, TV_GENRE_TRANSLATIONS
+
+        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
+
+        assert operator._translate_genres(['Kids'], MOVIE_GENRE_TRANSLATIONS) == ['儿童']
+        assert operator._translate_genres(['Kids'], TV_GENRE_TRANSLATIONS) == ['儿童']
+
     def test_movie_genre_update_resolves_chained_mapping_before_post(self, monkeypatch):
         from media_server.client import MediaServerClient
 
@@ -960,8 +969,16 @@ class TestMediaServerClientServerType:
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
 
         assert operator._translate_production_locations(
-            ['USA', 'united kingdom', 'Czechoslovakia', 'West Germany', 'Serbia and Montenegro']
-        ) == ['美国', '英国', '捷克斯洛伐克', '西德', '塞尔维亚和黑山']
+            [
+                'USA',
+                'united kingdom',
+                'Czechoslovakia',
+                'West Germany',
+                'Serbia and Montenegro',
+                'Namibia',
+                'United Arab Emirates',
+            ]
+        ) == ['美国', '英国', '捷克斯洛伐克', '西德', '塞尔维亚和黑山', '纳米比亚', '阿拉伯联合酋长国']
 
     def test_movie_country_update_changes_only_production_locations(self, monkeypatch):
         from media_server.client import MediaServerClient
