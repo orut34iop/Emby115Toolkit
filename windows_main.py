@@ -17,6 +17,7 @@ if sys.platform == 'win32':
 
     from utils.config import Config
     from utils.logger import setup_logger
+    from utils.media_profiles import get_media_profiles
     from windows_gui import (
         CountryUpdateTab,
         FileMergeTab,
@@ -26,6 +27,7 @@ if sys.platform == 'win32':
         TreeMirrorTab,
         VersionMergeTab,
     )
+    from windows_gui.media_profiles import ProfileManager
 
 
 class EmbyToolkit:
@@ -40,6 +42,16 @@ class EmbyToolkit:
         # 设置日志记录器
         self.logger = setup_logger('EmbyToolkit', log_file=os.path.join(self.log_dir, 'app.log'))
         self.logger.info("应用程序启动")
+
+        self.config = Config()
+        self.profiles = get_media_profiles(self.config)
+        toolbar = ttk.Frame(root)
+        toolbar.pack(fill='x', padx=5, pady=(5, 0))
+        self.profile_button = ttk.Button(toolbar, text='服务配置', command=self.manage_profiles)
+        self.profile_button.pack(side='right')
+        unsubscribe = self.profiles.subscribe(self.refresh_profile_button)
+        root.bind('<Destroy>', lambda e: unsubscribe() if e.widget is root else None, add='+')
+        self.refresh_profile_button()
 
         # 创建选项卡控件
         self.notebook = ttk.Notebook(root)
@@ -87,6 +99,19 @@ class EmbyToolkit:
         CountryUpdateTab(self.tabs["更新地区"], self.log_dir)
         TreeMirrorTab(self.tabs["115目录树镜像"], self.log_dir)  # 添加新的tab页初始化
         self.logger.info("所有选项卡初始化完成")
+
+    def refresh_profile_button(self):
+        self.profile_button.configure(
+            text=f'服务配置  {len(self.profiles.profiles)}', state='disabled' if self.profiles.busy else 'normal'
+        )
+
+    def manage_profiles(self):
+        if self.profiles.busy:
+            return
+        origin = self.notebook.tab(self.notebook.select(), 'text')
+        dialog = ProfileManager(self.root, self.profiles, origin)
+        self.root.wait_window(dialog)
+        self.profile_button.focus_set()
 
     def on_tab_changed(self, event):
         """处理选项卡切换事件"""

@@ -51,7 +51,7 @@ def wait_until(qapp, predicate, timeout=3):
 
 
 def wait_for_tab_idle(qapp, tab, timeout=3):
-    return wait_until(qapp, lambda: not tab.is_task_running(), timeout=timeout)
+    return wait_until(qapp, lambda: not tab.is_task_running() and tab._active_task is None, timeout=timeout)
 
 
 def test_main_window_initializes_all_tabs(qapp, isolated_config):
@@ -85,23 +85,28 @@ def test_main_window_initializes_all_tabs(qapp, isolated_config):
     window.close()
 
 
-def test_country_update_tab_uses_genre_server_settings_as_initial_default(qapp, isolated_config, tmp_path):
+def test_country_update_tab_uses_shared_migrated_genre_profile(qapp, isolated_config, tmp_path):
     from macos_gui.country_update_tab import CountryUpdateTab
     from utils.config import Config
 
-    config = Config()
-    config.set('genre_update', 'server_url', 'http://jellyfin.local')
-    config.set('genre_update', 'api_key', 'genre-api')
-    config.set('genre_update', 'username', 'wiz')
-    config.set('genre_update', 'server_type', 'jellyfin')
-    config.save()
-
-    tab = CountryUpdateTab(str(tmp_path / "logs"))
-
-    assert tab.edit_url.text() == 'http://jellyfin.local'
-    assert tab.edit_api.text() == 'genre-api'
-    assert tab.edit_user.text() == 'wiz'
-    assert tab.radio_jellyfin.isChecked()
+    (tmp_path / 'config.yaml').write_text(
+        yaml.safe_dump(
+            {
+                'genre_update': {
+                    'server_url': 'http://jellyfin.local',
+                    'api_key': 'genre-api',
+                    'username': 'wiz',
+                    'server_type': 'jellyfin',
+                }
+            }
+        )
+    )
+    tab = CountryUpdateTab(str(tmp_path / 'logs'))
+    assert tab.profiles.active['server_url'] == 'http://jellyfin.local'
+    assert tab.profiles.active['api_key'] == 'genre-api'
+    assert tab.profiles.active['username'] == 'wiz'
+    assert 'Jellyfin' in tab.profile_picker.details.text()
+    assert Config().get('media_servers', 'active_profile_id') == tab.profiles.active['id']
 
 
 def test_symlink_export_tab_creates_symlink_and_copies_metadata(qapp, isolated_config, tmp_path):
@@ -185,10 +190,7 @@ def test_symlink_export_tab_accepts_multiline_folder_paths(qapp, isolated_config
 
     tab = SymlinkExportTab(str(tmp_path / "logs"))
     tab.link_list.setPlainText(
-        "  /media/movies/谜印女子 (2026)  \n"
-        "\n"
-        "/media/movies/蕾切尔·尼克尔谋杀案 (2026)\n"
-        "/media/movies/追杀51号 (2025)"
+        "  /media/movies/谜印女子 (2026)  \n\n/media/movies/蕾切尔·尼克尔谋杀案 (2026)\n/media/movies/追杀51号 (2025)"
     )
     tab.target_edit.setText('/manual/target')
     qapp.processEvents()
@@ -464,29 +466,29 @@ def test_emby_tabs_call_operator_methods(qapp, isolated_config, tmp_path, monkey
     monkeypatch.setattr(MediaServerClient, "update_genres", fake_update_genres)
     monkeypatch.setattr(MediaServerClient, "update_countries", fake_update_countries)
 
+    from utils.config import Config
+    from utils.media_profiles import get_media_profiles
+
+    profiles = get_media_profiles(Config())
+
+    def select(url, key, user, kind):
+        profile_id = profiles.save_profile(dict(name=url, server_url=url, api_key=key, username=user, server_type=kind))
+        profiles.select(profile_id)
+
+    select('http://jellyfin.local', 'api', 'wiz', 'jellyfin')
     version_merge_tab = VersionMergeTab(str(tmp_path / "logs"))
-    version_merge_tab.edit_url.setText("http://jellyfin.local")
-    version_merge_tab.edit_api.setText("api")
-    version_merge_tab.edit_user.setText("wiz")
-    version_merge_tab.radio_jellyfin.setChecked(True)
     version_merge_tab.merge_versions()
     assert wait_until(qapp, lambda: len(calls) >= 1)
     assert wait_for_tab_idle(qapp, version_merge_tab)
 
+    select('http://emby.local', 'api', 'user', 'emby')
     genre_update_tab = GenreUpdateTab(str(tmp_path / "logs"))
-    genre_update_tab.edit_url.setText("http://emby.local")
-    genre_update_tab.edit_api.setText("api")
-    genre_update_tab.edit_user.setText("user")
-    genre_update_tab.radio_emby.setChecked(True)
     genre_update_tab.update_genres()
     assert wait_until(qapp, lambda: len(calls) >= 2)
     assert wait_for_tab_idle(qapp, genre_update_tab)
 
+    select('http://jellyfin.local', 'country-api', 'wiz', 'jellyfin')
     country_update_tab = CountryUpdateTab(str(tmp_path / "logs"))
-    country_update_tab.edit_url.setText("http://jellyfin.local")
-    country_update_tab.edit_api.setText("country-api")
-    country_update_tab.edit_user.setText("wiz")
-    country_update_tab.radio_jellyfin.setChecked(True)
     country_update_tab.update_countries()
     assert wait_until(qapp, lambda: len(calls) >= 3)
     assert wait_for_tab_idle(qapp, country_update_tab)
@@ -564,3 +566,173 @@ def test_main_window_confirms_close_while_export_task_running(qapp, isolated_con
     assert not accept_event.ignored
 
     window.close()
+
+
+def test_profile_manager_and_shared_selection_preserve_all_local_pages(qapp, isolated_config):
+    from macos_gui.main_window import MainWindow
+    from macos_gui.media_profiles import ProfileManager
+
+    window = MainWindow()
+    profiles = window.profiles
+    first = profiles.save_profile(
+        dict(
+            name='同机 Jellyfin',
+            group='服务器 A',
+            server_type='jellyfin',
+            server_url='http://a:8096',
+            api_key='one',
+            username='user-a',
+        )
+    )
+    second = profiles.save_profile(
+        dict(
+            name='同机 Emby',
+            group='服务器 A',
+            server_type='emby',
+            server_url='http://a:8097',
+            api_key='two',
+            username='user-b',
+        )
+    )
+    window.show()
+    window.file_merge_tab.metadata_edit.setText('/keep/my/path')
+    for index in range(7):
+        window.tabs.setCurrentIndex(index)
+        qapp.processEvents()
+        assert window.profile_button.isVisible()
+        dialog = ProfileManager(profiles, window.tabs.tabText(index), window)
+        dialog.show()
+        qapp.processEvents()
+        assert dialog.isModal()
+        dialog.load_profile(second)
+        assert profiles.active['id'] == first
+        dialog.use_profile()
+        assert profiles.active['id'] == second
+        assert window.tabs.currentIndex() == index
+        profiles.select(first)
+        dialog.deleteLater()
+    profiles.select(second)
+    for tab in (window.version_merge_tab, window.genre_update_tab, window.country_update_tab):
+        assert tab.profile_picker.combo.currentData() == second
+        assert '8097' in tab.profile_picker.details.text()
+        assert 'user-b' in tab.profile_picker.details.text()
+    assert window.file_merge_tab.metadata_edit.text() == '/keep/my/path'
+    assert not hasattr(window.file_merge_tab, 'profile_picker')
+    window.close()
+
+
+def test_profile_dialog_unsaved_save_failure_and_reload(qapp, isolated_config, monkeypatch):
+    from macos_gui.main_window import MainWindow
+    from macos_gui.media_profiles import ProfileManager
+
+    window = MainWindow()
+    profile_id = window.profiles.save_profile(
+        dict(name='原名称', server_type='jellyfin', server_url='http://a:8096', api_key='key', username='user')
+    )
+    dialog = ProfileManager(window.profiles, '文件合并', window)
+    dialog.show()
+    dialog.fields['name'].setText('新名称')
+    assert dialog.dirty
+    monkeypatch.setattr(QMessageBox, 'question', lambda *a, **k: QMessageBox.Cancel)
+    dialog.reject()
+    assert dialog.isVisible()
+    writer = window.config._write_config
+
+    def fail(*args):
+        raise OSError('模拟磁盘故障')
+
+    monkeypatch.setattr(window.config, '_write_config', fail)
+    dialog.save_profile()
+    assert dialog.dirty
+    assert window.profiles.active['name'] == '原名称'
+    assert '故障' in dialog.feedback.text()
+    monkeypatch.setattr(window.config, '_write_config', writer)
+    dialog.save_profile()
+    assert not dialog.dirty
+    assert window.profiles.active['id'] == profile_id
+    assert window.profiles.active['name'] == '新名称'
+    window.config._load_config()
+    assert window.profiles.active['name'] == '新名称'
+    dialog.reject()
+    window.close()
+
+
+def test_media_locks_survive_progress_and_stop_until_worker_finishes(qapp, isolated_config, monkeypatch):
+    from macos_gui.main_window import MainWindow
+    from media_server.client import MediaServerClient
+
+    window = MainWindow()
+    profiles = window.profiles
+    profile_id = profiles.save_profile(
+        dict(name='A', server_type='jellyfin', server_url='http://a:8096', api_key='api', username='media')
+    )
+    started = {name: threading.Event() for name in ('genre', 'country')}
+    release = {name: threading.Event() for name in ('genre', 'country')}
+
+    def fake_method(name):
+        def method(self, callback=None, **kwargs):
+            def work():
+                started[name].set()
+                callback({'percent': 100})
+                release[name].wait(3)
+                kwargs['state_callback']({name: 'complete'})
+
+            worker = threading.Thread(target=work, daemon=True)
+            worker.start()
+            return worker
+
+        return method
+
+    monkeypatch.setattr(MediaServerClient, 'update_genres', fake_method('genre'))
+    monkeypatch.setattr(MediaServerClient, 'update_countries', fake_method('country'))
+    window.genre_update_tab.update_genres()
+    try:
+        assert wait_until(qapp, started['genre'].is_set)
+        assert not window.country_update_tab.btn_update.isEnabled()
+        assert wait_until(qapp, lambda: window.genre_update_tab.progress_bar.value() == 100)
+        window.genre_update_tab.stop_background_task()
+        assert profiles.busy
+        assert not window.profile_button.isEnabled()
+        release['genre'].set()
+        assert wait_for_tab_idle(qapp, window.genre_update_tab)
+        assert not profiles.busy
+        window.country_update_tab.update_countries()
+        assert wait_until(qapp, started['country'].is_set)
+        assert profiles.busy
+        assert not window.version_merge_tab.profile_picker.combo.isEnabled()
+        window.tabs.setCurrentIndex(0)
+        assert window.symlink_export_tab.btn_create_link.isEnabled()
+        release['country'].set()
+        assert wait_for_tab_idle(qapp, window.country_update_tab)
+        assert not profiles.busy
+        assert window.profile_button.isEnabled()
+        assert profiles.active['id'] == profile_id
+        assert profiles.settings('genre_update')['sync_state'] == {'genre': 'complete'}
+        assert profiles.settings('country_update')['sync_state'] == {'country': 'complete'}
+    finally:
+        for event in release.values():
+            event.set()
+        wait_for_tab_idle(qapp, window.genre_update_tab)
+        wait_for_tab_idle(qapp, window.country_update_tab)
+        window.close()
+
+
+def test_media_worker_failure_releases_selection_lock(qapp, isolated_config, tmp_path, monkeypatch):
+    from macos_gui.version_merge_tab import VersionMergeTab
+    from media_server.client import MediaServerClient
+    from utils.config import Config
+    from utils.media_profiles import get_media_profiles
+
+    profiles = get_media_profiles(Config())
+    profiles.save_profile(dict(name='A', server_type='emby', server_url='http://a', api_key='api', username=''))
+
+    def fail(*args):
+        raise RuntimeError('simulated service failure')
+
+    monkeypatch.setattr(MediaServerClient, 'merge_versions', fail)
+    tab = VersionMergeTab(str(tmp_path / 'logs'))
+    tab.merge_versions()
+    assert wait_for_tab_idle(qapp, tab)
+    assert not profiles.busy
+    assert tab.profile_picker.combo.isEnabled()
+    assert 'simulated service failure' in tab.log_text.toPlainText()

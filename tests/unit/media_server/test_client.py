@@ -1774,3 +1774,18 @@ class TestMediaServerClientGenresMap:
                 expected = row['建议合并后简体流派名称'].strip()
 
                 assert operator._resolve_genre_translation(source, MOVIE_GENRE_TRANSLATIONS) == expected
+
+
+def test_external_cancellation_is_not_cleared_on_worker_start():
+    import threading
+
+    from media_server.client import MediaServerClient
+
+    cancel = threading.Event()
+    cancel.set()
+    calls = []
+    client = MediaServerClient(cancel_event=cancel)
+    worker = client._start_background_task(lambda: calls.append('unexpected write'), 'cancelled')
+    worker.join(timeout=2)
+    assert cancel.is_set()
+    assert calls == []

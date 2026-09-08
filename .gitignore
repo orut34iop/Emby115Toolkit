@@ -54,3 +54,7 @@ config.yaml
 .clawhip/
 .sandbox-home/
 .sandbox-tmp/
+
+# Atomic configuration writes and pre-migration backups (contain credentials)
+.config-*.tmp
+config.yaml.pre-media-profiles-*.bak

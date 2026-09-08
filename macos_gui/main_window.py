@@ -6,9 +6,11 @@ macOS PyQt5 主窗口。
 import os
 import sys
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -16,7 +18,9 @@ from PyQt5.QtWidgets import (
 
 # 导入原有的业务逻辑
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from macos_gui.media_profiles import ProfileManager
 from utils.config import Config
+from utils.media_profiles import get_media_profiles
 
 
 class LogHandler:
@@ -55,6 +59,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config = Config()
+        self.profiles = get_media_profiles(self.config)
         self.log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
         os.makedirs(self.log_dir, exist_ok=True)
 
@@ -77,6 +82,12 @@ class MainWindow(QMainWindow):
         # 创建标签页
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
+        self.profile_button = QPushButton('服务配置')
+        self.profile_button.clicked.connect(self.manage_profiles)
+        self.tabs.setCornerWidget(self.profile_button, Qt.TopRightCorner)
+        unsubscribe = self.profiles.subscribe(self.refresh_profile_button)
+        self.destroyed.connect(unsubscribe)
+        self.refresh_profile_button()
 
         # 初始化各个标签页
         self.init_tabs()
@@ -91,6 +102,18 @@ class MainWindow(QMainWindow):
         # 设置窗口大小
         self.resize(1200, 800)
         self.center_window()
+
+    def refresh_profile_button(self):
+        self.profile_button.setText(f'服务配置  {len(self.profiles.profiles)}')
+        self.profile_button.setEnabled(not self.profiles.busy)
+
+    def manage_profiles(self):
+        if self.profiles.busy:
+            return
+        dialog = ProfileManager(self.profiles, self.tabs.tabText(self.tabs.currentIndex()), self)
+        dialog.exec_()
+        self.profile_button.setFocus()
+        dialog.deleteLater()
 
     def center_window(self):
         """窗口居中"""

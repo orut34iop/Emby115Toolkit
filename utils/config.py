@@ -1,5 +1,8 @@
 import os
 import sys
+import tempfile
+import threading
+from copy import deepcopy
 
 import yaml
 
@@ -41,12 +44,15 @@ KEY_RENAMES = {
 class Config:
     _instance = None
     _config = None
+    _lock = threading.RLock()
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(Config, cls).__new__(cls)
-            cls._instance._initialize()
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                instance = super(Config, cls).__new__(cls)
+                instance._initialize()
+                cls._instance = instance
+            return cls._instance
 
     def _initialize(self):
         """初始化配置"""
@@ -74,6 +80,7 @@ class Config:
     def _get_default_config(self):
         """获取默认配置"""
         return {
+            'media_servers': {'schema_version': 1, 'profiles': [], 'active_profile_id': ''},
             'symlink_export': {
                 'link_suffixes': [
                     '.mkv',
@@ -164,84 +171,87 @@ class Config:
 
         return migrated_config
 
+    def _write_config(self, data):
+        """Replace the whole file atomically; a failed write leaves the previous file intact."""
+        directory = os.path.dirname(self.config_file)
+        os.makedirs(directory, exist_ok=True)
+        fd, path = tempfile.mkstemp(prefix='.config-', suffix='.tmp', dir=directory)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                yaml.safe_dump(data, stream, allow_unicode=True, sort_keys=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(path, self.config_file)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
     def _create_default_config(self):
-        """创建默认配置文件"""
-        os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            yaml.safe_dump(self._get_default_config(), f, allow_unicode=True, sort_keys=False)
+        self._write_config(self._get_default_config())
 
     def _load_config(self):
-        """加载配置文件"""
-        try:
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                loaded_config = yaml.safe_load(f)
+        from utils.media_profiles import migrate_profiles
 
-            # 获取默认配置
-            default_config = self._get_default_config()
+        with self._lock:
+            with open(self.config_file, 'rb') as stream:
+                original = stream.read()
+            loaded = yaml.safe_load(original)
+            if loaded is None:
+                loaded = {}
+            if not isinstance(loaded, dict):
+                raise ValueError('配置文件必须是 YAML 字典；原文件已保留，请修复或恢复备份')
+            # Preserve exact bytes before either legacy-key or service-profile migration.
+            if loaded and 'media_servers' not in loaded:
+                fd, backup = tempfile.mkstemp(
+                    prefix='config.yaml.pre-media-profiles-', suffix='.bak', dir=self.config_dir
+                )
+                try:
+                    with os.fdopen(fd, 'wb') as stream:
+                        stream.write(original)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                except Exception:
+                    os.unlink(backup)
+                    raise
+            loaded = self._migrate_config(loaded)
+            migrate_profiles(loaded)
 
-            # 确保配置不为空
-            if not loaded_config:
-                loaded_config = {}
-            loaded_config = self._migrate_config(loaded_config)
-
-            # 递归合并配置，确保所有默认值都存在
-            def merge_config(default, loaded):
+            def merge_config(default, values):
                 if not isinstance(default, dict):
-                    return loaded if loaded is not None else default
-
-                result = loaded.copy() if loaded else {}
+                    return values if values is not None else default
+                result = values.copy() if isinstance(values, dict) else {}
                 for key, value in default.items():
-                    if key not in result:
-                        result[key] = value
-                    else:
-                        result[key] = merge_config(value, result.get(key))
+                    result[key] = merge_config(value, result[key]) if key in result else deepcopy(value)
                 return result
 
-            self._config = merge_config(default_config, loaded_config)
-
-            # 保存合并后的配置
-            self.save()
-
-        except Exception as e:
-            print(f"加载配置文件失败: {e}")
-            self._config = self._get_default_config()
-            self._create_default_config()
+            candidate = merge_config(self._get_default_config(), loaded)
+            self._write_config(candidate)
+            self._config = candidate
 
     def save(self):
-        """保存配置到文件"""
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(self._config, f, allow_unicode=True, sort_keys=False)
-            return True
-        except Exception as e:
-            print(f"保存配置文件失败: {e}")
-            return False
+        with self._lock:
+            try:
+                self._write_config(self._config)
+                return True
+            except Exception:
+                print('保存配置文件失败，请检查配置目录的权限和可用空间')
+                return False
+
+    def update_section(self, section, update):
+        """Transactional mutation for concurrent service-state callbacks and profile edits."""
+        with self._lock:
+            candidate = deepcopy(self._config)
+            update(candidate[section])
+            self._write_config(candidate)
+            self._config = candidate
 
     def get(self, section, key=None, default=None):
-        """获取配置值
-
-        Args:
-            section: 配置区段名
-            key: 配置键名，如果为None则返回整个区段
-            default: 默认值，当配置不存在时返回
-        """
-        if section not in self._config:
-            return default
-
-        if key is None:
-            return self._config[section]
-
-        return self._config[section].get(key, default)
+        with self._lock:
+            values = self._config.get(section, default)
+            if key is not None:
+                values = values.get(key, default) if isinstance(values, dict) else default
+            return deepcopy(values)
 
     def set(self, section, key, value):
-        """设置配置值
-
-        Args:
-            section: 配置区段名
-            key: 配置键名
-            value: 配置值
-        """
-        if section not in self._config:
-            self._config[section] = {}
-
-        self._config[section][key] = value
+        with self._lock:
+            self._config.setdefault(section, {})[key] = deepcopy(value)

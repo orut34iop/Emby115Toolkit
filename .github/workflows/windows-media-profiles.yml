@@ -1,0 +1,32 @@
+name: Windows media profiles
+on:
+  push:
+    paths:
+      - 'utils/**'
+      - 'windows_gui/**'
+      - 'windows_main.py'
+      - 'tests/**'
+      - 'requirements*.txt'
+      - '.github/workflows/windows-media-profiles.yml'
+  pull_request:
+    paths:
+      - 'utils/**'
+      - 'windows_gui/**'
+      - 'windows_main.py'
+      - 'tests/**'
+      - 'requirements*.txt'
+      - '.github/workflows/windows-media-profiles.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest tests/unit/windows_gui/test_media_profiles_gui.py tests/unit/utils/test_media_profiles.py tests/unit/utils/test_config.py -q

@@ -169,6 +169,7 @@ class MediaServerClient:
         delete_nfo_folder=False,
         logger=None,
         server_type='emby',
+        cancel_event=None,
     ):
         self.server_url = (server_url or "").rstrip("/")
         self.api_key = api_key
@@ -180,7 +181,8 @@ class MediaServerClient:
         self.server_type = self._normalize_server_type(server_type)
         self.detected_server_type = None
         self.api_prefix = self._configured_api_prefix()
-        self.stop_flag = threading.Event()
+        self._external_cancel_event = cancel_event
+        self.stop_flag = cancel_event if cancel_event is not None else threading.Event()
         self._genre_lookup_index_cache = {}
         self._country_lookup_index = {
             self._normalize_country_lookup_name(source): target
@@ -286,9 +288,12 @@ class MediaServerClient:
         self.logger.info("已请求停止当前媒体服务器任务")
 
     def _start_background_task(self, target, task_name):
-        self.stop_flag.clear()
+        if self._external_cancel_event is None:
+            self.stop_flag.clear()
 
         def safe_target():
+            if self.stop_flag.is_set():
+                return
             try:
                 target()
             except Exception as e:
