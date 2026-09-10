@@ -971,6 +971,8 @@ class TestMediaServerClientServerType:
         assert operator._translate_production_locations(
             [
                 'USA',
+                'GB',
+                'uk',
                 'united kingdom',
                 'Czechoslovakia',
                 'West Germany',
