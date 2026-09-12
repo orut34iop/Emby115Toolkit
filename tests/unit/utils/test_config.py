@@ -55,9 +55,9 @@ class TestConfigSingleton:
         assert config.get('version_merge', 'username') == ''
         assert config.get('country_update', 'server_url') == ''
         assert config.get('country_update', 'server_type') == 'emby'
-        assert config.get('genre_update', 'scan_mode') == 'incremental'
-        assert config.get('genre_update', 'sync_state') == {}
-        assert config.get('country_update', 'scan_mode') == 'incremental'
+        for section in ('genre_update', 'country_update'):
+            assert 'scan_mode' not in config.get(section)
+            assert 'sync_state' not in config.get(section)
 
 
 class TestConfigGetSet:

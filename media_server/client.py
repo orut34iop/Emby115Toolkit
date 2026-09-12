@@ -1,5 +1,3 @@
-import hashlib
-import json
 import logging
 import os
 import re
@@ -10,7 +8,6 @@ import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -160,6 +157,8 @@ class RequestFailureResponse:
 
 
 class MediaServerClient:
+    JELLYFIN_PAGE_SIZE = 500
+
     def __init__(
         self,
         server_url=None,
@@ -180,6 +179,7 @@ class MediaServerClient:
         self.logger = logger or logging.getLogger(__name__)
         self.server_type = self._normalize_server_type(server_type)
         self.detected_server_type = None
+        self.server_version = None
         self.api_prefix = self._configured_api_prefix()
         self._external_cancel_event = cancel_event
         self.stop_flag = cancel_event if cancel_event is not None else threading.Event()
@@ -188,10 +188,7 @@ class MediaServerClient:
             self._normalize_country_lookup_name(source): target
             for source, target in COUNTRY_TRANSLATIONS.items()
         }
-        self._sync_min_date_last_saved = None
-        self._sync_started_at = None
-        self._sync_map_hash = None
-        self._sync_had_errors = False
+        self._metadata_had_errors = False
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -200,88 +197,12 @@ class MediaServerClient:
     def _configured_api_prefix(self):
         return '' if self.server_type == 'jellyfin' else '/emby'
 
-    @staticmethod
-    def _stable_mapping_hash(mapping):
-        serialized = json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-        return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+    def _begin_metadata_update(self):
+        self._metadata_had_errors = False
+        self.logger.info("扫描模式：完整扫描")
 
-    def _sync_server_key(self):
-        identity = '|'.join(
-            [
-                self.server_type,
-                self.server_url.rstrip('/').lower(),
-                str(self.username or '').strip().lower(),
-            ]
-        )
-        return hashlib.sha256(identity.encode('utf-8')).hexdigest()
-
-    @staticmethod
-    def _iso_utc_now():
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-
-    @staticmethod
-    def _incremental_since(last_scan_utc, overlap_minutes=5):
-        if not last_scan_utc:
-            return None
-        try:
-            parsed = datetime.fromisoformat(str(last_scan_utc).replace('Z', '+00:00'))
-        except ValueError:
-            return None
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return (parsed.astimezone(timezone.utc) - timedelta(minutes=overlap_minutes)).isoformat().replace(
-            '+00:00', 'Z'
-        )
-
-    def _begin_metadata_sync(self, mapping, full_scan=False, sync_state=None):
-        self._sync_started_at = self._iso_utc_now()
-        self._sync_map_hash = self._stable_mapping_hash(mapping)
-        self._sync_min_date_last_saved = None
-        self._sync_had_errors = False
-        sync_state = sync_state if isinstance(sync_state, dict) else {}
-
-        if full_scan:
-            self.logger.info("扫描模式：完整扫描")
-            return
-        if self.server_type != 'jellyfin':
-            self.logger.info("当前服务器不是 Jellyfin，快速增量模式自动改为完整扫描")
-            return
-        if sync_state.get('server_key') != self._sync_server_key():
-            self.logger.info("未找到当前服务器的增量基线，本次执行完整扫描")
-            return
-        if sync_state.get('map_hash') != self._sync_map_hash:
-            self.logger.info("翻译表已发生变化，本次自动执行完整扫描")
-            return
-
-        incremental_since = self._incremental_since(sync_state.get('last_scan_utc'))
-        if not incremental_since:
-            self.logger.info("增量时间无效或不存在，本次执行完整扫描")
-            return
-
-        self._sync_min_date_last_saved = incremental_since
-        self.logger.info(f"扫描模式：快速增量，从 {incremental_since} 起读取变更条目")
-
-    def _finish_metadata_sync(self, state_callback=None):
-        if self.stop_flag.is_set():
-            self.logger.info("任务已停止，不更新增量扫描基线")
-            return
-        if self._sync_had_errors:
-            self.logger.warning("任务存在读取或写入失败，不更新增量扫描基线，下次将继续补偿处理")
-            return
-        if not self._sync_started_at or not self._sync_map_hash:
-            return
-
-        state = {
-            'server_key': self._sync_server_key(),
-            'map_hash': self._sync_map_hash,
-            'last_scan_utc': self._sync_started_at,
-        }
-        if state_callback:
-            state_callback(state)
-        self.logger.info(f"增量扫描基线已更新至 {self._sync_started_at}")
-
-    def _mark_sync_error(self):
-        self._sync_had_errors = True
+    def _mark_metadata_error(self):
+        self._metadata_had_errors = True
 
     def request_stop(self):
         self.stop_flag.set()
@@ -304,6 +225,13 @@ class MediaServerClient:
         return thread
 
     def _auth_headers(self):
+        if self.server_type == 'jellyfin':
+            # Supported by both 10.11.11 and 12.0 with legacy auth disabled.
+            token = urllib.parse.quote(str(self.api_key or ''), safe='')
+            return {
+                'Authorization': f'MediaBrowser Token="{token}"',
+                'Content-Type': 'application/json',
+            }
         return {
             'X-Emby-Token': self.api_key or '',
             'X-MediaBrowser-Token': self.api_key or '',
@@ -321,11 +249,13 @@ class MediaServerClient:
         return 'Jellyfin' if self.server_type == 'jellyfin' else 'Emby'
 
     def detect_server_type(self, force=False):
-        """检测当前服务器是 Emby 还是 Jellyfin，仅用于校验用户选择。"""
+        """检测服务器类型和版本；共享正式 API 不依赖版本号分支。"""
         if self.detected_server_type and not force:
             return self.detected_server_type
         if force:
             self.detected_server_type = None
+            self.server_version = None
+            self.user_id = None
 
         info_paths = [
             ('', '/System/Info/Public'),
@@ -348,18 +278,27 @@ class MediaServerClient:
                 self.logger.warning(f"服务器识别响应不是 JSON: {url}")
                 continue
 
-            product_text = " ".join(
-                str(info.get(key, '')) for key in ('ProductName', 'ServerName', 'OperatingSystemDisplayName', 'Version')
-            ).lower()
+            if not isinstance(info, dict):
+                self.logger.warning(f"服务器识别响应格式无效: {url}")
+                continue
+
+            # ProductName is authoritative; ServerName can be renamed by the user.
+            product_text = str(info.get('ProductName') or '').lower()
+            if not product_text:
+                product_text = " ".join(
+                    str(info.get(key, '')) for key in ('ServerName', 'OperatingSystemDisplayName')
+                ).lower()
 
             if 'jellyfin' in product_text:
                 self.detected_server_type = 'jellyfin'
-                self.logger.info("已检测到服务器类型: Jellyfin")
+                self.server_version = str(info.get('Version') or '').strip() or None
+                self.logger.info(f"已检测到服务器类型: Jellyfin，版本: {self.server_version or '未知'}")
                 return self.detected_server_type
 
             if 'emby' in product_text:
                 self.detected_server_type = 'emby'
-                self.logger.info("已检测到服务器类型: Emby")
+                self.server_version = str(info.get('Version') or '').strip() or None
+                self.logger.info(f"已检测到服务器类型: Emby，版本: {self.server_version or '未知'}")
                 return self.detected_server_type
 
         self.logger.error("无法检测服务器类型，请检查服务器地址和 API Key")
@@ -384,6 +323,9 @@ class MediaServerClient:
     def _request(self, method, path, *, params=None, data=None, json_body=None, timeout=30):
         headers = self._auth_headers()
         url = self._api_url(path)
+        if self.server_type == 'jellyfin' and params is not None:
+            # Keep credentials out of URLs, including params from shared Emby callers.
+            params = {key: value for key, value in params.items() if key.lower() not in {'api_key', 'apikey'}}
         return requests.request(method, url, headers=headers, params=params, data=data, json=json_body, timeout=timeout)
 
     def _request_with_retries(
@@ -426,6 +368,8 @@ class MediaServerClient:
             "Fields": fields,
             "Limit": "1000000",
         }
+        if self.server_type == 'jellyfin':
+            return self._get_jellyfin_items(params, "读取 Jellyfin 条目列表") or []
         try:
             response = self._request('get', '/Items', params=params)
             response.raise_for_status()
@@ -437,6 +381,64 @@ class MediaServerClient:
         except ValueError:
             self.logger.error("Error parsing JSON response")
         return []
+
+    def _get_jellyfin_items(self, params, label):
+        """读取完整分页列表；读取失败时不把部分结果交给合并或元数据更新。"""
+        page_params = dict(params)
+        page_params.update({
+            'Recursive': 'true',
+            'Limit': self.JELLYFIN_PAGE_SIZE,
+            'EnableTotalRecordCount': 'true',
+            'SortBy': 'SortName',
+            'SortOrder': 'Ascending',
+        })
+        # GenreItems is returned with Genres; it is not a Jellyfin ItemFields value.
+        if 'Fields' in page_params:
+            page_params['Fields'] = ','.join(
+                field.strip() for field in page_params['Fields'].split(',')
+                if field.strip().lower() != 'genreitems'
+            )
+        items = []
+        seen_ids = set()
+        start_index = 0
+        while not self.stop_flag.is_set():
+            page_params['StartIndex'] = start_index
+            try:
+                response = self._request_with_retries(
+                    'get', '/Items', params=dict(page_params), timeout=(5, 120),
+                    retries=2, retry_delay=1,
+                    retry_status_codes={408, 429, 500, 502, 503, 504}, retry_label=label,
+                )
+                response.raise_for_status()
+                result = response.json()
+                if not isinstance(result, dict) or not isinstance(result.get('Items'), list):
+                    raise ValueError("条目列表格式无效")
+                page = result['Items']
+                if any(not isinstance(item, dict) or not item.get('Id') for item in page):
+                    raise ValueError("条目缺少有效 ID")
+                total = result.get('TotalRecordCount')
+                if total is not None and (type(total) is not int or total < 0):
+                    raise ValueError("条目总数格式无效")
+                if not page:
+                    if total is not None and start_index < total:
+                        raise ValueError("分页提前结束，条目列表不完整")
+                    return items
+                new_items = [item for item in page if item['Id'] not in seen_ids]
+                if not new_items:
+                    raise ValueError("服务器返回重复分页，条目列表不完整")
+                items.extend(new_items)
+                seen_ids.update(item['Id'] for item in page)
+                start_index += len(page)
+                if total is not None:
+                    if start_index >= total:
+                        return items
+                elif len(page) < self.JELLYFIN_PAGE_SIZE:
+                    return items
+            except (requests.exceptions.RequestException, ValueError) as err:
+                self.logger.error(f"{label}失败（起始条目 {start_index}）: {err}")
+                self._mark_metadata_error()
+                return None
+        return None
 
     def _prepare_item_update_payload(self, item):
         payload = dict(item)
@@ -698,28 +700,26 @@ class MediaServerClient:
                 )
             except requests.exceptions.RequestException as err:
                 self.logger.error(f"读取 Emby {include_item_types} 条目列表失败: {err}")
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 return None
             if response.status_code != 200:
                 self.logger.error(f"请求失败，状态码: {response.status_code}")
                 self.logger.error(response.text)
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 return None
             return response.json().get('Items', [])
 
         self.user_id = self.user_id or self.emby_get_user_id()
         if not self.user_id:
             self.logger.error("Failed to retrieve user ID.")
-            self._mark_sync_error()
+            self._mark_metadata_error()
             return None
 
-        quoted_user_id = urllib.parse.quote(str(self.user_id), safe='')
-        views_path = f"/Users/{quoted_user_id}/Views"
         try:
             views_response = self._request_with_retries(
                 'get',
-                views_path,
-                params={'api_key': self.api_key},
+                '/UserViews',
+                params={'UserId': self.user_id},
                 timeout=(5, 45),
                 retries=2,
                 retry_delay=1,
@@ -728,12 +728,23 @@ class MediaServerClient:
             )
         except requests.exceptions.RequestException as err:
             self.logger.error(f"读取 Jellyfin 用户媒体库失败: {err}")
-            self._mark_sync_error()
+            self._mark_metadata_error()
             return None
         if views_response.status_code != 200:
             self.logger.error(f"读取 Jellyfin 用户媒体库失败，状态码: {views_response.status_code}")
             self.logger.error(views_response.text)
-            self._mark_sync_error()
+            self._mark_metadata_error()
+            return None
+
+        try:
+            views_result = views_response.json()
+            if not isinstance(views_result, dict) or not isinstance(views_result.get('Items'), list):
+                raise ValueError("媒体库列表格式无效")
+            if any(not isinstance(view, dict) for view in views_result['Items']):
+                raise ValueError("媒体库条目格式无效")
+        except ValueError as err:
+            self.logger.error(f"读取 Jellyfin 用户媒体库失败: {err}")
+            self._mark_metadata_error()
             return None
 
         expected_collection_types = {
@@ -741,7 +752,7 @@ class MediaServerClient:
             'Series': {'tvshows', 'mixed'},
         }.get(include_item_types, set())
         views = []
-        for view in views_response.json().get('Items', []):
+        for view in views_result['Items']:
             view_id = view.get('Id')
             collection_type = str(view.get('CollectionType') or '').strip().lower()
             if not view_id:
@@ -754,7 +765,6 @@ class MediaServerClient:
             self.logger.warning(f"Jellyfin 用户视图中没有找到 {include_item_types} 类型的媒体库")
             return []
 
-        path = f"/Users/{quoted_user_id}/Items"
         all_items = []
         for view in views:
             if self.stop_flag.is_set():
@@ -762,31 +772,13 @@ class MediaServerClient:
 
             library_params = dict(params)
             library_params['ParentId'] = view['Id']
+            library_params['UserId'] = self.user_id
+            library_params['IncludeItemTypes'] = include_item_types
             library_name = view.get('Name', view['Id'])
-            try:
-                response = self._request_with_retries(
-                    'get',
-                    path,
-                    params=library_params,
-                    timeout=(5, 120),
-                    retries=2,
-                    retry_delay=1,
-                    retry_status_codes={408, 429, 500, 502, 503, 504},
-                    retry_label=f"读取 Jellyfin 媒体库“{library_name}”",
-                )
-            except requests.exceptions.RequestException as err:
-                self.logger.error(f"读取 Jellyfin 媒体库“{library_name}”失败: {err}")
-                self._mark_sync_error()
-                return None
-            if response.status_code != 200:
-                self.logger.error(
-                    f"读取 Jellyfin 媒体库“{library_name}”失败，状态码: {response.status_code}"
-                )
-                self.logger.error(response.text)
-                self._mark_sync_error()
+            library_items = self._get_jellyfin_items(library_params, f"读取 Jellyfin 媒体库“{library_name}”")
+            if library_items is None:
                 return None
 
-            library_items = response.json().get('Items', [])
             all_items.extend(library_items)
             self.logger.info(
                 f"Jellyfin 媒体库“{view.get('Name', view['Id'])}”读取到 "
@@ -847,11 +839,9 @@ class MediaServerClient:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': include_item_types,
-            'Fields': 'ProductionLocations,DateLastSaved',
+            'Fields': 'ProductionLocations',
             'Limit': '1000000',
         }
-        if self._sync_min_date_last_saved:
-            params['MinDateLastSaved'] = self._sync_min_date_last_saved
 
         items = self._get_genre_update_items(include_item_types, params)
         if items is None:
@@ -932,7 +922,7 @@ class MediaServerClient:
             processed_count = candidate_index
             if not item:
                 self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 continue
 
             original_locations = self._production_locations_list(item.get('ProductionLocations'))
@@ -952,7 +942,7 @@ class MediaServerClient:
                 if self._should_log_item_update(update_count):
                     self.logger.info(f"{item_label}: {item['Name']} 地区信息已更新。(Total updates: {update_count})")
             else:
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 self.logger.error(
                     f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
                     f"状态码: {update_response.status_code}(Total updates: {update_count})"
@@ -1037,11 +1027,9 @@ class MediaServerClient:
         params = {
             'Recursive': 'true',
             'IncludeItemTypes': include_item_types,
-            'Fields': 'Genres,GenreItems,DateLastSaved',
+            'Fields': 'Genres,GenreItems',
             'Limit': '1000000',
         }
-        if self._sync_min_date_last_saved:
-            params['MinDateLastSaved'] = self._sync_min_date_last_saved
 
         items = self._get_genre_update_items(include_item_types, params)
         if items is None:
@@ -1123,7 +1111,7 @@ class MediaServerClient:
             item = self.get_item_info(item_id)
             if not item:
                 self.logger.error(f"{item_label}ID '{item_id}' 的信息读取失败.(Total updates: {update_count})")
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 continue
 
             original_genres = item.get('Genres', [])
@@ -1168,7 +1156,7 @@ class MediaServerClient:
                 if self._should_log_item_update(update_count):
                     self.logger.info(f"{item_label}: {item['Name']} 流派信息已更新。(Total updates: {update_count})")
             else:
-                self._mark_sync_error()
+                self._mark_metadata_error()
                 self.logger.error(
                     f"{item_label} '{item.get('Name', item_id)}'({item_id}) 更新失败，"
                     f"状态码: {update_response.status_code}(Total updates: {update_count})"
@@ -1497,7 +1485,10 @@ class MediaServerClient:
             users = response.json()
             for user in users:
                 # self.logger.info(f"User Name: {user['Name']}, User ID: {user['Id']}")
-                if user['Name'] == self.username:
+                name_matches = user['Name'] == self.username
+                if self.server_type == 'jellyfin':
+                    name_matches = str(user['Name']).casefold() == str(self.username or '').strip().casefold()
+                if name_matches:
                     self.logger.info(f"User Name: {self.username} if found, User ID is : {user['Id']}")
                     return user['Id']
         else:
@@ -1740,15 +1731,12 @@ class MediaServerClient:
             self.logger.error("Failed to retrieve user ID.")
             return None
 
-        path = (
-            f"/Users/{urllib.parse.quote(str(self.user_id), safe='')}/"
-            f"Items/{urllib.parse.quote(str(movie_id), safe='')}"
-        )
+        path = f"/Items/{urllib.parse.quote(str(movie_id), safe='')}"
         try:
             response = self._request_with_retries(
                 'get',
                 path,
-                params={"api_key": self.api_key},
+                params={'UserId': self.user_id},
                 timeout=(5, 30),
                 retries=1,
                 retry_delay=1,
@@ -1879,18 +1867,11 @@ class MediaServerClient:
             self.logger.error(f"Request failed, status code: {response.status_code}")
             self.logger.error(response.text)
 
-    def update_genres(self, callback=None, full_scan=False, sync_state=None, state_callback=None):
+    def update_genres(self, callback=None):
         self.validate_server_type()
 
         def run_update_genres_check():
-            self._begin_metadata_sync(
-                {
-                    'movies': MOVIE_GENRE_TRANSLATIONS,
-                    'series': TV_GENRE_TRANSLATIONS,
-                },
-                full_scan=full_scan,
-                sync_state=sync_state,
-            )
+            self._begin_metadata_update()
             self.logger.info(f"开始使用 {self._server_label()} 流程更新流派")
             self.logger.info("开始更新影片流派信息...")
             movie_callback = self._scale_progress_callback(callback, 0, 50)
@@ -1916,6 +1897,8 @@ class MediaServerClient:
             series_message = self._format_updated_items_message("剧集", updated_series)
 
             title = "已停止更新流派" if stopped else "完成更新所有影剧流派"
+            if self._metadata_had_errors and not stopped:
+                title = "更新结束，部分条目处理失败，请查看日志"
             message = (
                 f"\n"
                 f"----------------------------------------\n"
@@ -1927,21 +1910,16 @@ class MediaServerClient:
 
             self.logger.info(message)
             self._report_progress(callback, 1, 1, title, percent=100)
-            self._finish_metadata_sync(state_callback)
 
             return message
 
         return self._start_background_task(run_update_genres_check, "更新流派")
 
-    def update_countries(self, callback=None, full_scan=False, sync_state=None, state_callback=None):
+    def update_countries(self, callback=None):
         self.validate_server_type()
 
         def run_update_countries_check():
-            self._begin_metadata_sync(
-                COUNTRY_TRANSLATIONS,
-                full_scan=full_scan,
-                sync_state=sync_state,
-            )
+            self._begin_metadata_update()
             self.logger.info(f"开始使用 {self._server_label()} 流程更新地区")
             self.logger.info("开始更新影片地区信息...")
             movie_callback = self._scale_progress_callback(callback, 0, 50)
@@ -1969,6 +1947,8 @@ class MediaServerClient:
             movies_message = self._format_updated_country_items_message("影片", updated_movies)
             series_message = self._format_updated_country_items_message("剧集", updated_series)
             title = "已停止更新地区" if stopped else "完成更新所有影剧地区"
+            if self._metadata_had_errors and not stopped:
+                title = "更新结束，部分条目处理失败，请查看日志"
             message = (
                 f"\n"
                 f"----------------------------------------\n"
@@ -1979,7 +1959,6 @@ class MediaServerClient:
             )
             self.logger.info(message)
             self._report_progress(callback, 1, 1, title, percent=100)
-            self._finish_metadata_sync(state_callback)
             return message
 
         return self._start_background_task(run_update_countries_check, "更新地区")

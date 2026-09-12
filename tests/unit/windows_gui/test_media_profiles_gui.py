@@ -121,7 +121,7 @@ def test_dialog_unsaved_edit_and_persistence(app, monkeypatch):
     dialog.close()
 
 
-def test_workers_lock_until_join_and_persist_separate_states(app, monkeypatch, tmp_path):
+def test_workers_lock_until_join_without_scan_state(app, monkeypatch, tmp_path):
     from media_server.client import MediaServerClient
     from windows_gui.country_update_tab import CountryUpdateTab
     from windows_gui.genre_update_tab import GenreUpdateTab
@@ -135,12 +135,11 @@ def test_workers_lock_until_join_and_persist_separate_states(app, monkeypatch, t
     country = CountryUpdateTab(frames[1], str(tmp_path))
 
     def fake(index):
-        def method(self, callback, **kwargs):
+        def method(self, callback):
             def work():
                 started[index].set()
                 callback({'percent': 100})
                 release[index].wait(10)
-                kwargs['state_callback']({'worker': index})
 
             worker = threading.Thread(target=work, daemon=True)
             worker.start()
@@ -166,8 +165,8 @@ def test_workers_lock_until_join_and_persist_separate_states(app, monkeypatch, t
         release[1].set()
         pump(root, lambda: country._task_thread is None)
         assert not toolkit.profiles.busy
-        assert toolkit.profiles.settings('genre_update')['sync_state'] == {'worker': 0}
-        assert toolkit.profiles.settings('country_update')['sync_state'] == {'worker': 1}
+        assert toolkit.profiles.settings('genre_update') == {}
+        assert toolkit.profiles.settings('country_update') == {}
     finally:
         for event in release:
             event.set()

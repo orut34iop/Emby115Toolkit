@@ -7,7 +7,6 @@ from weakref import WeakMethod
 
 CONNECTION_KEYS = ('server_type', 'server_url', 'api_key', 'username')
 MEDIA_SECTIONS = ('version_merge', 'genre_update', 'country_update')
-SCAN_SECTIONS = ('genre_update', 'country_update')
 
 
 def connection(profile):
@@ -18,7 +17,15 @@ def migrate_profiles(config):
     """One-time migration. Keep partial legacy entries for repair, never merge by host alone."""
     if 'media_servers' in config:
         validate_store(config['media_servers'])
-        return False
+        changed = False
+        for profile in config['media_servers']['profiles']:
+            for section in ('genre_update', 'country_update'):
+                settings = profile.get('settings', {}).get(section, {})
+                for key in ('scan_mode', 'sync_state'):
+                    if key in settings:
+                        del settings[key]
+                        changed = True
+        return changed
     profiles, identities, section_ids = [], {}, {}
     labels = {'version_merge': '合并版本', 'genre_update': '更新流派', 'country_update': '更新地区'}
     for section in MEDIA_SECTIONS:
@@ -44,13 +51,6 @@ def migrate_profiles(config):
             profiles.append(profile)
         profile = identities[identity]
         section_ids[section] = profile['id']
-        if section in SCAN_SECTIONS:
-            profile['settings'][section] = {
-                'scan_mode': 'full' if old.get('scan_mode') == 'full' else 'incremental',
-                'sync_state': deepcopy(old.get('sync_state', {}))
-                if isinstance(old.get('sync_state', {}), dict)
-                else {},
-            }
     last_section = {3: 'version_merge', 4: 'genre_update', 5: 'country_update'}.get(
         config.get('ui_state', {}).get('selected_tab_index')
     )
@@ -100,7 +100,7 @@ def validate_profile(profile):
 
 
 class MediaProfiles:
-    """One store per Config instance. UI mutations run on the UI thread; callbacks only persist state."""
+    """One store per Config instance. UI mutations run on the UI thread."""
 
     def __init__(self, config):
         self.config = config
@@ -168,9 +168,6 @@ class MediaProfiles:
             if profile_id and previous is None:
                 raise ValueError('编辑的配置已不存在')
             profile['settings'] = deepcopy(previous.get('settings', {})) if previous else {}
-            if previous and connection(previous) != connection(profile):
-                for settings in profile['settings'].values():
-                    settings['sync_state'] = {}
             if previous:
                 data['profiles'][data['profiles'].index(previous)] = profile
             else:
@@ -197,17 +194,6 @@ class MediaProfiles:
         profile = self.active
         return deepcopy(profile.get('settings', {}).get(section, {})) if profile else {}
 
-    def set_scan_mode(self, section, mode):
-        if section not in SCAN_SECTIONS or mode not in ('full', 'incremental'):
-            raise ValueError('扫描模式无效')
-
-        def change(data):
-            for profile in data['profiles']:
-                if profile['id'] == data['active_profile_id']:
-                    profile.setdefault('settings', {}).setdefault(section, {})['scan_mode'] = mode
-
-        self._change(change)
-
     def begin_task(self, section):
         """Freeze all request parameters before launching a worker; release only after join."""
         with self._lock:
@@ -231,23 +217,6 @@ class MediaProfiles:
         with self._lock:
             self._tasks.pop(token, None)
         self._notify()
-
-    def save_task_state(self, token, state):
-        """No UI notification here: this method is invoked from a service worker."""
-        with self._lock:
-            task = self._tasks.get(token)
-            if task is None:
-                return False
-            if not isinstance(state, dict):
-                raise ValueError('增量状态格式无效')
-
-            def change(data):
-                profile = next(p for p in data['profiles'] if p['id'] == task['profile']['id'])
-                profile.setdefault('settings', {}).setdefault(task['section'], {})['sync_state'] = deepcopy(state)
-
-            self.config.update_section('media_servers', change)
-            return True
-
 
 def get_media_profiles(config):
     with config._lock:

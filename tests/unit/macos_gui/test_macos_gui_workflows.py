@@ -670,12 +670,11 @@ def test_media_locks_survive_progress_and_stop_until_worker_finishes(qapp, isola
     release = {name: threading.Event() for name in ('genre', 'country')}
 
     def fake_method(name):
-        def method(self, callback=None, **kwargs):
+        def method(self, callback=None):
             def work():
                 started[name].set()
                 callback({'percent': 100})
                 release[name].wait(3)
-                kwargs['state_callback']({name: 'complete'})
 
             worker = threading.Thread(target=work, daemon=True)
             worker.start()
@@ -707,8 +706,8 @@ def test_media_locks_survive_progress_and_stop_until_worker_finishes(qapp, isola
         assert not profiles.busy
         assert window.profile_button.isEnabled()
         assert profiles.active['id'] == profile_id
-        assert profiles.settings('genre_update')['sync_state'] == {'genre': 'complete'}
-        assert profiles.settings('country_update')['sync_state'] == {'country': 'complete'}
+        assert profiles.settings('genre_update') == {}
+        assert profiles.settings('country_update') == {}
     finally:
         for event in release.values():
             event.set()

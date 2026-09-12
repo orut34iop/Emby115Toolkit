@@ -34,6 +34,10 @@
 ### 3. 媒体库管理
 - 版本合并：支持 Emby/Jellyfin，自动合并相同TMDB ID的影片
 - 流派更新：将英文流派名称转换为中文
+- 地区更新：将影剧制作地区名称转换为中文
+- Jellyfin 10.11.11 / 12.0 自动兼容：只需选择 Jellyfin 并填写服务地址、API Key 和用户名，无需选择版本
+- 流派和地区更新每次完整扫描所选用户的对应媒体库，仅写入需要修改的条目；已移除增量模式及扫描时间基线
+- [Jellyfin 兼容范围和验证说明](docs/jellyfin-compatibility.md)
 ![更新流派](intro/emby更新流派.jpg)
 ![合并版本](intro/emby合并版本.jpg)
 

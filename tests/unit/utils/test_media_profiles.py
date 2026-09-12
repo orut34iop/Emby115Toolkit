@@ -39,7 +39,7 @@ def fields(**overrides):
     )
 
 
-def test_migrates_exact_backup_distinct_instances_and_function_states(config, tmp_path):
+def test_migrates_exact_backup_distinct_instances_and_removes_scan_states(config, tmp_path):
     shared = {k: v for k, v in fields().items() if k not in ('name', 'group')}
     old = dict(
         genre_update=dict(shared, scan_mode='full', sync_state={'genre': 1}),
@@ -55,8 +55,8 @@ def test_migrates_exact_backup_distinct_instances_and_function_states(config, tm
     store = get_media_profiles(conf)
     assert len(store.profiles) == 2
     assert store.active['server_type'] == 'jellyfin'
-    assert store.settings('genre_update') == {'scan_mode': 'full', 'sync_state': {'genre': 1}}
-    assert store.settings('country_update')['sync_state'] == {'country': 2}
+    assert store.settings('genre_update') == {}
+    assert store.settings('country_update') == {}
     assert conf.get('symlink_export', 'target_folder') == '/keep/local'
     backups = list(tmp_path.glob('*.bak'))
     assert len(backups) == 1 and backups[0].read_bytes() == original
@@ -85,11 +85,30 @@ def test_same_host_credentials_type_port_path_are_separate(config):
     assert store.active['id'] == ids[-1]
 
 
-def test_snapshots_locks_parallel_state_and_late_callback(config):
+def test_existing_profiles_drop_incremental_settings_on_reload(config):
+    store = get_media_profiles(config())
+    profile_id = store.save_profile(fields())
+
+    def legacy_settings(data):
+        data['profiles'][0]['settings'] = {
+            'genre_update': {'scan_mode': 'incremental', 'sync_state': {'last_scan_utc': '2026-09-01'}, 'keep': 1},
+            'country_update': {'scan_mode': 'full', 'sync_state': {'last_scan_utc': '2026-09-02'}},
+        }
+
+    store.config.update_section('media_servers', legacy_settings)
+    store.config._load_config()
+    assert store.active['id'] == profile_id
+    assert store.active['api_key'] == 'secret-a'
+    assert store.settings('genre_update') == {'keep': 1}
+    assert store.settings('country_update') == {}
+    store.config._load_config()
+    assert store.settings('genre_update') == {'keep': 1}
+
+
+def test_snapshots_lock_profiles_while_local_settings_can_save(config):
     store = get_media_profiles(config())
     a = store.save_profile(fields())
     b = store.save_profile(fields(name='备机', server_url='http://second:8096'))
-    store.set_scan_mode('genre_update', 'full')
     genre, snapshot = store.begin_task('genre_update')
     with pytest.raises(ValueError):
         store.begin_task('country_update')
@@ -105,37 +124,23 @@ def test_snapshots_locks_parallel_state_and_late_callback(config):
         store.config.update_section('symlink_export', lambda data: data.update(target_folder='/local/kept'))
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(store.save_task_state, genre, {'g': 1}), pool.submit(local_save)]
+        futures = [pool.submit(local_save)]
         for future in futures:
             future.result()
     store.end_task(genre)
     country, _ = store.begin_task('country_update')
-    store.save_task_state(country, {'c': 2})
     store.end_task(country)
     assert not store.busy
     assert store.config.get('symlink_export', 'target_folder') == '/local/kept'
     assert store.active['api_key'] == 'secret-a'
     store.select(b)
     assert store.settings('genre_update') == {}
-    assert not store.save_task_state(genre, {'late': True})
     store.select(a)
-    assert store.settings('genre_update') == {'scan_mode': 'full', 'sync_state': {'g': 1}}
-    assert store.settings('country_update')['sync_state'] == {'c': 2}
+    assert store.settings('genre_update') == {}
+    assert store.settings('country_update') == {}
     store.config._load_config()
-    assert store.settings('genre_update')['sync_state'] == {'g': 1}
-    assert store.settings('country_update')['sync_state'] == {'c': 2}
-
-
-def test_rename_preserves_baseline_connection_edit_resets_it(config):
-    store = get_media_profiles(config())
-    profile_id = store.save_profile(fields())
-    token, _ = store.begin_task('genre_update')
-    store.save_task_state(token, {'last': 'yesterday'})
-    store.end_task(token)
-    store.save_profile(fields(name='renamed'), profile_id)
-    assert store.settings('genre_update')['sync_state'] == {'last': 'yesterday'}
-    store.save_profile(fields(api_key='changed-scope'), profile_id)
-    assert store.settings('genre_update')['sync_state'] == {}
+    assert store.settings('genre_update') == {}
+    assert store.settings('country_update') == {}
 
 
 def test_write_failure_keeps_disk_and_memory(config, monkeypatch):

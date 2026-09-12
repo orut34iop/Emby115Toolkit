@@ -426,7 +426,7 @@ class TestMediaServerClientServerType:
 
         assert operator.jellyfin_get_item_info('movie1')['Name'] == 'Movie'
         assert requests_made[0][0] == 'get'
-        assert requests_made[0][1] == 'http://localhost:8096/Users/user1/Items/movie1'
+        assert requests_made[0][1] == 'http://localhost:8096/Items/movie1'
 
     def test_jellyfin_item_detail_timeout_returns_none(self, monkeypatch):
         from media_server.client import MediaServerClient
@@ -459,7 +459,7 @@ class TestMediaServerClientServerType:
         def fake_request(method, url, **kwargs):
             requests_made.append((method, url, kwargs))
             assert method == 'get'
-            if url == 'http://localhost:8096/Users/user1/Views':
+            if url == 'http://localhost:8096/UserViews':
                 return FakeResponse(
                     payload={
                         'Items': [
@@ -467,7 +467,7 @@ class TestMediaServerClientServerType:
                         ]
                     }
                 )
-            assert url == 'http://localhost:8096/Users/user1/Items'
+            assert url == 'http://localhost:8096/Items'
             assert kwargs['params']['ParentId'] == 'library1'
             return FakeResponse(
                 payload={
@@ -511,8 +511,8 @@ class TestMediaServerClientServerType:
         assert updates[0][0] == 'movie1'
         assert updates[0][1]['Genres'] == ['动作']
         assert [request[1] for request in requests_made] == [
-            'http://localhost:8096/Users/user1/Views',
-            'http://localhost:8096/Users/user1/Items',
+            'http://localhost:8096/UserViews',
+            'http://localhost:8096/Items',
         ]
 
     def test_jellyfin_genre_update_enumerates_movie_views_and_deduplicates_items(self, monkeypatch):
@@ -526,7 +526,7 @@ class TestMediaServerClientServerType:
 
         def fake_request(method, path, params=None, **_kwargs):
             assert method == 'get'
-            if path == '/Users/user1/Views':
+            if path == '/UserViews':
                 return FakeResponse(
                     payload={
                         'Items': [
@@ -537,7 +537,7 @@ class TestMediaServerClientServerType:
                     }
                 )
 
-            assert path == '/Users/user1/Items'
+            assert path == '/Items'
             item_requests.append(params.copy())
             if params['ParentId'] == 'movies1':
                 return FakeResponse(
@@ -814,95 +814,6 @@ class TestMediaServerClientServerType:
         assert next(event for event in progress_events if event['message'] == '剧集阶段开始')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集阶段完成')['percent'] == 100
 
-    def test_update_genres_uses_incremental_timestamp_and_persists_new_baseline(self, monkeypatch):
-        from media_server.client import MediaServerClient
-        from media_server.genre_maps import MOVIE_GENRE_TRANSLATIONS, TV_GENRE_TRANSLATIONS
-
-        operator = MediaServerClient(
-            server_url='http://localhost:8096',
-            api_key='test-api-key',
-            username='wiz',
-            server_type='jellyfin',
-        )
-        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
-        requested_params = []
-        monkeypatch.setattr(
-            operator,
-            '_get_genre_update_items',
-            lambda _item_type, params: requested_params.append(params.copy()) or [],
-        )
-        saved_states = []
-        sync_state = {
-            'server_key': operator._sync_server_key(),
-            'map_hash': operator._stable_mapping_hash(
-                {'movies': MOVIE_GENRE_TRANSLATIONS, 'series': TV_GENRE_TRANSLATIONS}
-            ),
-            'last_scan_utc': '2026-07-15T10:00:00Z',
-        }
-
-        thread = operator.update_genres(sync_state=sync_state, state_callback=saved_states.append)
-        thread.join(timeout=2)
-
-        assert not thread.is_alive()
-        assert len(requested_params) == 2
-        assert {params['MinDateLastSaved'] for params in requested_params} == {'2026-07-15T09:55:00Z'}
-        assert len(saved_states) == 1
-        assert saved_states[0]['server_key'] == operator._sync_server_key()
-        assert saved_states[0]['map_hash'] == sync_state['map_hash']
-
-    def test_update_genres_map_change_forces_full_scan(self, monkeypatch):
-        from media_server.client import MediaServerClient
-
-        operator = MediaServerClient(
-            server_url='http://localhost:8096',
-            api_key='test-api-key',
-            username='wiz',
-            server_type='jellyfin',
-        )
-        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
-        requested_params = []
-        monkeypatch.setattr(
-            operator,
-            '_get_genre_update_items',
-            lambda _item_type, params: requested_params.append(params.copy()) or [],
-        )
-        sync_state = {
-            'server_key': operator._sync_server_key(),
-            'map_hash': 'outdated-map',
-            'last_scan_utc': '2026-07-15T10:00:00Z',
-        }
-
-        thread = operator.update_genres(sync_state=sync_state)
-        thread.join(timeout=2)
-
-        assert not thread.is_alive()
-        assert len(requested_params) == 2
-        assert all('MinDateLastSaved' not in params for params in requested_params)
-
-    def test_update_genres_does_not_advance_baseline_after_error(self, monkeypatch):
-        from media_server.client import MediaServerClient
-
-        operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')
-        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
-
-        def fake_update_movies(progress_callback=None):
-            operator._mark_sync_error()
-            return []
-
-        monkeypatch.setattr(operator, 'emby_movie_translate_genres_and_update_whole_item', fake_update_movies)
-        monkeypatch.setattr(
-            operator,
-            'emby_tv_translate_genres_and_update_whole_item',
-            lambda progress_callback=None: [],
-        )
-        saved_states = []
-
-        thread = operator.update_genres(state_callback=saved_states.append)
-        thread.join(timeout=2)
-
-        assert not thread.is_alive()
-        assert saved_states == []
-
     def test_movie_genre_update_rescans_stale_candidates(self, monkeypatch):
         from media_server.client import MediaServerClient
 
@@ -1023,7 +934,7 @@ class TestMediaServerClientServerType:
 
         def fake_request(method, path, params=None, **_kwargs):
             assert method == 'get'
-            if path == '/Users/user1/Views':
+            if path == '/UserViews':
                 return FakeResponse(
                     payload={
                         'Items': [
@@ -1032,7 +943,7 @@ class TestMediaServerClientServerType:
                         ]
                     }
                 )
-            assert path == '/Users/user1/Items'
+            assert path == '/Items'
             item_requests.append(params.copy())
             return FakeResponse(
                 payload={
@@ -1072,7 +983,7 @@ class TestMediaServerClientServerType:
 
         def fake_request(method, path, params=None, timeout=None, **_kwargs):
             assert method == 'get'
-            if path == '/Users/user1/Views':
+            if path == '/UserViews':
                 return FakeResponse(
                     payload={
                         'Items': [
@@ -1081,7 +992,7 @@ class TestMediaServerClientServerType:
                     }
                 )
 
-            assert path == '/Users/user1/Items'
+            assert path == '/Items'
             item_attempts.append(timeout)
             if len(item_attempts) == 1:
                 raise requests.exceptions.ReadTimeout('slow library')
@@ -1135,36 +1046,6 @@ class TestMediaServerClientServerType:
         assert next(event for event in progress_events if event['message'] == '影片地区完成')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集地区开始')['percent'] == 50
         assert next(event for event in progress_events if event['message'] == '剧集地区完成')['percent'] == 100
-
-    def test_update_countries_uses_incremental_timestamp(self, monkeypatch):
-        from media_server.client import MediaServerClient
-        from media_server.country_maps import COUNTRY_TRANSLATIONS
-
-        operator = MediaServerClient(
-            server_url='http://localhost:8096',
-            api_key='test-api-key',
-            username='wiz',
-            server_type='jellyfin',
-        )
-        monkeypatch.setattr(operator, 'validate_server_type', lambda: None)
-        requested_params = []
-        monkeypatch.setattr(
-            operator,
-            '_get_genre_update_items',
-            lambda _item_type, params: requested_params.append(params.copy()) or [],
-        )
-        sync_state = {
-            'server_key': operator._sync_server_key(),
-            'map_hash': operator._stable_mapping_hash(COUNTRY_TRANSLATIONS),
-            'last_scan_utc': '2026-07-15T12:00:00Z',
-        }
-
-        thread = operator.update_countries(sync_state=sync_state)
-        thread.join(timeout=2)
-
-        assert not thread.is_alive()
-        assert len(requested_params) == 2
-        assert {params['MinDateLastSaved'] for params in requested_params} == {'2026-07-15T11:55:00Z'}
 
 
 class TestMediaServerClientExtractTmdbid:

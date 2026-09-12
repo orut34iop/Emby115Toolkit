@@ -1,15 +1,12 @@
-"""Shared remote-media workflow: snapshot a profile, run, persist state, then unlock."""
+"""Shared remote-media workflow: snapshot a profile, run, then unlock."""
 
 import os
 import threading
 
 from PyQt5.QtWidgets import (
-    QButtonGroup,
-    QGroupBox,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -39,18 +36,6 @@ class MediaOperationTab(BackgroundTaskMixin, QWidget):
         layout.setSpacing(10)
         self.profile_picker = ProfilePicker(self.profiles, self)
         layout.addWidget(self.profile_picker)
-        if self.section != 'version_merge':
-            mode_group = QGroupBox('扫描模式')
-            modes = QHBoxLayout(mode_group)
-            self.radio_incremental = QRadioButton('快速增量（推荐）')
-            self.radio_full_scan = QRadioButton('完整扫描修复')
-            self.scan_mode_group = QButtonGroup(self)
-            for button in (self.radio_incremental, self.radio_full_scan):
-                self.scan_mode_group.addButton(button)
-                modes.addWidget(button)
-                button.clicked.connect(self.save_config)
-            modes.addStretch()
-            layout.addWidget(mode_group)
         buttons = QHBoxLayout()
         start = QPushButton('开始' + self.operation)
         start.clicked.connect(self.start_operation)
@@ -72,19 +57,6 @@ class MediaOperationTab(BackgroundTaskMixin, QWidget):
 
     def load_config(self):
         self.btn_merge.setEnabled(not self.profiles.busy and self.profiles.active is not None)
-        if self.section != 'version_merge':
-            full = self.profiles.settings(self.section).get('scan_mode') == 'full'
-            self.radio_full_scan.setChecked(full)
-            self.radio_incremental.setChecked(not full)
-            for button in (self.radio_incremental, self.radio_full_scan):
-                button.setEnabled(not self.profiles.busy and self.profiles.active is not None)
-
-    def save_config(self):
-        try:
-            self.profiles.set_scan_mode(self.section, 'full' if self.radio_full_scan.isChecked() else 'incremental')
-        except (ValueError, OSError) as exc:
-            QMessageBox.warning(self, '保存失败', str(exc))
-            self.load_config()
 
     def start_operation(self):
         if self._active_task is not None:
@@ -96,7 +68,6 @@ class MediaOperationTab(BackgroundTaskMixin, QWidget):
             return
         self._profile_token = token
         profile = snapshot['profile']
-        settings = profile.get('settings', {}).get(self.section, {})
         self.logger.info(f"{self.operation} → {profile['name']} ({profile['server_type']}, {profile['server_url']})")
 
         cancel_event = self._cancel_event = threading.Event()
@@ -107,14 +78,7 @@ class MediaOperationTab(BackgroundTaskMixin, QWidget):
             operator = self._track_worker(
                 MediaServerClient(**connection(profile), logger=self.logger, cancel_event=cancel_event)
             )
-            kwargs = {}
-            if self.section != 'version_merge':
-                kwargs = dict(
-                    full_scan=settings.get('scan_mode') == 'full',
-                    sync_state=settings.get('sync_state', {}),
-                    state_callback=lambda state: self.profiles.save_task_state(token, state),
-                )
-            worker = getattr(operator, self.method)(self._task_signals.progress.emit, **kwargs)
+            worker = getattr(operator, self.method)(self._task_signals.progress.emit)
             if worker:
                 worker.join()
 

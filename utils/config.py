@@ -125,16 +125,12 @@ class Config:
                 'api_key': '',
                 'username': '',
                 'server_type': 'emby',
-                'scan_mode': 'incremental',
-                'sync_state': {},
             },
             'country_update': {
                 'server_url': '',
                 'api_key': '',
                 'username': '',
                 'server_type': 'emby',
-                'scan_mode': 'incremental',
-                'sync_state': {},
             },
             'tree_mirror': {'tree_file': '', 'export_folder': '', 'fix_garbled_text': False},
             'ui_state': {'selected_tab_index': 0},
@@ -163,6 +159,8 @@ class Config:
 
             section_key_renames = KEY_RENAMES.get(new_section, {})
             for key, value in values.items():
+                if new_section in ('genre_update', 'country_update') and key in ('scan_mode', 'sync_state'):
+                    continue
                 new_key = section_key_renames.get(key, key)
                 if is_legacy_section or key != new_key:
                     section_config.setdefault(new_key, value)
