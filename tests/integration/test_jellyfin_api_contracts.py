@@ -123,8 +123,13 @@ def jellyfin_contract_server(request):
                 assert set(payload) <= set(contract['item_properties'])
                 assert 'GenreItems' not in payload
                 for key, value in items[item_id].items():
-                    if key not in {'Genres', 'ProductionLocations', 'GenreItems'}:
+                    if key not in {'Genres', 'ProductionLocations', 'GenreItems', 'LockedFields'}:
                         assert payload[key] == value, f'Metadata field lost: {key}'
+                changed = {
+                    key for key in ('Genres', 'ProductionLocations')
+                    if payload[key] != items[item_id][key]
+                }
+                assert set(payload['LockedFields']) == set(items[item_id]['LockedFields']) | changed
                 items[item_id].update(payload)
                 assert 204 in operation['success']
                 return 204, None
@@ -187,9 +192,50 @@ def test_metadata_workflow_contract(jellyfin_contract_server, operation, field, 
     assert not state.client._metadata_had_errors
     for item_id, item in state.items.items():
         assert item[field] == expected
+        assert set(item['LockedFields']) == set(original[item_id]['LockedFields']) | {field}
         for key in original[item_id]:
-            if key != field:
+            if key not in {field, 'LockedFields'}:
                 assert item[key] == original[item_id][key]
     reads = [query for method, route, query in state.requests if method == 'GET' and route == '/Items']
     assert {query['parentid'] for query in reads} == {MOVIE_LIBRARY, TV_LIBRARY}
     assert all(query['userid'] == USER_ID for query in reads)
+
+
+def test_sequential_curation_preserves_locks_and_merge_preserves_member_values(jellyfin_contract_server):
+    state = jellyfin_contract_server
+    state.items[UUID(int=11).hex]['Genres'] = ['Comedy']
+    for operation in ['update_genres', 'update_countries']:
+        task = getattr(state.client, operation)()
+        task.join(timeout=10)
+        assert not task.is_alive()
+        assert not state.client._metadata_had_errors
+    for value in state.items.values():
+        assert set(value['LockedFields']) == {'Name', 'Genres', 'ProductionLocations'}
+    before_merge = copy.deepcopy(state.items)
+    movies = state.client.get_movie_media()
+    assert len(state.client.merge_movie_versions(state.client.group_movies_by_tmdbid(movies))) == 1
+    assert state.items == before_merge
+    assert state.items[UUID(int=10).hex]['Genres'] != state.items[UUID(int=11).hex]['Genres']
+    posts_before = sum(method == 'POST' for method, _, _ in state.requests)
+    for operation in ['update_genres', 'update_countries']:
+        task = getattr(state.client, operation)()
+        task.join(timeout=10)
+        assert not task.is_alive()
+    assert sum(method == 'POST' for method, _, _ in state.requests) == posts_before
+
+
+@pytest.mark.parametrize(
+    'operation,field,localized',
+    [('update_genres', 'Genres', ['动作']), ('update_countries', 'ProductionLocations', ['日本'])],
+)
+@pytest.mark.parametrize('empty_cleanup', [False, True])
+def test_only_actual_curation_adds_protection(jellyfin_contract_server, operation, field, localized, empty_cleanup):
+    state = jellyfin_contract_server
+    target = state.items[UUID(int=10).hex]
+    target[field] = [' '] if empty_cleanup else localized
+    task = getattr(state.client, operation)()
+    task.join(timeout=10)
+    assert not task.is_alive()
+    assert not state.client._metadata_had_errors
+    assert target[field] == ([] if empty_cleanup else localized)
+    assert set(target['LockedFields']) == ({'Name', field} if empty_cleanup else {'Name'})

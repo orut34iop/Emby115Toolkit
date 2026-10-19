@@ -447,17 +447,41 @@ class MediaServerClient:
             payload.pop('GenreItems', None)
         return payload
 
-    def _item_update_was_applied(self, item_id, expected_item):
-        fields = [field for field in ('Genres', 'ProductionLocations') if field in expected_item]
+    def _item_update_was_applied(self, item_id, expected_item, protected_fields=()):
+        fields = protected_fields or [field for field in ('Genres', 'ProductionLocations') if field in expected_item]
         if not fields:
             return False
 
         actual_item = self.get_item_info(item_id)
         if not actual_item:
             return False
+        if protected_fields:
+            actual_locks = actual_item.get('LockedFields', [])
+            if actual_locks is None:
+                actual_locks = []
+            if not isinstance(actual_locks, list) or not all(isinstance(lock, str) for lock in actual_locks):
+                return False
+            if not set(expected_item['LockedFields']).issubset(actual_locks):
+                return False
+            if any(field not in actual_item for field in protected_fields):
+                return False
         return all(actual_item.get(field, []) == expected_item.get(field, []) for field in fields)
 
-    def _post_item_update(self, item_id, item):
+    def _save_curated_field(self, item_id, item, field):
+        if self.server_type != 'jellyfin':
+            return self._post_item_update(item_id, item)
+
+        # Only the field deliberately curated by this operation gains protection.
+        # The other fields come from the current full DTO, not the list snapshot.
+        locks = item.get('LockedFields', [])
+        if locks is None:
+            locks = []
+        if not isinstance(locks, list) or not all(isinstance(lock, str) for lock in locks):
+            return RequestFailureResponse('字段锁格式无效，未提交更新')
+        item['LockedFields'] = list(dict.fromkeys([*locks, field]))
+        return self._post_item_update(item_id, item, protected_fields=(field,))
+
+    def _post_item_update(self, item_id, item, protected_fields=()):
         params = {"api_key": self.api_key}
         payload = self._prepare_item_update_payload(item)
         path = f"/Items/{urllib.parse.quote(str(item_id), safe='')}"
@@ -473,18 +497,27 @@ class MediaServerClient:
                     json_body=payload,
                     timeout=(5, 45),
                 )
+                if response.status_code in (200, 204) and protected_fields:
+                    if self._item_update_was_applied(item_id, payload, protected_fields):
+                        return response
+                    return RequestFailureResponse('保存响应成功，但回读未确认字段值及全部既有锁，请检查条目后再处理')
                 if response.status_code not in retry_status_codes:
                     return response
                 last_error = RuntimeError(f"HTTP {response.status_code}: {response.text}")
             except requests.exceptions.RequestException as err:
                 last_error = err
 
-            if self._item_update_was_applied(item_id, payload):
+            if self._item_update_was_applied(item_id, payload, protected_fields):
                 self.logger.info(
                     f"更新条目 {item.get('Name', item_id)}({item_id}) 响应异常，"
                     "但回读确认服务器已保存"
                 )
                 return RequestFailureResponse(last_error, status_code=204)
+
+            if protected_fields:
+                # A full DTO retry could undo an edit committed after our first request.
+                # Leave an unconfirmed write visible as a failure instead of replaying it.
+                return RequestFailureResponse(f'保存结果未确认，未重发旧条目数据，请检查条目后再处理: {last_error}')
 
             if attempt == 0:
                 self.logger.warning(
@@ -559,6 +592,8 @@ class MediaServerClient:
         seen = set()
         for genre in genres:
             translated = self._resolve_genre_translation(genre, genres_map)
+            if not translated:
+                continue
             if translated not in seen:
                 translated_genres.append(translated)
                 seen.add(translated)
@@ -935,7 +970,7 @@ class MediaServerClient:
                 break
 
             item['ProductionLocations'] = translated_locations
-            update_response = self._post_item_update(item_id, item)
+            update_response = self._save_curated_field(item_id, item, 'ProductionLocations')
             if update_response.status_code in [200, 204]:
                 update_count += 1
                 updated_items.append(item)
@@ -1148,7 +1183,7 @@ class MediaServerClient:
             item['Genres'] = translated_genres
             item['GenreItems'] = self._build_genre_items(translated_genres, genre_item_ids)
 
-            update_response = self._post_item_update(item_id, item)
+            update_response = self._save_curated_field(item_id, item, 'Genres')
 
             if update_response.status_code in [200, 204]:
                 update_count += 1

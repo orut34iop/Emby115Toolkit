@@ -502,7 +502,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_post_item_update',
-            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+            lambda item_id, item, protected_fields=(): updates.append((item_id, item)) or FakeResponse(status_code=204),
         )
 
         updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
@@ -572,7 +572,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_post_item_update',
-            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+            lambda item_id, item, protected_fields=(): updates.append((item_id, item)) or FakeResponse(status_code=204),
         )
 
         updated_movies = operator.emby_movie_translate_genres_and_update_whole_item()
@@ -963,7 +963,7 @@ class TestMediaServerClientServerType:
         monkeypatch.setattr(
             operator,
             '_post_item_update',
-            lambda item_id, item: updates.append((item_id, item)) or FakeResponse(status_code=204),
+            lambda item_id, item, protected_fields=(): updates.append((item_id, item)) or FakeResponse(status_code=204),
         )
 
         updated_movies = operator.emby_movie_translate_countries_and_update_whole_item()
