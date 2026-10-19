@@ -46,7 +46,7 @@ def jellyfin_contract_server(request):
         }
         if 'OriginalLanguage' in contract['item_properties']:
             items[item_id]['OriginalLanguage'] = 'ja'
-    state = SimpleNamespace(contract=contract, items=items, errors=[], requests=[], merges=[])
+    state = SimpleNamespace(contract=contract, items=items, errors=[], requests=[], merges=[], hidden=set())
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -82,7 +82,7 @@ def jellyfin_contract_server(request):
             assert set(query) <= {name.lower() for name in operation['query']}
             state.requests.append((self.command, route, query))
             if route == '/System/Info/Public':
-                return 200, {'ProductName': 'Jellyfin Server', 'Version': contract['server_version']}
+                return 200, {'Id': UUID(int=99).hex, 'ProductName': 'Jellyfin Server', 'Version': contract['server_version']}
 
             assert self.headers[contract['security']['name']] == 'MediaBrowser Token="contract-test-key"'
             assert 'X-Emby-Token' not in self.headers
@@ -106,6 +106,7 @@ def jellyfin_contract_server(request):
                 assert set(query['fields'].split(',')) <= set(contract['item_fields'])
                 assert query['sortby'] in contract['item_sort_by']
                 selected = [item for item in items.values() if item['Type'] in query['includeitemtypes'].split(',')]
+                selected = [item for item in selected if item['Id'] not in state.hidden]
                 if 'parentid' in query:
                     assert query['userid'] == USER_ID
                     expected_type = {MOVIE_LIBRARY: 'Movie', TV_LIBRARY: 'Series'}[query['parentid']]
@@ -129,7 +130,9 @@ def jellyfin_contract_server(request):
                     key for key in ('Genres', 'ProductionLocations')
                     if payload[key] != items[item_id][key]
                 }
-                assert set(payload['LockedFields']) == set(items[item_id]['LockedFields']) | changed
+                assert set(items[item_id]['LockedFields']).issubset(payload['LockedFields'])
+                assert changed.issubset(payload['LockedFields'])
+                assert set(payload['LockedFields']) - set(items[item_id]['LockedFields']) <= {'Genres', 'ProductionLocations'}
                 items[item_id].update(payload)
                 assert 204 in operation['success']
                 return 204, None
@@ -239,3 +242,36 @@ def test_only_actual_curation_adds_protection(jellyfin_contract_server, operatio
     assert not state.client._metadata_had_errors
     assert target[field] == ([] if empty_cleanup else localized)
     assert set(target['LockedFields']) == ({'Name', field} if empty_cleanup else {'Name'})
+
+
+def test_hidden_versions_translation_and_historical_protection(jellyfin_contract_server, tmp_path):
+    from media_server.metadata_protection import apply_plan, create_plan
+
+    state = jellyfin_contract_server
+    primary, alternate = UUID(int=10).hex, UUID(int=11).hex
+    for identifier in (primary, alternate):
+        state.items[identifier]['MediaSourceCount'] = 2
+        state.items[identifier]['MediaSources'] = [{'Id': primary}, {'Id': alternate}]
+    state.hidden.add(alternate)
+    state.items[primary]['Genres'] = ['动作']
+    state.items[alternate]['Genres'] = ['Comedy']
+    task = state.client.update_genres()
+    task.join(timeout=10)
+    assert not task.is_alive()
+    assert not state.client._metadata_had_errors
+    assert state.items[primary]['Genres'] == ['动作']
+    assert state.items[primary]['LockedFields'] == ['Name']
+    assert state.items[alternate]['Genres'] == ['喜剧']
+    assert set(state.items[alternate]['LockedFields']) == {'Name', 'Genres'}
+    before = copy.deepcopy(state.items)
+    posts = sum(method == 'POST' for method, _, _ in state.requests)
+    plan, report = tmp_path / 'plan.json', tmp_path / 'report.json'
+    preview = create_plan(state.client, plan, ['Genres', 'ProductionLocations'], libraries=[MOVIE_LIBRARY])
+    assert {row['id'] for row in preview['items']} == {primary, alternate}
+    assert sum(method == 'POST' for method, _, _ in state.requests) == posts
+    assert apply_plan(state.client, plan, report)['summary']['confirmed'] == 2
+    for identifier in (primary, alternate):
+        for field in ('Genres', 'ProductionLocations', 'MediaSources'):
+            assert state.items[identifier][field] == before[identifier][field]
+        assert set(state.items[identifier]['LockedFields']) == {'Name', 'Genres', 'ProductionLocations'}
+    assert state.items[UUID(int=12).hex] == before[UUID(int=12).hex]

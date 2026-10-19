@@ -58,3 +58,6 @@ config.yaml
 # Atomic configuration writes and pre-migration backups (contain credentials)
 .config-*.tmp
 config.yaml.pre-media-profiles-*.bak
+
+# Private historical metadata previews, backups and execution reports
+/metadata-protection/

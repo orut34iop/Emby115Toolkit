@@ -127,6 +127,8 @@ macOS 使用 PyQt5，支持原生文件夹拖拽；创建软链接通常无需�
 
 Jellyfin 使用 `Authorization: MediaBrowser Token="…"` 认证；条目查询采用分页和显式递归，保存前读取完整详情以保留其他元数据字段。10.11.11 / 12.0 的验证包括官方 OpenAPI 快照和本地 HTTP 测试替身，**不等同于两套实际服务器的完整联调**。详见 [Jellyfin 兼容范围和验证说明](docs/jellyfin-compatibility.md)。
 
+历史数据补锁另提供明确范围的命令行预览／执行流程，支持已合并副版本、备份、冲突检查和失败恢复：[中文说明](docs/metadata-protection.zh-CN.md) · [English](docs/metadata-protection.md)。日常中文化也会展开已合并副版本，分别保留并处理成员值。
+
 ![更新流派](intro/emby更新流派.jpg)
 
 ### 7. 115 目录树镜像

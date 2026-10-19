@@ -468,6 +468,12 @@ class MediaServerClient:
         return all(actual_item.get(field, []) == expected_item.get(field, []) for field in fields)
 
     def _save_curated_field(self, item_id, item, field):
+        return self._save_curated_fields(item_id, item, (field,))
+
+    def _save_curated_fields(self, item_id, item, fields):
+        fields = tuple(dict.fromkeys(fields))
+        if not fields or any(field not in ('Genres', 'ProductionLocations') for field in fields):
+            return RequestFailureResponse('仅支持保护流派和地区字段')
         if self.server_type != 'jellyfin':
             return self._post_item_update(item_id, item)
 
@@ -478,8 +484,8 @@ class MediaServerClient:
             locks = []
         if not isinstance(locks, list) or not all(isinstance(lock, str) for lock in locks):
             return RequestFailureResponse('字段锁格式无效，未提交更新')
-        item['LockedFields'] = list(dict.fromkeys([*locks, field]))
-        return self._post_item_update(item_id, item, protected_fields=(field,))
+        item['LockedFields'] = list(dict.fromkeys([*locks, *fields]))
+        return self._post_item_update(item_id, item, protected_fields=fields)
 
     def _post_item_update(self, item_id, item, protected_fields=()):
         params = {"api_key": self.api_key}
@@ -809,6 +815,9 @@ class MediaServerClient:
             library_params['ParentId'] = view['Id']
             library_params['UserId'] = self.user_id
             library_params['IncludeItemTypes'] = include_item_types
+            library_params['Fields'] = ','.join(dict.fromkeys([
+                *library_params.get('Fields', '').split(','), 'MediaSources',
+            ]))
             library_name = view.get('Name', view['Id'])
             library_items = self._get_jellyfin_items(library_params, f"读取 Jellyfin 媒体库“{library_name}”")
             if library_items is None:
@@ -820,7 +829,14 @@ class MediaServerClient:
                 f"{len(library_items)} 个 {include_item_types} 条目"
             )
 
-        return all_items
+        from media_server.metadata_protection import expand_versions
+
+        try:
+            return expand_versions(self, all_items)
+        except (ValueError, KeyError, TypeError, InterruptedError) as error:
+            self.logger.error(f'版本成员读取不完整，取消本轮元数据更新: {error}')
+            self._mark_metadata_error()
+            return None
 
     def _collect_country_update_candidates(self, items, item_label, progress_callback=None):
         candidates = []
