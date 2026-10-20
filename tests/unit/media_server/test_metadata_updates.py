@@ -17,11 +17,13 @@ def client():
     result.close()
 
 
-def test_bounded_workers_keep_fresh_fields_and_confirmed_results(client, monkeypatch):
-    barrier = threading.Barrier(4)
+@pytest.mark.parametrize('local,workers', [(False, 4), (True, 8)])
+def test_bounded_workers_keep_fresh_fields_and_confirmed_results(client, monkeypatch, local, workers):
+    client._local_catalog = Mock() if local else None
+    barrier = threading.Barrier(workers)
     lock = threading.Lock()
     active = peak = 0
-    candidates = [{'Id': str(index), 'Genres': ['stale']} for index in range(8)]
+    candidates = [{'Id': str(index), 'Genres': ['stale']} for index in range(workers * 2)]
     saved = []
     def get(identifier):
         nonlocal active, peak
@@ -39,10 +41,10 @@ def test_bounded_workers_keep_fresh_fields_and_confirmed_results(client, monkeyp
     monkeypatch.setattr(client, '_save_curated_field', save)
     updates = []
     result = update_candidates(client, candidates, 'Genres', lambda _: ['动作'], '流派', updates.append)
-    assert peak == 4
-    assert [item['Id'] for item in result] == [str(i) for i in range(8)]
+    assert peak == workers
+    assert [item['Id'] for item in result] == [str(i) for i in range(workers * 2)]
     assert all(item['Overview'] == 'fresh' and item['LockedFields'] == ['Overview'] for item in saved)
-    assert updates[-1]['current'] == 8
+    assert updates[-1]['current'] == workers * 2
     assert updates[-1]['percent'] == 100
 
 

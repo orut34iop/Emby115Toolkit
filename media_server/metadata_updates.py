@@ -8,6 +8,9 @@ def update_candidates(client, candidates, field, translate, label, callback):
     total = len(candidates)
     if not total:
         return []
+    # Local snapshots avoid a second HTTP read and use a verified local server.
+    # Keep remote servers at the more conservative limit.
+    workers = 8 if client._local_catalog is not None else 4
     indexed = iter(enumerate(candidates))
     pending, results = {}, {}
     processed = unchanged = failed = 0
@@ -54,10 +57,10 @@ def update_candidates(client, candidates, field, translate, label, callback):
         )
 
     report(force=True)
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix='metadata-update') as executor:
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='metadata-update') as executor:
         exhausted = False
         while pending or not exhausted:
-            while not exhausted and not client.stop_flag.is_set() and len(pending) < 4:
+            while not exhausted and not client.stop_flag.is_set() and len(pending) < workers:
                 entry = next(indexed, None)
                 if entry is None:
                     exhausted = True
