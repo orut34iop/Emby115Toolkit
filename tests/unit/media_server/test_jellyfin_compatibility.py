@@ -23,6 +23,102 @@ def client():
     )
 
 
+def test_merge_lists_pages_without_expanding_historical_versions(client, monkeypatch):
+    """A large already-merged library must not trigger one detail GET per version."""
+    client.user_id = 'user'
+    movies = [
+        {'Id': str(i), 'Name': f'Movie {i}', 'MediaSourceCount': 2, 'ProviderIds': {'Tmdb': str(i)}}
+        for i in range(1200)
+    ]
+    movies.append({'Id': 'new', 'Name': 'New version', 'MediaSourceCount': 1, 'ProviderIds': {'Tmdb': '0'}})
+    updates, offsets, merged = [], [], []
+
+    def request(method, path, params=None, **kwargs):
+        if path == '/UserViews':
+            return response({'Items': [
+                {'Id': 'movies', 'Name': 'Movies', 'CollectionType': 'movies'},
+                {'Id': 'empty', 'Name': 'Empty', 'CollectionType': 'movies'},
+            ]})
+        if path == '/Items':
+            assert method == 'get'
+            assert 'MediaSources' not in params['Fields'].split(',')
+            if params['ParentId'] == 'empty':
+                return response({'Items': [], 'TotalRecordCount': 0})
+            start = params['StartIndex']
+            offsets.append(start)
+            # Progress must reach the UI before the next page request starts.
+            if start:
+                assert any(update.get('current') == start and update.get('percent', 0) > 1 for update in updates)
+            return response({'Items': movies[start:start + params['Limit']], 'TotalRecordCount': len(movies)})
+        assert path == '/Videos/MergeVersions'
+        assert method == 'post'
+        merged.append(params['ids'])
+        return response(status=204)
+
+    monkeypatch.setattr(client, '_request', request)
+    monkeypatch.setattr(client, 'get_item_info', Mock(side_effect=AssertionError('Unnecessary detail request')))
+    monkeypatch.setattr(client, 'validate_server_type', lambda: True)
+    monkeypatch.setattr(client, '_start_background_task', lambda target, name: target())
+    result = client.merge_versions(lambda payload: updates.append(payload) if isinstance(payload, dict) else None)
+
+    assert offsets == [0, 500, 1000]
+    assert merged == ['0,new']
+    assert [movie['Id'] for movie in result] == ['0']
+    percentages = [update['percent'] for update in updates if 'percent' in update]
+    assert percentages == sorted(percentages)
+    assert all(percent < 100 for percent in percentages)
+    assert updates[-1]['message'] == '合并版本处理完成'
+    assert any('Empty' in update['message'] for update in updates)
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+def test_merge_never_writes_after_incomplete_or_cancelled_listing(client, monkeypatch, caplog, cancel):
+    client.user_id = 'user'
+    calls, updates = [], []
+
+    def request(method, path, **kwargs):
+        calls.append((method, path))
+        if path == '/UserViews':
+            return response({'Items': [{'Id': 'movies', 'CollectionType': 'movies'}]})
+        assert path == '/Items'
+        if cancel:
+            client.stop_flag.set()
+        # Empty page despite a nonzero total is an incomplete response.
+        return response({'Items': [], 'TotalRecordCount': 100})
+
+    monkeypatch.setattr(client, '_request', request)
+    monkeypatch.setattr(client, 'validate_server_type', lambda: True)
+    monkeypatch.setattr(client, '_start_background_task', lambda target, name: target())
+    with caplog.at_level('INFO'):
+        client.merge_versions(updates.append)
+    assert all(method == 'get' for method, _ in calls)
+    assert not any(update.get('message') == '合并版本处理完成' for update in updates)
+    assert '库里没有影片' not in caplog.text
+    assert ('已停止合并版本' if cancel else '影片列表读取不完整') in caplog.text
+
+
+def test_merge_progress_does_not_finish_or_go_backwards_between_tmdb_and_av(client, monkeypatch):
+    movies = [
+        {'Id': 'a', 'Name': 'A', 'ProviderIds': {'Tmdb': '1'}},
+        {'Id': 'b', 'Name': 'B', 'ProviderIds': {'Tmdb': '1'}},
+        {'Id': 'c', 'Name': 'C', 'ProviderIds': {'Num': 'TEST-123'}},
+        {'Id': 'd', 'Name': 'D', 'ProviderIds': {'Num': 'TEST-123'}},
+    ]
+    updates = []
+    monkeypatch.setattr(client, 'get_movie_media', lambda callback=None: movies)
+    monkeypatch.setattr(client, 'validate_server_type', lambda: True)
+    monkeypatch.setattr(client, '_start_background_task', lambda target, name: target())
+    monkeypatch.setattr(client, '_request', Mock(return_value=response(status=204)))
+    client.merge_versions(lambda payload: updates.append(payload) if isinstance(payload, dict) else None)
+    percentages = [
+        update.get('percent', 100 * update['current'] / update['total'] if update['total'] else 0)
+        for update in updates
+    ]
+    assert percentages == sorted(percentages)
+    assert percentages[-1] == 100
+    assert all(percent < 100 for percent in percentages[:-1])
+
+
 @pytest.mark.parametrize('version', ['10.11.11', '12.0', '12.0.0', '13.0', None])
 def test_detect_version_without_changing_api_contract(client, monkeypatch, version):
     get = Mock(return_value=response({'ProductName': 'Jellyfin Server', 'Version': version, 'ServerName': 'My Emby'}))

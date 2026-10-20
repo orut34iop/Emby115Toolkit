@@ -144,7 +144,7 @@ class TestMediaServerClientServerType:
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key', server_type='emby')
         operator.validate_server_type = lambda: True
         operator._start_background_task = lambda target, task_name: target()
-        operator.get_movie_media = lambda: [
+        operator.get_movie_media = lambda progress_callback=None: [
             {'Id': 'tmdb-1', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-1080p.mkv'},
             {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
             {'Id': 'av-1', 'Name': 'AARM-009', 'ProviderIds': {'num': 'AARM-009'}, 'Path': '/path/AARM-009.mp4'},
@@ -178,7 +178,7 @@ class TestMediaServerClientServerType:
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key', server_type='emby')
         operator.validate_server_type = lambda: True
         operator._start_background_task = lambda target, task_name: target()
-        operator.get_movie_media = lambda: [
+        operator.get_movie_media = lambda progress_callback=None: [
             {'Id': 'tmdb-1', 'Name': 'Movie A', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-1080p.mkv'},
             {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
             {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
@@ -209,7 +209,7 @@ class TestMediaServerClientServerType:
         )
         operator.validate_server_type = lambda: True
         operator._start_background_task = lambda target, task_name: target()
-        operator.get_movie_media = lambda: [
+        operator.get_movie_media = lambda progress_callback=None: [
             {
                 'Id': 'historical-1',
                 'Name': 'Historical',
@@ -1270,7 +1270,7 @@ class TestMediaServerClientGroupMovies:
         )
         operator.validate_server_type = lambda: True
         operator._start_background_task = lambda target, task_name: target()
-        operator.get_movie_media = lambda: [
+        operator.get_movie_media = lambda progress_callback=None: [
             {
                 'Id': 'merged-num',
                 'Name': 'AARM-009',

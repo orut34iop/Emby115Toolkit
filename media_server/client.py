@@ -360,7 +360,7 @@ class MediaServerClient:
                 )
             time.sleep(retry_delay)
 
-    def _get_items(self, include_item_types, fields):
+    def _get_items(self, include_item_types, fields, progress_callback=None):
         params = {
             "api_key": self.api_key,
             "IncludeItemTypes": include_item_types,
@@ -369,7 +369,7 @@ class MediaServerClient:
             "Limit": "1000000",
         }
         if self.server_type == 'jellyfin':
-            return self._get_jellyfin_items(params, "读取 Jellyfin 条目列表") or []
+            return self._get_jellyfin_items(params, "读取 Jellyfin 条目列表", progress_callback) or []
         try:
             response = self._request('get', '/Items', params=params)
             response.raise_for_status()
@@ -382,7 +382,7 @@ class MediaServerClient:
             self.logger.error("Error parsing JSON response")
         return []
 
-    def _get_jellyfin_items(self, params, label):
+    def _get_jellyfin_items(self, params, label, progress_callback=None):
         """读取完整分页列表；读取失败时不把部分结果交给合并或元数据更新。"""
         page_params = dict(params)
         page_params.update({
@@ -401,14 +401,22 @@ class MediaServerClient:
         items = []
         seen_ids = set()
         start_index = 0
+        total = None
         while not self.stop_flag.is_set():
             page_params['StartIndex'] = start_index
+            self._report_progress(
+                progress_callback, start_index, total,
+                f"{label}：正在读取第 {start_index + 1} 条起的分页",
+                percent=self._progress_percent(start_index, total),
+            )
             try:
                 response = self._request_with_retries(
                     'get', '/Items', params=dict(page_params), timeout=(5, 120),
                     retries=2, retry_delay=1,
                     retry_status_codes={408, 429, 500, 502, 503, 504}, retry_label=label,
                 )
+                if self.stop_flag.is_set():
+                    return None
                 response.raise_for_status()
                 result = response.json()
                 if not isinstance(result, dict) or not isinstance(result.get('Items'), list):
@@ -429,6 +437,11 @@ class MediaServerClient:
                 items.extend(new_items)
                 seen_ids.update(item['Id'] for item in page)
                 start_index += len(page)
+                self._report_progress(
+                    progress_callback, start_index, total,
+                    f"{label}：已读取 {start_index}/{total if total is not None else '未知'} 条",
+                    percent=min(100, self._progress_percent(start_index, total)),
+                )
                 if total is not None:
                     if start_index >= total:
                         return items
@@ -726,7 +739,7 @@ class MediaServerClient:
     def _build_genre_items(translated_genres, genre_item_ids):
         return [{'Name': genre, 'Id': genre_item_ids.get(genre, '')} for genre in translated_genres]
 
-    def _get_genre_update_items(self, include_item_types, params):
+    def _get_genre_update_items(self, include_item_types, params, *, expand_members=True, progress_callback=None):
         if self.server_type != 'jellyfin':
             try:
                 response = self._request_with_retries(
@@ -807,19 +820,27 @@ class MediaServerClient:
             return []
 
         all_items = []
-        for view in views:
+        for view_index, view in enumerate(views):
             if self.stop_flag.is_set():
-                break
+                return None
 
             library_params = dict(params)
             library_params['ParentId'] = view['Id']
             library_params['UserId'] = self.user_id
             library_params['IncludeItemTypes'] = include_item_types
-            library_params['Fields'] = ','.join(dict.fromkeys([
-                *library_params.get('Fields', '').split(','), 'MediaSources',
-            ]))
+            if expand_members:
+                library_params['Fields'] = ','.join(dict.fromkeys([
+                    *library_params.get('Fields', '').split(','), 'MediaSources',
+                ]))
             library_name = view.get('Name', view['Id'])
-            library_items = self._get_jellyfin_items(library_params, f"读取 Jellyfin 媒体库“{library_name}”")
+            label = f"读取 Jellyfin 媒体库“{library_name}”"
+            if progress_callback is None:
+                library_items = self._get_jellyfin_items(library_params, label)
+            else:
+                library_items = self._get_jellyfin_items(
+                    library_params, label,
+                    self._scale_progress_callback(progress_callback, view_index * 100 / len(views), 100 / len(views)),
+                )
             if library_items is None:
                 return None
 
@@ -828,6 +849,15 @@ class MediaServerClient:
                 f"Jellyfin 媒体库“{view.get('Name', view['Id'])}”读取到 "
                 f"{len(library_items)} 个 {include_item_types} 条目"
             )
+            self._report_progress(
+                progress_callback, view_index + 1, len(views),
+                f"媒体库读取完成 {view_index + 1}/{len(views)}，累计 {len(all_items)} 个条目",
+            )
+
+        # Merging works on visible representatives and their source counts.
+        # Only metadata updates must fetch every hidden version before writing.
+        if not expand_members:
+            return all_items
 
         from media_server.metadata_protection import expand_versions
 
@@ -1307,7 +1337,7 @@ class MediaServerClient:
         return self._get_items("Movie,Series", "ProviderIds,Path")
 
     # 获取所有影剧的信息
-    def get_movie_media(self):
+    def get_movie_media(self, progress_callback=None):
         fields = "ProviderIds,Path,MediaSourceCount"
         if self.server_type == 'jellyfin' and self.username:
             items = self._get_genre_update_items(
@@ -1318,11 +1348,13 @@ class MediaServerClient:
                     'Fields': fields,
                     'Limit': '1000000',
                 },
+                expand_members=False,
+                progress_callback=progress_callback,
             )
             return self._unique_items_by_id(items or [], '影片')
         if self.server_type == 'jellyfin':
             self.logger.warning("未配置 Jellyfin 用户名，合并版本只能使用全局条目列表")
-        return self._get_items("Movie", fields)
+        return self._get_items("Movie", fields, progress_callback)
 
     # 查询TMDb ID
     def query_movies_by_tmdbid(self, movies, tmdb_value):
@@ -1682,13 +1714,23 @@ class MediaServerClient:
     def _merge_versions(self, callback, server_label):
         def run_merge_versions_check():
             self.logger.info(f"开始使用 {server_label} 流程合并版本")
-            all_movies = self.get_movie_media()  # 只需要合并电影，TV Emby会自动合并
+            self._metadata_had_errors = False
+            self._report_progress(callback, 0, None, "正在读取影片列表", percent=1)
+            all_movies = self.get_movie_media(self._scale_progress_callback(callback, 1, 39))
+            if self.stop_flag.is_set():
+                self.logger.info("已停止合并版本")
+                return
+            if self._metadata_had_errors:
+                self.logger.error("影片列表读取不完整，取消本轮合并版本")
+                return
             if not all_movies:
                 self.logger.info(f"{server_label} 库里没有影片")
+                self._report_progress(callback, 1, 1, "没有影片需要合并")
                 return
             self.logger.info(f"已连接服务器数据库，数据库共 {len(all_movies)} 部影片")
 
             self.logger.info("开始按 TMDB 合并标准影片版本")
+            self._report_progress(callback, 0, None, "影片读取完成，正在按 TMDB 分组", percent=40)
             all_tmdb_groups = self.group_movies_by_tmdbid(all_movies)
             tmdb_repeated_count = self._count_mergeable_groups(all_tmdb_groups)
             successfully_merged_ids = set()
@@ -1702,7 +1744,7 @@ class MediaServerClient:
             merged_movies = self.merge_movie_versions(
                 tmdb_grouped_movies,
                 identity_label="TMDB",
-                progress_callback=callback,
+                progress_callback=self._scale_progress_callback(callback, 40, 30),
                 progress_base=0,
                 progress_total=tmdb_mergeable_count,
                 successfully_merged_ids=successfully_merged_ids,
@@ -1715,6 +1757,7 @@ class MediaServerClient:
             self.logger.info(f"TMDB 已合并版本，共 {len(merged_movies)} 部影片")
 
             self.logger.info("开始检查 AV 番号版本")
+            self._report_progress(callback, 0, None, "正在按 AV 番号分组", percent=70)
             all_av_groups = self.group_movies_by_av_identity(all_movies)
             if not all_av_groups:
                 self.logger.info("未发现 AV 番号数据，跳过 AV 合并")
@@ -1733,14 +1776,19 @@ class MediaServerClient:
                 av_merged_movies = self.merge_movie_versions(
                     av_grouped_movies,
                     identity_label="AV 番号",
-                    progress_callback=callback,
-                    progress_base=tmdb_mergeable_count,
+                    progress_callback=self._scale_progress_callback(callback, 70, 29),
+                    progress_base=0,
                     progress_total=av_mergeable_count,
                     successfully_merged_ids=successfully_merged_ids,
                 )
                 self.logger.info(f"AV 番号已合并版本，共 {len(av_merged_movies)} 部影片")
                 merged_movies.extend(av_merged_movies)
 
+            if self.stop_flag.is_set():
+                self.logger.info("已停止合并版本")
+                if callback:
+                    callback(merged_movies)
+                return merged_movies
             self._report_progress(callback, 1, 1, "合并版本处理完成")
             if callback:
                 callback(merged_movies)
