@@ -2,6 +2,7 @@
 
 import copy
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -61,7 +62,7 @@ def test_preview_includes_hidden_versions_and_backs_up_current_empty_and_nonempt
     assert [row['id'] for row in result['items']] == [A, B]
     assert result['items'][0]['before']['values'] == {'Genres': ['中文'], 'ProductionLocations': []}
     assert result['items'][1]['before']['values']['Genres'] == ['Independent']
-    assert json.loads(plan.read_text()) == result
+    assert json.loads(plan.read_text(encoding='utf-8')) == result
     assert not client.posts
     with pytest.raises(FileExistsError):
         create_plan(client, plan, ['Genres'], ids=[A])
@@ -115,6 +116,52 @@ def test_resume_retries_failed_member_without_reposting_confirmed_member(state):
     assert result['results'][B][1]['status'] == 'confirmed'
 
 
+@pytest.mark.parametrize('default_encoding', ['gbk', 'cp1252'])
+def test_utf8_report_preserves_chinese_history_across_resume_and_reload(state, monkeypatch, default_encoding):
+    client, plan, report = state
+    for identifier in (A, B):
+        client.items[identifier]['Name'] = '侠女内莉'
+        client.items[identifier]['Genres'] = ['剧情', '冒险']
+        client.items[identifier]['ProductionLocations'] = ['美国', '英国']
+
+    read_text = Path.read_text
+
+    def read_with_platform_default(path, encoding=None, errors=None, **kwargs):
+        if path in (plan, report) and encoding is None:
+            encoding = default_encoding
+        return read_text(path, encoding=encoding, errors=errors, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_text', read_with_platform_default)
+    preview = create_plan(client, plan, ['Genres', 'ProductionLocations'], ids=[A])
+    assert json.loads(plan.read_text(encoding='utf-8')) == preview
+
+    client.fail_ids.add(B)
+    first = apply_plan(client, plan, report)
+    assert first['summary']['confirmed'] == first['summary']['failed'] == 1
+    assert '剧情'.encode('utf-8') in report.read_bytes()
+    assert json.loads(report.read_text(encoding='utf-8')) == first
+    first_history = copy.deepcopy(first['results'])
+
+    client.fail_ids.clear()
+    resumed = apply_plan(client, plan, report)
+    assert resumed['summary']['confirmed'] == 2
+    assert [body['Id'] for body in client.posts] == [A, B, B]
+    for identifier in (A, B):
+        assert resumed['results'][identifier][:-1] == first_history[identifier]
+        assert resumed['results'][identifier][-1]['before']['values'] == {
+            'Genres': ['剧情', '冒险'], 'ProductionLocations': ['美国', '英国'],
+        }
+    assert json.loads(report.read_text(encoding='utf-8')) == resumed
+    resumed_history = copy.deepcopy(resumed['results'])
+
+    reloaded = apply_plan(client, plan, report)
+    assert reloaded['summary']['confirmed'] == 2
+    assert [body['Id'] for body in client.posts] == [A, B, B]
+    for identifier in (A, B):
+        assert reloaded['results'][identifier][:-1] == resumed_history[identifier]
+    assert json.loads(report.read_text(encoding='utf-8')) == reloaded
+
+
 def test_resume_does_not_undo_explicit_unlock_after_success(state):
     client, plan, report = state
     create_plan(client, plan, ['Genres'], ids=[A])
@@ -129,9 +176,9 @@ def test_interrupted_checkpoint_reconciles_committed_values_without_post(state):
     client, plan, report = state
     create_plan(client, plan, ['Genres'], ids=[A])
     apply_plan(client, plan, report)
-    saved = json.loads(report.read_text())
+    saved = json.loads(report.read_text(encoding='utf-8'))
     saved['results'][A][-1]['status'] = 'prepared'
-    report.write_text(json.dumps(saved))
+    report.write_text(json.dumps(saved, ensure_ascii=False), encoding='utf-8')
     assert apply_plan(client, plan, report)['summary']['confirmed'] == 2
     assert len(client.posts) == 2
 
@@ -173,7 +220,7 @@ def test_other_server_and_other_plan_report_are_rejected(state):
         apply_plan(client, plan, report)
     assert not client.posts
     client.server_id = 'server'
-    report.write_text(json.dumps({'plan_sha256': 'wrong'}))
+    report.write_text(json.dumps({'plan_sha256': 'wrong'}), encoding='utf-8')
     with pytest.raises(ValueError):
         apply_plan(client, plan, report)
     assert not client.posts

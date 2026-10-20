@@ -5,7 +5,9 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from collections import deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,37 +38,103 @@ def version_ids(item):
     return sorted(result)
 
 
-def expand_versions(client, items, read_all=False):
+def expand_versions(client, items, read_all=False, progress_callback=None):
     """Resolve every member before a caller starts writing; unreadable members fail closed."""
-    queue = deque(items)
+    queue = deque()
+    discovered = {}
     resolved = {}
-    while queue:
-        if client.stop_flag.is_set():
-            raise InterruptedError('Cancelled during version discovery')
-        candidate = queue.popleft()
+    pending = {}
+    last_report = 0
+    last_count = -1
+    percent = 0
+
+    def enqueue(candidate, force_detail=False):
         identifier = candidate['Id']
         sources = candidate.get('MediaSources') or []
         if not isinstance(sources, list) or any(not isinstance(source, dict) or not source.get('Id') for source in sources):
             raise ValueError('Invalid media sources in listing')
         has_alternates = any(str(source['Id']).replace('-', '').lower() != str(identifier).replace('-', '').lower()
                              for source in sources)
-        # Lists from older clients/tests need not carry GUIDs unless expansion is required.
-        needs_detail = read_all or candidate.get('MediaSourceCount', 1) > 1 or has_alternates
-        key = item_id(identifier) if needs_detail else str(identifier)
-        if key in resolved:
-            continue
-        current = client.get_item_info(identifier) if needs_detail else candidate
+        needs_detail = force_detail or read_all or candidate.get('MediaSourceCount', 1) > 1 or has_alternates
+        try:
+            key = item_id(identifier)
+        except ValueError:
+            # Legacy single-source fixtures need not carry GUIDs.
+            if needs_detail:
+                raise
+            key = str(identifier)
+        if key not in discovered:
+            discovered[key] = len(discovered)
+            queue.append((key, candidate, needs_detail))
+
+    def accept(key, current, needs_detail):
         if not isinstance(current, dict) or (needs_detail and item_id(current.get('Id')) != key):
-            raise ValueError(f'Cannot read version {identifier}')
+            raise ValueError(f'Cannot read version {key}')
         if needs_detail and current.get('Type') not in ITEM_TYPES:
-            raise ValueError(f'Unsupported version type: {identifier}')
+            raise ValueError(f'Unsupported version type: {key}')
         resolved[key] = current
         if needs_detail:
             for member in version_ids(current):
-                if member not in resolved:
-                    # Force a detail read even for a member missing from the visible list.
-                    queue.append({'Id': member, 'MediaSourceCount': 2})
-    return list(resolved.values())
+                enqueue({'Id': member}, force_detail=True)
+
+    def report(force=False, complete=False):
+        nonlocal last_report, last_count, percent
+        now = time.monotonic()
+        if not force and now - last_report < 5 and len(resolved) - last_count < 500:
+            return
+        last_report, last_count = now, len(resolved)
+        # More hidden members can be discovered later; never move the bar backwards.
+        percent = 100 if complete else max(percent, min(99, 100 * len(resolved) / max(1, len(discovered))))
+        message = (
+            f"版本检查{'完成' if complete else '进度'}：已检查 {len(resolved)}/{len(discovered)} 个条目，"
+            f"正在读取 {len(pending)} 个详情"
+        )
+        if pending:
+            message += f"，等待条目 {next(iter(pending.values()))}"
+        if progress_callback is None:
+            client.logger.info(message)
+        else:
+            client._report_progress(progress_callback, len(resolved), len(discovered), message, percent=percent)
+
+    def read(identifier):
+        if client.stop_flag.is_set():
+            raise InterruptedError('Cancelled during version discovery')
+        return client.get_item_info(identifier)
+
+    for candidate in items:
+        if client.stop_flag.is_set():
+            raise InterruptedError('Cancelled during version discovery')
+        enqueue(candidate)
+    report(force=True)
+    # Bound both concurrency and queued futures, even for very large libraries.
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix='version-discovery') as executor:
+        try:
+            while queue or pending:
+                if client.stop_flag.is_set():
+                    raise InterruptedError('Cancelled during version discovery')
+                while queue and len(pending) < 4:
+                    if client.stop_flag.is_set():
+                        raise InterruptedError('Cancelled during version discovery')
+                    key, candidate, needs_detail = queue.popleft()
+                    if needs_detail:
+                        pending[executor.submit(read, candidate['Id'])] = key
+                    else:
+                        accept(key, candidate, False)
+                if pending:
+                    done, _ = wait(pending, timeout=1, return_when=FIRST_COMPLETED)
+                    for future in sorted(done, key=lambda f: discovered[pending[f]]):
+                        key = pending.pop(future)
+                        accept(key, future.result(), True)
+                report()
+            if client.stop_flag.is_set():
+                raise InterruptedError('Cancelled during version discovery')
+        finally:
+            for future in pending:
+                future.cancel()
+            if pending:
+                client.logger.info("版本检查正在结束，等待已发出的详情请求返回")
+    report(force=True, complete=True)
+    return [resolved[key] for key in discovered]
 
 
 def _fields(fields):
@@ -115,7 +183,7 @@ def _now():
 def _write_json(path, value, exclusive=False):
     """Flush backups/checkpoints before any HTTP write; private, atomic local files."""
     path = Path(path)
-    data = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode()
+    data = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
     fd, temporary = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as handle:
@@ -197,7 +265,7 @@ def _apply_plan(client, path, report_path):
         raise ValueError('Duplicate plan items')
     report_path = Path(report_path)
     if report_path.exists():
-        report = json.loads(report_path.read_text())
+        report = json.loads(report_path.read_text(encoding='utf-8'))
         if report['plan_sha256'] != digest:
             raise ValueError('Report does not belong to this plan')
     else:
