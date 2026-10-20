@@ -188,7 +188,8 @@ def test_duplicate_lookup_and_version_merge_contract(jellyfin_contract_server):
 def test_metadata_workflow_contract(jellyfin_contract_server, operation, field, expected):
     state = jellyfin_contract_server
     original = copy.deepcopy(state.items)
-    task = getattr(state.client, operation)()
+    progress = []
+    task = getattr(state.client, operation)(progress.append)
     task.join(timeout=10)
     assert not task.is_alive()
     assert not state.errors
@@ -202,6 +203,11 @@ def test_metadata_workflow_contract(jellyfin_contract_server, operation, field, 
     reads = [query for method, route, query in state.requests if method == 'GET' and route == '/Items']
     assert {query['parentid'] for query in reads} == {MOVIE_LIBRARY, TV_LIBRARY}
     assert all(query['userid'] == USER_ID for query in reads)
+    percentages = [event['percent'] for event in progress if 'percent' in event]
+    assert percentages == sorted(percentages)
+    assert percentages[-1] == 100
+    assert any('正在读取第' in event['message'] for event in progress)
+    assert any('版本检查完成' in event['message'] for event in progress)
 
 
 def test_sequential_curation_preserves_locks_and_merge_preserves_member_values(jellyfin_contract_server):
@@ -255,7 +261,8 @@ def test_hidden_versions_translation_and_historical_protection(jellyfin_contract
     state.hidden.add(alternate)
     state.items[primary]['Genres'] = ['动作']
     state.items[alternate]['Genres'] = ['Comedy']
-    task = state.client.update_genres()
+    progress = []
+    task = state.client.update_genres(progress.append)
     task.join(timeout=10)
     assert not task.is_alive()
     assert not state.client._metadata_had_errors
@@ -263,6 +270,9 @@ def test_hidden_versions_translation_and_historical_protection(jellyfin_contract
     assert state.items[primary]['LockedFields'] == ['Name']
     assert state.items[alternate]['Genres'] == ['喜剧']
     assert set(state.items[alternate]['LockedFields']) == {'Name', 'Genres'}
+    movie_versions = next(event for event in progress if event['message'].startswith('版本检查完成'))
+    assert movie_versions['current'] == movie_versions['total'] == 2
+    assert 0 < movie_versions['percent'] < 50
     before = copy.deepcopy(state.items)
     posts = sum(method == 'POST' for method, _, _ in state.requests)
     plan, report = tmp_path / 'plan.json', tmp_path / 'report.json'
@@ -275,3 +285,26 @@ def test_hidden_versions_translation_and_historical_protection(jellyfin_contract
             assert state.items[identifier][field] == before[identifier][field]
         assert set(state.items[identifier]['LockedFields']) == {'Name', 'Genres', 'ProductionLocations'}
     assert state.items[UUID(int=12).hex] == before[UUID(int=12).hex]
+
+
+@pytest.mark.parametrize('operation', ['update_genres', 'update_countries'])
+def test_unreadable_version_aborts_metadata_writes(jellyfin_contract_server, monkeypatch, operation):
+    state = jellyfin_contract_server
+    primary, alternate = UUID(int=10).hex, UUID(int=11).hex
+    state.items[primary]['MediaSourceCount'] = 2
+    state.items[primary]['MediaSources'] = [{'Id': primary}, {'Id': alternate}]
+    state.hidden.add(alternate)
+    original_read = state.client.get_item_info
+    monkeypatch.setattr(
+        state.client, 'get_item_info',
+        lambda identifier: None if identifier == alternate else original_read(identifier),
+    )
+    method = (
+        state.client.emby_movie_translate_genres_and_update_whole_item
+        if operation == 'update_genres' else state.client.emby_movie_translate_countries_and_update_whole_item
+    )
+    progress = []
+    assert method(progress_callback=progress.append) == []
+    assert state.client._metadata_had_errors
+    assert not any(method == 'POST' for method, _, _ in state.requests)
+    assert not any(event.get('percent') == 100 for event in progress)

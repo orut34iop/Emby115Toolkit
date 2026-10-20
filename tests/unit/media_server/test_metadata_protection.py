@@ -2,6 +2,7 @@
 
 import copy
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -240,6 +241,79 @@ def test_normal_expansion_keeps_independent_hidden_member_values():
     result = expand_versions(client, [client.items[A]])
     assert [row['Id'] for row in result] == [A, B]
     assert result[0]['Genres'] != result[1]['Genres']
+
+
+def test_version_discovery_reads_in_parallel_with_bounded_concurrency(monkeypatch):
+    client = Client()
+    identifiers = [UUID(int=i).hex for i in range(10, 18)]
+    barrier = threading.Barrier(4, timeout=3)
+    lock = threading.Lock()
+    calls = []
+    active = peak = 0
+
+    def read(identifier):
+        nonlocal active, peak
+        with lock:
+            calls.append(identifier)
+            active += 1
+            peak = max(peak, active)
+        try:
+            barrier.wait()
+            return {'Id': identifier, 'Type': 'Movie', 'MediaSources': [{'Id': identifier}]}
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(client, 'get_item_info', read)
+    result = expand_versions(client, [{'Id': identifier} for identifier in identifiers] * 2, read_all=True)
+    assert [item['Id'] for item in result] == identifiers
+    assert sorted(calls) == identifiers
+    assert peak == 4
+
+
+def test_version_discovery_reports_waits_and_new_hidden_members(monkeypatch):
+    from media_server import metadata_protection
+
+    client = Client()
+    client.items[C] = {'Id': C, 'Type': 'Movie', 'MediaSourceCount': 1}
+    client.items[B]['MediaSources'].append({'Id': C})
+    client.items[B]['MediaSourceCount'] = 3
+    updates = []
+    ticks = iter(range(0, 1000, 6))
+    monkeypatch.setattr(metadata_protection, 'time', SimpleNamespace(monotonic=lambda: next(ticks)))
+    actual_wait = metadata_protection.wait
+    waits = []
+
+    def wait_with_delay(pending, **kwargs):
+        waits.append(True)
+        if len(waits) == 1:
+            return set(), set(pending)
+        return actual_wait(pending, **kwargs)
+
+    monkeypatch.setattr(metadata_protection, 'wait', wait_with_delay)
+    result = expand_versions(client, [client.items[A]], progress_callback=updates.append)
+    assert [item['Id'] for item in result] == [A, B, C]
+    assert any('等待条目' in update['message'] for update in updates)
+    assert [update['percent'] for update in updates] == sorted(update['percent'] for update in updates)
+    assert updates[-1]['percent'] == 100
+    assert updates[-1]['current'] == updates[-1]['total'] == 3
+
+
+def test_cancelled_discovery_does_not_schedule_hidden_members_or_report_completion(monkeypatch):
+    client = Client()
+    reads, updates = [], []
+    original = client.get_item_info
+
+    def read(identifier):
+        reads.append(identifier)
+        client.stop_flag.set()
+        return original(identifier)
+
+    monkeypatch.setattr(client, 'get_item_info', read)
+    with pytest.raises(InterruptedError):
+        expand_versions(client, [client.items[A]], progress_callback=updates.append)
+    assert reads == [A]
+    assert not any(update['percent'] == 100 for update in updates)
 
 
 @pytest.mark.parametrize('kwargs', [{}, {'ids': [A], 'libraries': [B]}])

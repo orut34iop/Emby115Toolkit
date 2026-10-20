@@ -344,6 +344,8 @@ class MediaServerClient:
     ):
         retry_status_codes = retry_status_codes or set()
         for attempt in range(retries + 1):
+            if self.stop_flag.is_set():
+                raise requests.exceptions.RequestException("任务已停止")
             try:
                 response = self._request(method, path, params=params, data=data, json_body=json_body, timeout=timeout)
                 if response.status_code not in retry_status_codes or attempt >= retries:
@@ -819,6 +821,7 @@ class MediaServerClient:
             self.logger.warning(f"Jellyfin 用户视图中没有找到 {include_item_types} 类型的媒体库")
             return []
 
+        listing_callback = self._scale_progress_callback(progress_callback, 0, 50) if expand_members else progress_callback
         all_items = []
         for view_index, view in enumerate(views):
             if self.stop_flag.is_set():
@@ -834,12 +837,12 @@ class MediaServerClient:
                 ]))
             library_name = view.get('Name', view['Id'])
             label = f"读取 Jellyfin 媒体库“{library_name}”"
-            if progress_callback is None:
+            if listing_callback is None:
                 library_items = self._get_jellyfin_items(library_params, label)
             else:
                 library_items = self._get_jellyfin_items(
                     library_params, label,
-                    self._scale_progress_callback(progress_callback, view_index * 100 / len(views), 100 / len(views)),
+                    self._scale_progress_callback(listing_callback, view_index * 100 / len(views), 100 / len(views)),
                 )
             if library_items is None:
                 return None
@@ -850,7 +853,7 @@ class MediaServerClient:
                 f"{len(library_items)} 个 {include_item_types} 条目"
             )
             self._report_progress(
-                progress_callback, view_index + 1, len(views),
+                listing_callback, view_index + 1, len(views),
                 f"媒体库读取完成 {view_index + 1}/{len(views)}，累计 {len(all_items)} 个条目",
             )
 
@@ -862,8 +865,13 @@ class MediaServerClient:
         from media_server.metadata_protection import expand_versions
 
         try:
-            return expand_versions(self, all_items)
-        except (ValueError, KeyError, TypeError, InterruptedError) as error:
+            return expand_versions(
+                self, all_items, progress_callback=self._scale_progress_callback(progress_callback, 50, 50)
+            )
+        except InterruptedError:
+            self.logger.info('已停止版本成员检查，本轮未提交元数据更新')
+            return None
+        except (ValueError, KeyError, TypeError) as error:
             self.logger.error(f'版本成员读取不完整，取消本轮元数据更新: {error}')
             self._mark_metadata_error()
             return None
@@ -924,7 +932,15 @@ class MediaServerClient:
             'Limit': '1000000',
         }
 
-        items = self._get_genre_update_items(include_item_types, params)
+        if self.server_type == 'jellyfin' and progress_callback is not None:
+            self._report_progress(progress_callback, 0, None, f"正在读取{item_label}地区及版本信息", percent=2)
+            items = self._get_genre_update_items(
+                include_item_types, params,
+                progress_callback=self._scale_progress_callback(progress_callback, 2, 38),
+            )
+            progress_callback = self._scale_progress_callback(progress_callback, 40, 60)
+        else:
+            items = self._get_genre_update_items(include_item_types, params)
         if items is None:
             return updated_items
 
@@ -1112,7 +1128,16 @@ class MediaServerClient:
             'Limit': '1000000',
         }
 
-        items = self._get_genre_update_items(include_item_types, params)
+        operation_callback = progress_callback
+        if self.server_type == 'jellyfin' and progress_callback is not None:
+            self._report_progress(progress_callback, 0, None, f"正在读取{item_label}流派及版本信息", percent=2)
+            items = self._get_genre_update_items(
+                include_item_types, params,
+                progress_callback=self._scale_progress_callback(progress_callback, 2, 38),
+            )
+            progress_callback = self._scale_progress_callback(progress_callback, 40, 60)
+        else:
+            items = self._get_genre_update_items(include_item_types, params)
         if items is None:
             return updated_items
 
@@ -1214,7 +1239,7 @@ class MediaServerClient:
                             item_label,
                             include_item_types,
                             genres_map,
-                            progress_callback=progress_callback,
+                            progress_callback=operation_callback,
                             rescan_attempts=rescan_attempts + 1,
                         )
                     self.logger.warning(f"{item_label}流派更新停止：重扫后仍未发现可提交的更新")
@@ -2008,7 +2033,10 @@ class MediaServerClient:
             )
 
             self.logger.info(message)
-            self._report_progress(callback, 1, 1, title, percent=100)
+            if stopped:
+                self._report_progress(callback, 0, None, title)
+            else:
+                self._report_progress(callback, 1, 1, title, percent=100)
 
             return message
 
@@ -2057,7 +2085,10 @@ class MediaServerClient:
                 f"----------------------------------------\n"
             )
             self.logger.info(message)
-            self._report_progress(callback, 1, 1, title, percent=100)
+            if stopped:
+                self._report_progress(callback, 0, None, title)
+            else:
+                self._report_progress(callback, 1, 1, title, percent=100)
             return message
 
         return self._start_background_task(run_update_countries_check, "更新地区")
