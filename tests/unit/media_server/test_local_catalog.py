@@ -118,6 +118,9 @@ def test_verify_reads_new_committed_values_and_all_existing_locks(catalog):
     assert not catalog.verify(uid(1), expected, ('Genres',))
     change(catalog, 'INSERT INTO BaseItemMetadataFields VALUES(?,?)', (6, db_guid(uid(1))))
     assert catalog.verify(uid(1), expected, ('Genres',))
+    # A stop prevents new work, but must still confirm a write already sent.
+    catalog.stop_flag.set()
+    assert catalog.verify(uid(1), expected, ('Genres',))
     change(catalog, 'UPDATE BaseItems SET Genres=? WHERE Id=?', ('Drama', db_guid(uid(1))))
     assert not catalog.verify(uid(1), expected, ('Genres',))
 

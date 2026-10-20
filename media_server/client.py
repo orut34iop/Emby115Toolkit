@@ -544,6 +544,11 @@ class MediaServerClient:
     def _post_item_update(self, item_id, item, protected_fields=()):
         params = {"api_key": self.api_key}
         payload = self._prepare_item_update_payload(item)
+        if protected_fields and self.server_type == 'jellyfin' and str(self.server_version or '').startswith('12.'):
+            # Jellyfin 12 only updates credits when People is non-null. Reposting
+            # unchanged credits rebuilds their links and saves every person again.
+            # Curation does not edit cast; omission preserves its current value.
+            payload.pop('People', None)
         path = f"/Items/{urllib.parse.quote(str(item_id), safe='')}"
         retry_status_codes = {408, 429, 500, 502, 503, 504}
         last_error = None

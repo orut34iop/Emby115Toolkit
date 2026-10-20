@@ -43,6 +43,7 @@ def jellyfin_contract_server(request):
             'Overview': 'Keep this overview',
             'Tags': ['Keep this tag'],
             'LockedFields': ['Name'],
+            'People': [{'Id': UUID(int=90).hex, 'Name': 'Keep actor', 'Type': 'Actor', 'Role': 'Keep role'}],
         }
         if 'OriginalLanguage' in contract['item_properties']:
             items[item_id]['OriginalLanguage'] = 'ja'
@@ -125,6 +126,8 @@ def jellyfin_contract_server(request):
                 assert 'GenreItems' not in payload
                 for key, value in items[item_id].items():
                     if key not in {'Genres', 'ProductionLocations', 'GenreItems', 'LockedFields'}:
+                        if key == 'People' and key not in payload and contract['server_version'].startswith('12.'):
+                            continue  # Jellyfin leaves credits unchanged when this optional field is absent.
                         assert payload[key] == value, f'Metadata field lost: {key}'
                 changed = {
                     key for key in ('Genres', 'ProductionLocations')

@@ -106,3 +106,23 @@ def test_emby_keeps_existing_contract(monkeypatch):
     assert client._save_curated_field('movie', current, 'Genres').status_code == 204
     assert current == before
     post.assert_called_once_with('movie', current)
+
+
+@pytest.mark.parametrize('version,curated,omitted', [
+    ('12.0', True, True), ('12.0', False, False), ('10.11.11', True, False), (None, True, False),
+])
+def test_curation_skips_unchanged_jellyfin12_people_only(client, monkeypatch, version, curated, omitted):
+    client.server_version = version
+    current = item()
+    current['People'] = [{'Id': 'actor', 'Name': 'Keep actor', 'Type': 'Actor', 'Role': 'Keep role'}]
+    request = Mock(return_value=Mock(status_code=204))
+    monkeypatch.setattr(client, '_request', request)
+    monkeypatch.setattr(client, 'get_item_info', lambda _: current)
+    if curated:
+        assert client._save_curated_field('movie', current, 'Genres').status_code == 204
+    else:
+        assert client._post_item_update('movie', current).status_code == 204
+    payload = request.call_args.kwargs['json_body']
+    assert ('People' not in payload) == omitted
+    assert current['People'][0]['Role'] == 'Keep role'
+    assert payload['Overview'] == current['Overview']

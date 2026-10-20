@@ -100,8 +100,8 @@ class LocalCatalog:
         self._local = threading.local()
 
     @contextmanager
-    def read(self):
-        if self.stop_flag.is_set():
+    def read(self, allow_cancelled=False):
+        if self.stop_flag.is_set() and not allow_cancelled:
             raise InterruptedError('已停止本机快照读取')
         stat = self.database.stat()
         if ((stat.st_dev, stat.st_ino) != self.identity
@@ -118,7 +118,7 @@ class LocalCatalog:
                 self._connections.append(connection)
         start = time.monotonic()
         connection.set_progress_handler(
-            lambda: int(self.stop_flag.is_set() or time.monotonic() - start > 20), 10000,
+            lambda: int((self.stop_flag.is_set() and not allow_cancelled) or time.monotonic() - start > 20), 10000,
         )
         connection.execute('BEGIN')
         try:
@@ -245,7 +245,7 @@ class LocalCatalog:
 
     def verify(self, identifier, expected, fields):
         """Fresh committed values and existing locks, without constructing a playback DTO."""
-        with self.read() as db:
+        with self.read(allow_cancelled=True) as db:
             row = db.execute(
                 'SELECT Genres, ProductionLocations FROM BaseItems WHERE Id=?', (db_guid(identifier),),
             ).fetchone()
