@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import threading
 import time
 import unicodedata
@@ -189,6 +190,12 @@ class MediaServerClient:
             for source, target in COUNTRY_TRANSLATIONS.items()
         }
         self._metadata_had_errors = False
+        self._session_local = threading.local()
+        self._sessions = []
+        self._sessions_lock = threading.Lock()
+        self._local_catalog = None
+        self._local_catalog_checked = False
+        self._translation_cache = {}
 
     def _normalize_server_type(self, server_type):
         value = str(server_type or 'emby').strip().lower()
@@ -219,10 +226,33 @@ class MediaServerClient:
                 target()
             except Exception as e:
                 self.logger.exception(f"{task_name}执行异常: {e}")
+            finally:
+                self.close()
 
         thread = threading.Thread(target=safe_target, daemon=True)
         thread.start()
         return thread
+
+    def close(self):
+        """Release pooled connections after all task workers have joined."""
+        with self._sessions_lock:
+            for session in self._sessions:
+                session.close()
+            self._sessions.clear()
+        self._session_local = threading.local()
+        if self._local_catalog is not None:
+            self._local_catalog.close()
+        self._local_catalog = None
+        self._local_catalog_checked = False
+
+    def _session(self):
+        session = getattr(self._session_local, 'session', None)
+        if session is None:
+            session = requests.Session()
+            self._session_local.session = session
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
 
     def _auth_headers(self):
         if self.server_type == 'jellyfin':
@@ -326,7 +356,7 @@ class MediaServerClient:
         if self.server_type == 'jellyfin' and params is not None:
             # Keep credentials out of URLs, including params from shared Emby callers.
             params = {key: value for key, value in params.items() if key.lower() not in {'api_key', 'apikey'}}
-        return requests.request(method, url, headers=headers, params=params, data=data, json=json_body, timeout=timeout)
+        return self._session().request(method, url, headers=headers, params=params, data=data, json=json_body, timeout=timeout)
 
     def _request_with_retries(
         self,
@@ -393,6 +423,8 @@ class MediaServerClient:
             'EnableTotalRecordCount': 'true',
             'SortBy': 'SortName',
             'SortOrder': 'Ascending',
+            'EnableImages': 'false',
+            'EnableUserData': 'false',
         })
         # GenreItems is returned with Genres; it is not a Jellyfin ItemFields value.
         if 'Fields' in page_params:
@@ -466,6 +498,13 @@ class MediaServerClient:
         fields = protected_fields or [field for field in ('Genres', 'ProductionLocations') if field in expected_item]
         if not fields:
             return False
+
+        if self._local_catalog is not None and protected_fields:
+            try:
+                return self._local_catalog.verify(item_id, expected_item, protected_fields)
+            except (OSError, ValueError, sqlite3.Error, InterruptedError) as error:
+                # An unavailable local reader is not proof of a failed write.
+                self.logger.warning(f"本机回读不可用，改用 API 确认: {error}")
 
         actual_item = self.get_item_info(item_id)
         if not actual_item:
@@ -612,7 +651,11 @@ class MediaServerClient:
         translated_genres = []
         seen = set()
         for genre in genres:
-            translated = self._resolve_genre_translation(genre, genres_map)
+            key = (id(genres_map), genre)
+            translated = self._translation_cache.get(key)
+            if translated is None:
+                translated = self._resolve_genre_translation(genre, genres_map)
+                self._translation_cache[key] = translated
             if not translated:
                 continue
             if translated not in seen:
@@ -821,6 +864,34 @@ class MediaServerClient:
             self.logger.warning(f"Jellyfin 用户视图中没有找到 {include_item_types} 类型的媒体库")
             return []
 
+        local_items = []
+        if not self._local_catalog_checked:
+            from media_server.local_catalog import LocalCatalog
+
+            self._local_catalog_checked = True
+            try:
+                self._local_catalog = LocalCatalog.discover(self)
+            except (OSError, ValueError, KeyError, TypeError, sqlite3.Error, requests.exceptions.RequestException) as error:
+                self.logger.info(f"本机快照不可用，继续使用兼容 API: {error}")
+        if self._local_catalog is not None:
+            try:
+                started = time.monotonic()
+                local_items, covered = self._local_catalog.snapshot(views, include_item_types, expand_members)
+                views = [view for view in views if str(view['Id']).replace('-', '').lower() not in covered]
+                self._report_progress(
+                    progress_callback, len(local_items), len(local_items),
+                    f"本机只读快照：{len(covered)} 个媒体库，{len(local_items)} 个 {include_item_types} 条目"
+                    f"（{'包含隐藏版本' if expand_members else '可见版本代表'}），耗时 {time.monotonic() - started:.2f} 秒",
+                    percent=0 if views else 100,
+                )
+                if not views:
+                    return local_items
+            except InterruptedError:
+                return None
+            except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as error:
+                self.logger.warning(f"本机快照校验失败，继续使用完整 API 流程: {error}")
+                local_items = []
+
         listing_callback = self._scale_progress_callback(progress_callback, 0, 50) if expand_members else progress_callback
         all_items = []
         for view_index, view in enumerate(views):
@@ -860,12 +931,12 @@ class MediaServerClient:
         # Merging works on visible representatives and their source counts.
         # Only metadata updates must fetch every hidden version before writing.
         if not expand_members:
-            return all_items
+            return local_items + all_items
 
         from media_server.metadata_protection import expand_versions
 
         try:
-            return expand_versions(
+            return local_items + expand_versions(
                 self, all_items, progress_callback=self._scale_progress_callback(progress_callback, 50, 50)
             )
         except InterruptedError:
@@ -978,6 +1049,14 @@ class MediaServerClient:
             )
             self.logger.info(f"没有需要更新的{item_label}地区信息。")
             return updated_items
+
+        if self.server_type == 'jellyfin':
+            from media_server.metadata_updates import update_candidates
+
+            return update_candidates(
+                self, candidates, 'ProductionLocations', self._translate_production_locations,
+                f"{item_label}地区", progress_callback,
+            )
 
         update_count = 0
         processed_count = 0
@@ -1176,6 +1255,14 @@ class MediaServerClient:
             )
             self.logger.info(f"没有需要更新的{item_label}流派信息。")
             return updated_items
+
+        if self.server_type == 'jellyfin':
+            from media_server.metadata_updates import update_candidates
+
+            return update_candidates(
+                self, candidates, 'Genres', lambda genres: self._translate_genres(genres, genres_map),
+                f"{item_label}流派", progress_callback,
+            )
 
         stopped = False
         last_update_heartbeat = 0
@@ -1693,6 +1780,15 @@ class MediaServerClient:
                 break
 
             if len(movies) > 1:
+                if any(movie.get('_local_snapshot') for movie in movies):
+                    try:
+                        current = self._local_catalog is not None and self._local_catalog.merge_is_current(movies)
+                    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error, InterruptedError):
+                        current = False
+                    if not current:
+                        self._mark_metadata_error()
+                        self.logger.warning(f"{identity_label} 分组 {identity_value} 已改变或无法确认，跳过合并，请重新扫描")
+                        continue
                 name = movies[0]["Name"]
                 self.logger.info("")
                 self.logger.info(f"发现相同 {identity_label} 影片：{identity_value}")
@@ -1814,7 +1910,10 @@ class MediaServerClient:
                 if callback:
                     callback(merged_movies)
                 return merged_movies
-            self._report_progress(callback, 1, 1, "合并版本处理完成")
+            self._report_progress(
+                callback, 1, 1,
+                "合并版本处理结束，存在未确认或失败的分组，请查看日志" if self._metadata_had_errors else "合并版本处理完成",
+            )
             if callback:
                 callback(merged_movies)
 

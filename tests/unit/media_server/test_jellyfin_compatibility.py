@@ -162,7 +162,7 @@ def test_modern_auth_uses_header_only_without_mutating_callers(client, monkeypat
     client.server_version = version
     params = {'api_key': 'test-key', 'ApiKey': 'test-key', 'UserId': 'user'}
     request = Mock(return_value=response([]))
-    monkeypatch.setattr('media_server.client.requests.request', request)
+    monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: request(*args, **kwargs))
     client._request('get', '/Users', params=params)
     args, kwargs = request.call_args
     assert args == ('get', 'http://localhost:8096/jellyfin/Users')
@@ -177,7 +177,7 @@ def test_modern_auth_uses_header_only_without_mutating_callers(client, monkeypat
 def test_emby_auth_and_prefix_stay_compatible(monkeypatch):
     client = MediaServerClient(server_url='http://localhost:8096', api_key='test-key')
     request = Mock(return_value=response([]))
-    monkeypatch.setattr('media_server.client.requests.request', request)
+    monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: request(*args, **kwargs))
     client._request('get', '/Items', params={'api_key': 'test-key'})
     args, kwargs = request.call_args
     assert args == ('get', 'http://localhost:8096/emby/Items')
@@ -249,7 +249,7 @@ def test_bad_second_page_discards_partial_results(client, monkeypatch, bad_page)
 @pytest.mark.parametrize('status', [401, 403, 404])
 def test_auth_or_route_error_does_not_fall_back_to_legacy_auth(client, monkeypatch, status):
     request = Mock(return_value=response({}, status))
-    monkeypatch.setattr('media_server.client.requests.request', request)
+    monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: request(*args, **kwargs))
     assert client._get_jellyfin_items({'IncludeItemTypes': 'Movie'}, 'test') is None
     assert request.call_count == 1
     assert client._metadata_had_errors

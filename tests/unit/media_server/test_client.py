@@ -89,7 +89,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key', server_type='jellyfin')
 
         operator.merge_movie_versions(
@@ -115,7 +115,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         operator = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key', server_type='emby')
 
         operator.merge_movie_versions(
@@ -156,7 +156,7 @@ class TestMediaServerClientServerType:
             },
             {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
         ]
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         result = operator.merge_versions(lambda message: None)
 
@@ -183,7 +183,7 @@ class TestMediaServerClientServerType:
             {'Id': 'tmdb-2', 'Name': 'Movie A 4K', 'ProviderIds': {'Tmdb': '12345'}, 'Path': '/path/movie-a-4k.mkv'},
             {'Id': 'solo-1', 'Name': 'Movie B', 'ProviderIds': {'Tmdb': '67890'}, 'Path': '/path/movie-b.mkv'},
         ]
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         with caplog.at_level('INFO'):
             result = operator.merge_versions(lambda message: None)
@@ -234,7 +234,7 @@ class TestMediaServerClientServerType:
                 'ProviderIds': {'Tmdb': '200', 'Num': 'NEW-200'},
             },
         ]
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         result = operator.merge_versions(lambda _message: None)
 
@@ -250,7 +250,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', server_type='emby'
@@ -271,7 +271,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', server_type='emby'
@@ -296,7 +296,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         item = {
             'Name': 'Movie',
@@ -328,7 +328,7 @@ class TestMediaServerClientServerType:
                 raise requests.exceptions.ReadTimeout('slow update')
             return FakeResponse(status_code=204)
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         monkeypatch.setattr('media_server.client.time.sleep', lambda seconds: None)
 
         response = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')._post_item_update(
@@ -348,7 +348,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             raise requests.exceptions.ReadTimeout('slow update')
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         monkeypatch.setattr('media_server.client.time.sleep', lambda seconds: None)
 
         response = MediaServerClient(server_url='http://localhost:8096', api_key='test-api-key')._post_item_update(
@@ -400,7 +400,7 @@ class TestMediaServerClientServerType:
                 ]
             )
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         operator = MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
         )
@@ -418,7 +418,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             return FakeResponse(payload={'Id': 'movie1', 'Name': 'Movie'})
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         operator = MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
         )
@@ -437,7 +437,7 @@ class TestMediaServerClientServerType:
             requests_made.append((method, url, kwargs))
             raise requests.exceptions.ReadTimeout('slow detail')
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         monkeypatch.setattr('media_server.client.time.sleep', lambda seconds: None)
         operator = MediaServerClient(
             server_url='http://localhost:8096', api_key='test-api-key', username='wiz', server_type='jellyfin'
@@ -485,7 +485,7 @@ class TestMediaServerClientServerType:
         def fail_emby_detail(item_id):
             pytest.fail('Jellyfin 更新流派不应该调用 Emby 用户详情接口')
 
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
         monkeypatch.setattr(operator, 'emby_get_item_info', fail_emby_detail)
         monkeypatch.setattr(
             operator,
@@ -1284,7 +1284,7 @@ class TestMediaServerClientGroupMovies:
                 'MediaSourceCount': 1,
             },
         ]
-        monkeypatch.setattr('media_server.client.requests.request', fake_request)
+        monkeypatch.setattr('media_server.client.requests.Session.request', lambda _session, *args, **kwargs: fake_request(*args, **kwargs))
 
         result = operator.merge_versions(lambda _message: None)
 
